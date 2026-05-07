@@ -77,6 +77,28 @@ O output e gerado em:
 dist/
 ```
 
+## Setup Windows
+
+Gere o instalador Windows x64:
+
+```bash
+npm run dist:win
+```
+
+O instalador NSIS sera gerado em:
+
+```text
+release/Noogym-Desktop-Setup-1.0.0-x64.exe
+```
+
+Para gerar apenas a pasta executavel, sem instalador:
+
+```bash
+npm run pack:win
+```
+
+> A versao de teste e gerada sem assinatura de codigo. Em alguns computadores, o Windows SmartScreen pode exibir um aviso antes da instalacao.
+
 ## Scripts
 
 ```bash
@@ -90,6 +112,18 @@ npm run build
 ```
 
 Executa TypeScript, build do renderer e build do processo principal.
+
+```bash
+npm run dist:win
+```
+
+Gera o setup Windows x64 em `release/`.
+
+```bash
+npm run pack:win
+```
+
+Gera a aplicacao Windows descompactada em `release/win-unpacked/`.
 
 ```bash
 npm run build:main
