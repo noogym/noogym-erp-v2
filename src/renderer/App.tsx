@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { BottomSyncBar } from "./components/layout/BottomSyncBar";
 import { Sidebar } from "./components/layout/Sidebar";
 import { Topbar } from "./components/layout/Topbar";
@@ -32,7 +33,13 @@ const pages = {
 
 export default function App() {
   const activeRoute = useAppStore((state) => state.activeRoute);
+  const theme = useAppStore((state) => state.theme);
   const Page = pages[activeRoute];
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    document.documentElement.style.colorScheme = theme;
+  }, [theme]);
 
   return (
     <div className="app-shell flex flex-col">

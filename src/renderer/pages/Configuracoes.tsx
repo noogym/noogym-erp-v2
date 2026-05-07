@@ -4,9 +4,18 @@ import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { Tabs } from "../components/ui/Tabs";
+import { useAppStore } from "../store/appStore";
 
-function Toggle({ on = true }: { on?: boolean }) {
-  return <span className={`relative inline-flex h-6 w-12 items-center rounded-full ${on ? "bg-noogym-lime" : "bg-zinc-700"}`}><span className={`h-5 w-5 rounded-full bg-white transition ${on ? "translate-x-6" : "translate-x-1"}`} /></span>;
+function Toggle({ on = true, onClick }: { on?: boolean; onClick?: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`no-drag relative inline-flex h-6 w-12 items-center rounded-full transition ${on ? "bg-noogym-lime" : "bg-zinc-700"}`}
+    >
+      <span className={`h-5 w-5 rounded-full bg-white transition ${on ? "translate-x-6" : "translate-x-1"}`} />
+    </button>
+  );
 }
 
 function SettingsCard({ icon, title, children, button = "Editar" }: { icon: React.ReactNode; title: string; children: React.ReactNode; button?: string }) {
@@ -14,6 +23,10 @@ function SettingsCard({ icon, title, children, button = "Editar" }: { icon: Reac
 }
 
 export default function Configuracoes() {
+  const theme = useAppStore((state) => state.theme);
+  const setTheme = useAppStore((state) => state.setTheme);
+  const darkMode = theme === "dark";
+
   return (
     <div className="page-grid">
       <div className="panel p-6">
@@ -38,7 +51,14 @@ export default function Configuracoes() {
         </Card>
         <Card className="p-6">
           <h2 className="mb-5 font-semibold">Preferências do sistema</h2>
-          {["Tema escuro|Manter o tema escuro ativado|1", "Sons do sistema|Ativar sons em ações do sistema|1", "Confirmação de ações|Mostrar confirmação em ações críticas|1", "Atualizações automáticas|Baixar atualizações automaticamente|0"].map((row) => { const [title, desc, on] = row.split("|"); return <div key={title} className="mb-5 flex items-center justify-between"><div><p>{title}</p><p className="text-sm text-zinc-400">{desc}</p></div><Toggle on={on === "1"} /></div>; })}
+          <div className="mb-5 flex items-center justify-between">
+            <div>
+              <p>Tema escuro</p>
+              <p className="text-sm text-zinc-400">{darkMode ? "Manter o tema escuro ativado" : "Usar tema claro no sistema"}</p>
+            </div>
+            <Toggle on={darkMode} onClick={() => setTheme(darkMode ? "light" : "dark")} />
+          </div>
+          {["Sons do sistema|Ativar sons em ações do sistema|1", "Confirmação de ações|Mostrar confirmação em ações críticas|1", "Atualizações automáticas|Baixar atualizações automaticamente|0"].map((row) => { const [title, desc, on] = row.split("|"); return <div key={title} className="mb-5 flex items-center justify-between"><div><p>{title}</p><p className="text-sm text-zinc-400">{desc}</p></div><Toggle on={on === "1"} /></div>; })}
           <Button className="w-full">Restaurar padrões</Button>
         </Card>
         <Card className="p-5"><h2 className="mb-3 font-semibold">Estado local-first</h2><Badge>Local-First</Badge><p className="mt-3 text-sm text-zinc-400">Dados operacionais persistem localmente e ficam preparados para sincronização posterior.</p></Card>

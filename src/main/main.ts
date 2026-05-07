@@ -1,5 +1,7 @@
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, ipcMain, type IpcMainInvokeEvent } from "electron";
 import path from "node:path";
+
+const getWindowFromEvent = (event: IpcMainInvokeEvent) => BrowserWindow.fromWebContents(event.sender);
 
 const createWindow = () => {
   const window = new BrowserWindow({
@@ -28,6 +30,21 @@ const createWindow = () => {
 
 app.whenReady().then(() => {
   ipcMain.handle("app:version", () => app.getVersion());
+  ipcMain.handle("window:minimize", (event) => {
+    getWindowFromEvent(event)?.minimize();
+  });
+  ipcMain.handle("window:maximize", (event) => {
+    const window = getWindowFromEvent(event);
+    if (!window) return;
+    if (window.isMaximized()) {
+      window.unmaximize();
+      return;
+    }
+    window.maximize();
+  });
+  ipcMain.handle("window:close", (event) => {
+    getWindowFromEvent(event)?.close();
+  });
   createWindow();
 
   app.on("activate", () => {

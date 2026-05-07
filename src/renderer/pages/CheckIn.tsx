@@ -20,15 +20,15 @@ export default function CheckIn() {
   const selected = filtered[0] ?? clients[0];
 
   return (
-    <div className="page-grid">
-      <div className="panel p-6">
+    <div className="checkin-grid">
+      <div className="panel min-w-0 p-6">
         <PageHeader title="Check-in" subtitle="Realize o check-in dos clientes de forma rápida e segura." />
         <Tabs tabs={["Check-in rápido", "Check-in manual", "Check-ins do dia", "Histórico"]} active={tab} onChange={setTab} />
-        <div className="mt-5 grid grid-cols-[.95fr_1fr] gap-5">
-          <div className="space-y-4">
+        <div className="checkin-content">
+          <div className="min-w-0 space-y-4">
             <Card className="p-4">
               <Tabs tabs={["Buscar por nome", "Buscar por código", "Buscar por biometria"]} active="Buscar por nome" onChange={() => undefined} />
-              <div className="mt-4 grid grid-cols-[1fr_160px] gap-3">
+              <div className="mt-4 grid gap-3 min-[1320px]:grid-cols-[1fr_160px]">
                 <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Digite o nome do cliente..." />
                 <Button>Todos os planos</Button>
               </div>
@@ -37,50 +37,53 @@ export default function CheckIn() {
               <h2 className="mb-3 font-semibold">Clientes encontrados</h2>
               <div className="space-y-1">
                 {filtered.map((client) => (
-                  <div key={client.id} className="table-row flex items-center gap-3 rounded-md px-2 py-3">
+                  <div key={client.id} className="table-row grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-md px-2 py-3 min-[1500px]:grid-cols-[auto_minmax(0,1fr)_auto_auto_auto]">
                     <Avatar label={client.avatar} />
-                    <p className="min-w-0 flex-1 text-sm">{client.name}</p>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm">{client.name}</p>
+                      <span className="block truncate text-xs text-zinc-400 min-[1500px]:hidden">Último acesso: {client.lastCheckin}</span>
+                    </div>
                     <Badge tone={client.planTone}>{client.plan.replace(" Mensal", "")}</Badge>
-                    <span className="text-xs text-zinc-400">Último acesso: {client.lastCheckin}</span>
-                    <Check className="h-5 w-5 rounded-full border border-noogym-lime text-noogym-lime" />
+                    <span className="hidden whitespace-nowrap text-xs text-zinc-400 min-[1500px]:block">Último acesso: {client.lastCheckin}</span>
+                    <Check className="hidden h-5 w-5 rounded-full border border-noogym-lime text-noogym-lime min-[1500px]:block" />
                   </div>
                 ))}
               </div>
-              <div className="mt-5 flex items-center justify-between text-sm">
+              <div className="mt-5 flex flex-wrap items-center justify-between gap-2 text-sm">
                 <button className="text-noogym-lime">Ver todos os clientes →</button>
                 <span className="text-zinc-400">Mostrando {filtered.length} de 1.248 clientes</span>
               </div>
             </Card>
           </div>
 
-          <div className="space-y-4">
+          <div className="min-w-0 space-y-4">
             <Card className="p-5">
               <h2 className="mb-4 font-semibold">Detalhes do cliente</h2>
-              <div className="flex gap-5">
+              <div className="grid gap-5 min-[1480px]:grid-cols-[auto_minmax(0,1fr)_minmax(210px,240px)]">
                 <Avatar label={selected.avatar} className="h-16 w-16 text-lg" />
-                <div className="flex-1">
-                  <div className="flex items-center gap-3">
-                    <h3 className="text-lg font-semibold">{selected.name}</h3>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <h3 className="min-w-0 truncate text-lg font-semibold">{selected.name}</h3>
                     <Badge tone={selected.planTone}>{selected.plan.replace(" Mensal", "")}</Badge>
                   </div>
                   <p className="mt-1 text-sm text-noogym-lime">● Ativo</p>
-                  <p className="mt-4 text-sm text-zinc-300">{selected.phone}</p>
-                  <p className="mt-2 text-sm text-zinc-300">{selected.email}</p>
+                  <p className="mt-4 truncate text-sm text-zinc-300">{selected.phone}</p>
+                  <p className="mt-2 truncate text-sm text-zinc-300">{selected.email}</p>
                 </div>
-                <div className="soft-card min-w-56 p-4 text-sm">
-                  <p className="mb-3 flex justify-between text-zinc-300">Plano <span className="text-white">{selected.plan}</span></p>
-                  <p className="mb-3 flex justify-between text-zinc-300">Início do plano <span className="text-white">12/04/2024</span></p>
-                  <p className="flex justify-between text-zinc-300">Vencimento <span className="text-white">{selected.expires}</span></p>
+                <div className="soft-card min-w-0 p-4 text-sm">
+                  <p className="mb-3 flex flex-wrap justify-between gap-2 text-zinc-300">Plano <span className="text-white">{selected.plan}</span></p>
+                  <p className="mb-3 flex flex-wrap justify-between gap-2 text-zinc-300">Início do plano <span className="text-white">12/04/2024</span></p>
+                  <p className="flex flex-wrap justify-between gap-2 text-zinc-300">Vencimento <span className="text-white">{selected.expires}</span></p>
                 </div>
               </div>
               <h3 className="mb-3 mt-6 font-semibold">Resumo</h3>
-              <div className="grid grid-cols-4 gap-2 text-center">
+              <div className="grid grid-cols-2 gap-2 text-center min-[1420px]:grid-cols-4">
                 {["Check-ins este mês|18", "Check-ins totais|86", "Frequência semanal|4x", "Dias consecutivos|3", `Último check-in|${selected.lastCheckin}`, `Plano|${selected.plan}`, "Status|● Ativo", "Acesso liberado até|22:00"].map((item) => {
                   const [label, value] = item.split("|");
                   return (
-                    <div key={label} className="soft-card p-3">
+                    <div key={label} className="soft-card min-w-0 p-3">
                       <p className="text-xs text-zinc-400">{label}</p>
-                      <p className="mt-2 text-base font-semibold">{value}</p>
+                      <p className="mt-2 truncate text-base font-semibold">{value}</p>
                     </div>
                   );
                 })}
@@ -101,7 +104,7 @@ export default function CheckIn() {
         </div>
       </div>
 
-      <aside className="space-y-3">
+      <aside className="min-w-0 space-y-3">
         <Card className="p-5">
           <h2 className="text-lg font-semibold">Check-ins do dia</h2>
           <p className="mt-4 text-3xl font-semibold">152</p>
