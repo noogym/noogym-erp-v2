@@ -2,11 +2,14 @@ import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { navItems } from "../../routes/nav";
 import { useAppStore } from "../../store/appStore";
-import { WifiOff } from "lucide-react";
+import { useAuthStore } from "../../store/authStore";
+import { LogOut, WifiOff } from "lucide-react";
 
 export function Sidebar() {
   const activeRoute = useAppStore((state) => state.activeRoute);
   const setRoute = useAppStore((state) => state.setRoute);
+  const user = useAuthStore((state) => state.user);
+  const logout = useAuthStore((state) => state.logout);
 
   return (
     <aside className="flex h-full min-h-0 w-[248px] shrink-0 flex-col border-r border-white/10 bg-black/25 p-3">
@@ -20,10 +23,19 @@ export function Sidebar() {
 
       <div className="panel mb-4 flex shrink-0 items-center gap-3 p-4 shadow-none">
         <div className="flex h-10 w-10 items-center justify-center rounded-full border border-noogym-lime text-noogym-lime">N</div>
-        <div>
-          <p className="text-sm font-medium">Admin</p>
-          <p className="text-xs text-zinc-400">Administrador</p>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium">{user?.name ?? "Admin"}</p>
+          <p className="truncate text-xs text-zinc-400">{user?.role ?? "Administrador"}</p>
         </div>
+        <button
+          type="button"
+          className="no-drag flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-zinc-300 transition hover:bg-red-500/10 hover:text-red-300"
+          onClick={logout}
+          aria-label="Sair"
+          title="Sair"
+        >
+          <LogOut className="h-4 w-4" />
+        </button>
       </div>
 
       <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto pr-1">
