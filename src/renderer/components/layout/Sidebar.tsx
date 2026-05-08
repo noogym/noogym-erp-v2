@@ -1,5 +1,6 @@
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
+import { NoogymLogo } from "../brand/NoogymLogo";
 import { navItems } from "../../routes/nav";
 import { useAppStore } from "../../store/appStore";
 import { useAuthStore } from "../../store/authStore";
@@ -14,10 +15,7 @@ export function Sidebar() {
   return (
     <aside className="flex h-full min-h-0 w-[248px] shrink-0 flex-col border-r border-white/10 bg-black/25 p-3">
       <div className="mb-5 flex h-12 shrink-0 items-center gap-3 px-2">
-        <div className="flex items-center gap-2">
-          <div className="text-4xl font-bold leading-none text-noogym-lime">∿</div>
-          <div className="text-2xl font-semibold">noogym</div>
-        </div>
+        <NoogymLogo className="min-w-0 gap-2" markClassName="h-7 w-[58px]" textClassName="text-xl" />
         <Badge>Desktop</Badge>
       </div>
 

@@ -1,5 +1,6 @@
 import { Building2, Database, Edit, Globe2, Hash, Percent, ShieldCheck, Trash2 } from "lucide-react";
 import { PageHeader } from "../components/layout/PageHeader";
+import { NoogymLogo } from "../components/brand/NoogymLogo";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
@@ -45,7 +46,7 @@ export default function Configuracoes() {
       <aside className="space-y-3">
         <Card className="p-6">
           <h2 className="font-semibold">Informações da empresa</h2>
-          <div className="mt-8 flex items-center gap-6"><div className="flex h-32 w-32 items-center justify-center rounded-full border border-white/10 bg-white/[0.06] text-7xl text-noogym-lime">∿</div><Button>Alterar logo</Button></div>
+          <div className="mt-8 flex items-center gap-6"><div className="flex h-32 w-32 items-center justify-center rounded-full border border-white/10 bg-white/[0.06] p-5"><NoogymLogo variant="mark" className="h-full w-full" /></div><Button>Alterar logo</Button></div>
           <h3 className="mt-6 flex items-center gap-2 text-xl font-semibold">Noogym Fitness Center <Edit className="h-4 w-4" /></h3>
           <div className="mt-4 space-y-3 text-sm text-zinc-300"><p>Unidade Central</p><p>NIF: 5001234567</p><p>Avenida 21 de Janeiro, 1234<br />Luanda, Angola</p><p>+244 923 777 888</p><p>contato@noogym.com</p></div>
         </Card>
