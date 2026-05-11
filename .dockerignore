@@ -1,6 +1,7 @@
 .git
 .github
 .turbo
+apps/desktop
 **/.turbo
 **/.next
 **/dist
@@ -16,5 +17,4 @@ yarn-error.log*
 .env
 .env.*
 !.env.example
-Dockerfile
 docker-compose.override.yml

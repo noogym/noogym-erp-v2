@@ -13,6 +13,8 @@
     "build": "turbo build",
     "build:desktop": "turbo build --filter=@noogym/desktop",
     "build:web": "turbo build --filter=@noogym/web-admin",
+    "docker:web:build": "docker build -f apps/web-admin/Dockerfile -t noogym-web-admin .",
+    "docker:web:run": "docker run -p 3000:3000 noogym-web-admin",
     "lint": "turbo lint",
     "typecheck": "turbo typecheck"
   },
