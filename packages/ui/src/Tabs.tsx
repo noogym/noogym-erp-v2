@@ -8,7 +8,7 @@ export function Tabs({
   onChange: (tab: string) => void;
 }) {
   return (
-    <div className="flex min-h-12 items-end gap-7 overflow-x-auto border-b border-white/10">
+    <div className="flex min-h-12 max-w-full min-w-0 items-end gap-4 overflow-x-auto border-b border-white/10 sm:gap-7">
       {tabs.map((tab) => (
         <button
           key={tab}

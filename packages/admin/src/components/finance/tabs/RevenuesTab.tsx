@@ -12,12 +12,12 @@ export function RevenuesTab({ openAction }: FinanceTabProps): FinanceTabView {
     subtitle: "Acompanhe o fluxo financeiro do seu negócio.",
     main: (
       <div className="space-y-4">
-        <div className="grid grid-cols-5 gap-3">
+        <div className="finance-kpi-grid">
           {revenuesMock.kpis.map((kpi) => (
             <FinanceKpiCard key={kpi.title} {...kpi} icon={<Wallet className="h-5 w-5" />} />
           ))}
         </div>
-        <div className="grid grid-cols-[1.45fr_1fr] gap-4">
+        <div className="finance-grid-wide">
           <FinanceChartCard title="Evolução das receitas" action={<SmallSelect label="Diário" />}>
             <LineChart series={revenuesMock.evolution} labels={financeDays} />
           </FinanceChartCard>
@@ -25,7 +25,7 @@ export function RevenuesTab({ openAction }: FinanceTabProps): FinanceTabView {
             <BarChart values={revenuesMock.weekday} labels={financeWeekdays} />
           </FinanceChartCard>
         </div>
-        <div className="grid grid-cols-3 gap-4">
+        <div className="finance-grid-3">
           <FinanceChartCard title="Receitas por categoria">
             <DonutChart items={revenuesMock.byCategory} center="245.000 Kz" />
             <FinanceCardLink onClick={() => openAction({ title: "Categorias de receita", rows: revenuesMock.byCategory.map((item) => [item.label, item.amount ?? ""]) })}>Ver todas as categorias</FinanceCardLink>

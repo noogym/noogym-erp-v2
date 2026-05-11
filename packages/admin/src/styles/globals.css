@@ -103,6 +103,31 @@ select {
     grid-template-columns: minmax(0, 1fr) minmax(300px, 340px);
   }
 
+  .finance-kpi-grid {
+    @apply grid gap-3;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 172px), 1fr));
+  }
+
+  .finance-grid-2 {
+    @apply grid gap-4;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  }
+
+  .finance-grid-3 {
+    @apply grid gap-4;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  }
+
+  .finance-grid-wide {
+    @apply grid gap-4;
+    grid-template-columns: minmax(0, 1.45fr) minmax(280px, 1fr);
+  }
+
+  .finance-grid-table {
+    @apply grid gap-4;
+    grid-template-columns: minmax(0, 1.45fr) minmax(260px, 0.95fr) minmax(240px, 0.8fr);
+  }
+
   .checkin-grid {
     @apply grid gap-3;
     grid-template-columns: minmax(0, 1fr) minmax(280px, 320px);
@@ -204,6 +229,10 @@ select {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .app-shell .grid-cols-6 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .app-shell .grid-cols-4 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -214,6 +243,11 @@ select {
 
   .page-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .finance-grid-wide,
+  .finance-grid-table {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
   }
 
   .pos-layout {
@@ -252,9 +286,18 @@ select {
   }
 
   .app-shell .grid-cols-5,
+  .app-shell .grid-cols-6,
   .app-shell .grid-cols-4,
   .app-shell .grid-cols-3,
   .app-shell .grid-cols-2 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .finance-kpi-grid,
+  .finance-grid-2,
+  .finance-grid-3,
+  .finance-grid-wide,
+  .finance-grid-table {
     grid-template-columns: minmax(0, 1fr);
   }
 

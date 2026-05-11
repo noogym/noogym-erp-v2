@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 export function FinanceTable({ columns, children }: { columns: string[]; children: ReactNode }) {
   return (
     <div className="overflow-x-auto rounded-lg border border-white/10">
-      <table className="min-w-full border-collapse text-left text-sm">
+      <table className="min-w-[640px] border-collapse text-left text-sm lg:min-w-full">
         <thead className="bg-white/[0.025] text-xs font-medium text-zinc-400">
           <tr>
             {columns.map((column) => (

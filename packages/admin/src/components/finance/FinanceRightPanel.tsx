@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { Card } from "@noogym/ui";
 
 export function FinanceRightPanel({ children }: { children: ReactNode }) {
-  return <aside className="space-y-3">{children}</aside>;
+  return <aside className="min-w-0 space-y-3">{children}</aside>;
 }
 
 export function FinancePanelSection({ title, children }: { title: string; children: ReactNode }) {
@@ -25,9 +25,9 @@ export function SummaryRow({
 }) {
   const toneClass = tone === "lime" ? "text-noogym-lime" : tone === "red" ? "text-red-400" : tone === "yellow" ? "text-yellow-400" : tone === "blue" ? "text-sky-400" : tone === "purple" ? "text-violet-400" : tone === "muted" ? "text-zinc-400" : "text-zinc-100";
   return (
-    <div className="flex items-center justify-between gap-3 border-b border-white/[0.06] pb-3 text-sm last:border-b-0 last:pb-0">
-      <span className="text-zinc-300">{label}</span>
-      <span className={`text-right font-medium ${toneClass}`}>{value}</span>
+    <div className="flex min-w-0 items-center justify-between gap-3 border-b border-white/[0.06] pb-3 text-sm last:border-b-0 last:pb-0">
+      <span className="min-w-0 text-zinc-300">{label}</span>
+      <span className={`shrink-0 text-right font-medium ${toneClass}`}>{value}</span>
     </div>
   );
 }
@@ -36,9 +36,9 @@ export function ProgressRow({ label, value, percent, tone = "lime" }: { label: s
   const bar = tone === "red" ? "bg-red-500" : tone === "yellow" ? "bg-yellow-400" : tone === "blue" ? "bg-sky-400" : "bg-noogym-lime";
   return (
     <div>
-      <div className="mb-2 flex justify-between gap-3 text-sm">
-        <span className="text-zinc-200">{label}</span>
-        <span className="text-zinc-100">{value}</span>
+      <div className="mb-2 flex min-w-0 justify-between gap-3 text-sm">
+        <span className="min-w-0 text-zinc-200">{label}</span>
+        <span className="shrink-0 text-zinc-100">{value}</span>
       </div>
       <span className="block h-1.5 rounded-full bg-white/10">
         <span className={`block h-full rounded-full ${bar}`} style={{ width: `${Math.min(Math.max(percent, 2), 100)}%` }} />

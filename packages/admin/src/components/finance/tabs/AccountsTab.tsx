@@ -11,7 +11,7 @@ export function AccountsTab({ openAction }: FinanceTabProps): FinanceTabView {
     subtitle: "Acompanhe suas contas bancárias e o saldo disponível.",
     main: (
       <div className="space-y-4">
-        <div className="grid grid-cols-5 gap-3">
+        <div className="finance-kpi-grid">
           {accountsMock.cards.map(([name, balance, entries, exits, badge, color]) => (
             <button key={name} className="panel p-4 text-left transition hover:border-noogym-lime/40" onClick={() => openAction({ title: `Detalhes - ${name}`, rows: [["Saldo disponível", balance], ["Entradas", entries], ["Saídas", exits]] })}>
               <div className="flex items-center gap-3">
@@ -39,10 +39,10 @@ export function AccountsTab({ openAction }: FinanceTabProps): FinanceTabView {
           </button>
         </div>
 
-        <div className="grid grid-cols-[1.6fr_.8fr] gap-4">
+        <div className="finance-grid-wide">
           <FinanceChartCard
             title="Contas bancárias"
-            action={<div className="flex gap-2"><SmallInput /><button className="rounded-md border border-white/10 px-3 py-2 text-xs"><Filter className="mr-1 inline h-3.5 w-3.5" />Filtros</button></div>}
+            action={<div className="flex max-w-full flex-wrap gap-2"><SmallInput /><button className="rounded-md border border-white/10 px-3 py-2 text-xs"><Filter className="mr-1 inline h-3.5 w-3.5" />Filtros</button></div>}
           >
             <FinanceTable columns={["Conta", "Banco", "Tipo", "Saldo disponível", "Saldo contábil", "Entradas", "Saídas", "Status", "Ações"]}>
               {accountsMock.table.map((row) => (
@@ -64,7 +64,7 @@ export function AccountsTab({ openAction }: FinanceTabProps): FinanceTabView {
           </FinanceChartCard>
         </div>
 
-        <div className="grid grid-cols-[1.2fr_.8fr] gap-4">
+        <div className="finance-grid-wide">
           <FinanceChartCard title="Transações recentes" action={<button className="text-xs text-noogym-lime" onClick={() => openAction({ title: "Transações recentes", rows: accountsMock.transactions })}>Ver todas →</button>}>
             <FinanceTable columns={["Data e hora", "Conta", "Descrição", "Tipo", "Categoria", "Valor", "Saldo após"]}>
               {accountsMock.transactions.map((row) => (
@@ -111,9 +111,9 @@ export function AccountsTab({ openAction }: FinanceTabProps): FinanceTabView {
 
 function SmallInput() {
   return (
-    <label className="relative">
+    <label className="relative min-w-0 flex-1 sm:flex-none">
       <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-500" />
-      <input className="h-9 w-44 rounded-md border border-white/10 bg-black/20 pl-9 pr-3 text-xs outline-none focus:border-noogym-lime/70" placeholder="Buscar conta..." />
+      <input className="h-9 w-full rounded-md border border-white/10 bg-black/20 pl-9 pr-3 text-xs outline-none focus:border-noogym-lime/70 sm:w-44" placeholder="Buscar conta..." />
     </label>
   );
 }

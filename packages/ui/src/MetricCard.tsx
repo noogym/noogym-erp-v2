@@ -26,18 +26,18 @@ export function MetricCard({
   }[tone];
 
   return (
-    <div className="soft-card p-4">
+    <div className="soft-card min-w-0 p-4">
       <div className="flex items-center gap-3">
-        <div className={`icon-tile ${toneClass}`}>{icon}</div>
-        <div>
-          <p className="text-xs text-zinc-400">{title}</p>
-          <p className="mt-1 text-2xl font-semibold tracking-normal">{value}</p>
+        <div className={`icon-tile shrink-0 ${toneClass}`}>{icon}</div>
+        <div className="min-w-0">
+          <p className="truncate text-xs text-zinc-400">{title}</p>
+          <p className="mt-1 truncate text-2xl font-semibold tracking-normal">{value}</p>
         </div>
       </div>
       {change ? (
-        <p className={`mt-3 flex items-center gap-1 text-xs ${negative ? "text-red-400" : "text-noogym-lime"}`}>
-          {negative ? <ArrowDown className="h-3 w-3" /> : <ArrowUp className="h-3 w-3" />}
-          {change}
+        <p className={`mt-3 flex min-w-0 items-center gap-1 text-xs ${negative ? "text-red-400" : "text-noogym-lime"}`}>
+          {negative ? <ArrowDown className="h-3 w-3 shrink-0" /> : <ArrowUp className="h-3 w-3 shrink-0" />}
+          <span className="truncate">{change}</span>
         </p>
       ) : null}
     </div>

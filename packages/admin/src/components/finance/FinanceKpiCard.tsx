@@ -27,7 +27,7 @@ export function FinanceKpiCard({ title, value, subtitle, change, tone = "lime", 
   const isPositive = change?.trim().startsWith("+");
 
   return (
-    <section className="panel min-h-[108px] p-4">
+    <section className="panel min-h-[108px] min-w-0 p-4">
       <div className="flex items-start gap-3">
         <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border ${toneClasses[tone]}`}>
           {icon ?? <CircleDollarSign className="h-5 w-5" />}

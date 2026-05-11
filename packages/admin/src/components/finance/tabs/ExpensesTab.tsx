@@ -7,17 +7,19 @@ import { FinanceCell, FinanceTable } from "../FinanceTable";
 import { FinancePanelSection, FinanceRightPanel, ProgressRow, SummaryRow } from "../FinanceRightPanel";
 import type { FinanceTabProps, FinanceTabView } from "../types";
 
-export function ExpensesTab({ openAction }: FinanceTabProps): FinanceTabView {
+export function ExpensesTab({ openAction, records = [] }: FinanceTabProps): FinanceTabView {
+  const localExpenses = records.filter((record) => record.kind === "Despesa");
+
   return {
     subtitle: "Acompanhe o fluxo financeiro do seu negócio.",
     main: (
       <div className="space-y-4">
-        <div className="grid grid-cols-6 gap-3">
+        <div className="finance-kpi-grid">
           {expensesMock.kpis.map((kpi) => (
             <FinanceKpiCard key={kpi.title} {...kpi} icon={<Briefcase className="h-5 w-5" />} />
           ))}
         </div>
-        <div className="grid grid-cols-[1.45fr_1fr] gap-4">
+        <div className="finance-grid-wide">
           <FinanceChartCard title="Evolução das despesas" action={<SmallSelect label="Diário" />}>
             <LineChart series={expensesMock.evolution} labels={financeDays} />
           </FinanceChartCard>
@@ -25,7 +27,7 @@ export function ExpensesTab({ openAction }: FinanceTabProps): FinanceTabView {
             <BarChart values={expensesMock.weekday} labels={financeWeekdays} color="#FF2D20" />
           </FinanceChartCard>
         </div>
-        <div className="grid grid-cols-3 gap-4">
+        <div className="finance-grid-3">
           <FinanceChartCard title="Despesas por categoria">
             <DonutChart items={expensesMock.byCategory} center="62.300 Kz" />
             <FinanceCardLink onClick={() => openAction({ title: "Categorias de despesas", rows: expensesMock.byCategory.map((item) => [item.label, item.amount ?? ""]) })}>Ver todas as categorias</FinanceCardLink>
@@ -47,6 +49,21 @@ export function ExpensesTab({ openAction }: FinanceTabProps): FinanceTabView {
             </FinanceTable>
           </FinanceChartCard>
         </div>
+        {localExpenses.length ? (
+          <FinanceChartCard title="Despesas adicionadas">
+            <FinanceTable columns={["Categoria", "Valor", "Data", "Status", "Observacao"]}>
+              {localExpenses.map((record) => (
+                <tr key={record.id} className="table-row">
+                  <FinanceCell>{record.category}</FinanceCell>
+                  <FinanceCell tone="red">{record.value.toLocaleString("pt-AO")} Kz</FinanceCell>
+                  <FinanceCell>{record.date}</FinanceCell>
+                  <FinanceCell>{record.status}</FinanceCell>
+                  <FinanceCell>{record.note ?? "-"}</FinanceCell>
+                </tr>
+              ))}
+            </FinanceTable>
+          </FinanceChartCard>
+        ) : null}
       </div>
     ),
     side: (

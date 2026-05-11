@@ -14,12 +14,12 @@ export function CashFlowTab({ openAction }: FinanceTabProps): FinanceTabView {
     subtitle: "Acompanhe o fluxo de caixa do seu negócio.",
     main: (
       <div className="space-y-4">
-        <div className="grid grid-cols-5 gap-3">
+        <div className="finance-kpi-grid">
           {cashFlowMock.kpis.map((kpi) => (
             <FinanceKpiCard key={kpi.title} {...kpi} icon={<Activity className="h-5 w-5" />} />
           ))}
         </div>
-        <div className="grid grid-cols-[1.35fr_1fr] gap-4">
+        <div className="finance-grid-wide">
           <FinanceChartCard title="Evolução do fluxo de caixa" action={<button className="rounded-md border border-white/10 px-3 py-2 text-xs">Diário</button>}>
             <LineChart series={cashFlowMock.evolution} labels={financeDays} />
           </FinanceChartCard>
@@ -34,7 +34,7 @@ export function CashFlowTab({ openAction }: FinanceTabProps): FinanceTabView {
             />
           </FinanceChartCard>
         </div>
-        <div className="grid grid-cols-[1.35fr_.8fr_.9fr] gap-4">
+        <div className="finance-grid-table">
           <FinanceChartCard title="Fluxo de caixa diário">
             <FinanceTable columns={["Data", "Entradas", "Saídas", "Fluxo líquido", "Saldo acumulado"]}>
               {cashFlowMock.dailyRows.map((row) => (
