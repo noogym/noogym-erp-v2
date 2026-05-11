@@ -97,13 +97,22 @@ const clearAuthUrl = () => {
   }
 };
 
-export default function App() {
+interface AdminAppProps {
+  onlineOnly?: boolean;
+}
+
+export default function App({ onlineOnly = false }: AdminAppProps) {
   const activeRoute = useAppStore((state) => state.activeRoute);
   const setRoute = useAppStore((state) => state.setRoute);
+  const setOnlineOnly = useAppStore((state) => state.setOnlineOnly);
   const theme = useAppStore((state) => state.theme);
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const [authRoute, setAuthRoute] = useState<AuthRoute>(getAuthRoute);
   const Page = pages[activeRoute];
+
+  useEffect(() => {
+    setOnlineOnly(onlineOnly);
+  }, [onlineOnly, setOnlineOnly]);
 
   useEffect(() => {
     const activeTheme = isAuthenticated ? theme : "dark";
@@ -154,9 +163,9 @@ export default function App() {
   return (
     <div className="app-shell flex flex-col">
       <Topbar />
-      <div className="flex min-h-0 flex-1">
+      <div className="admin-workspace flex min-h-0 flex-1">
         <Sidebar />
-        <main className="min-w-0 flex-1 overflow-auto p-3">
+        <main className="admin-main min-w-0 flex-1 overflow-auto p-2 sm:p-3">
           <Page />
         </main>
       </div>

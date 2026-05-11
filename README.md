@@ -1,13 +1,13 @@
 # Noogym Monorepo
 
-Monorepo Turborepo para o Noogym, com duas aplicacoes separadas e packages compartilhados. O app desktop existente foi movido para `apps/desktop` sem remover telas, stores, mocks, estilos ou fluxos locais.
+Monorepo Turborepo para o Noogym, com duas aplicacoes wrapper e packages compartilhados. As telas administrativas vivem em `packages/admin` e sao consumidas pelo desktop Electron e pelo web-admin Next.js.
 
 ## Stack
 
 - Turborepo + pnpm workspaces
 - Desktop: Electron + React + TypeScript + Vite + Tailwind CSS
 - Web Admin: Next.js App Router + React + TypeScript + Tailwind CSS
-- Packages compartilhados: UI, core, types, config e data-access
+- Packages compartilhados: admin, UI, core, types, config e data-access
 
 ## Estrutura
 
@@ -18,6 +18,8 @@ apps/
   web-admin/
     Next.js App Router
 packages/
+  admin/
+    telas, layout, stores, mocks e estilos administrativos compartilhados
   ui/
     componentes visuais compartilhados
   core/
@@ -88,6 +90,7 @@ pnpm lint
 
 ## Packages Compartilhados
 
+- `@noogym/admin`: app administrativo compartilhado com Dashboard, Check-in, Clientes, Planos, Vendas POS, Produtos, Aulas, Treinos, Funcionarios, Relatorios, Financas, Configuracoes e telas de autenticacao.
 - `@noogym/ui`: `Button`, `Card`, `Badge`, `Input`, `Select`, `Modal`, `Tabs`, `Table`, `DropdownMenu`, `Toast`, `FormInput`, `FormSelect`, `FormTextarea`, `FormCheckbox`, `FormSwitch`, `MetricCard`.
 - `@noogym/core`: regras puras de negocio, calculos de check-in, planos, faturacao, KPIs e helpers de moeda `Kz`.
 - `@noogym/types`: tipos de dominio como `ClientRecord`, `PlanRecord`, `ProductRecord`, `CheckinRecord`, `SaleRecord` e `FinanceRecord`.
@@ -96,15 +99,16 @@ pnpm lint
 
 ## Regras de Separacao
 
-- `apps/web-admin` consome `@noogym/data-access/webAdapter` e nao importa Electron, IPC, SQLite, `fs`, `path` ou codigo especifico do desktop.
-- `apps/desktop` continua isolado de Next.js.
+- `apps/web-admin` consome `@noogym/admin` e nao importa Electron, IPC, SQLite, `fs`, `path` ou codigo especifico de `apps/desktop`.
+- `apps/desktop` consome `@noogym/admin` e continua isolado de Next.js.
+- `packages/admin` nao pertence ao desktop nem ao web-admin; ele e a superficie compartilhada das telas reais.
 - `packages/core` nao depende de React, Electron, Next.js, browser APIs ou banco de dados.
 - `packages/ui` nao depende de Electron.
 
 ## Desktop Local-First
 
-O desktop preserva o fluxo offline/local-first existente com stores Zustand, mocks locais, sidebar, topbar, bottom sync bar, autenticacao, modais e telas operacionais. A base segue preparada para trocar o armazenamento local por SQLite + Electron IPC.
+O desktop e o wrapper Electron/Vite sobre `@noogym/admin`. Ele preserva o fluxo offline/local-first existente com stores Zustand, mocks locais, sidebar, topbar, bottom sync bar, autenticacao, modais e telas operacionais. A base segue preparada para trocar o armazenamento local por SQLite + Electron IPC.
 
 ## Web Admin SaaS
 
-O `web-admin` prova o consumo dos packages compartilhados com login, layout administrativo e dashboard. O adapter atual usa mocks, mas a fronteira esta preparada para REST API + cookies/session.
+O `web-admin` e o wrapper Next.js sobre `@noogym/admin`, portanto expõe as mesmas telas da versao desktop. O adapter atual usa mocks, mas a fronteira continua preparada para REST API + cookies/session.

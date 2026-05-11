@@ -12,6 +12,8 @@
       }
     ],
     "paths": {
+      "@noogym/admin": ["../../packages/admin/src/index.ts"],
+      "@noogym/admin/*": ["../../packages/admin/src/*"],
       "@noogym/ui": ["../../packages/ui/src/index.ts"],
       "@noogym/core": ["../../packages/core/src/index.ts"],
       "@noogym/types": ["../../packages/types/src/index.ts"],

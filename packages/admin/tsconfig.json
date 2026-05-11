@@ -1,0 +1,14 @@
+{
+  "extends": "../config/tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "paths": {
+      "@noogym/ui": ["../ui/src/index.ts"],
+      "@noogym/core": ["../core/src/index.ts"],
+      "@noogym/types": ["../types/src/index.ts"],
+      "@noogym/data-access": ["../data-access/src/index.ts"],
+      "@noogym/data-access/*": ["../data-access/src/adapters/*"]
+    }
+  },
+  "include": ["src", "../ui/src", "../core/src", "../types/src", "../data-access/src"]
+}

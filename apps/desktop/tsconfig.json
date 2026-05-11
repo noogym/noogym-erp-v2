@@ -17,6 +17,8 @@
     "jsx": "react-jsx",
     "baseUrl": ".",
     "paths": {
+      "@noogym/admin": ["../../packages/admin/src/index.ts"],
+      "@noogym/admin/*": ["../../packages/admin/src/*"],
       "@noogym/ui": ["../../packages/ui/src/index.ts"],
       "@noogym/core": ["../../packages/core/src/index.ts"],
       "@noogym/types": ["../../packages/types/src/index.ts"],
@@ -24,5 +26,5 @@
       "@noogym/data-access/*": ["../../packages/data-access/src/adapters/*"]
     }
   },
-  "include": ["src/renderer", "../../packages/ui/src", "../../packages/core/src", "../../packages/types/src", "../../packages/data-access/src"]
+  "include": ["src/renderer", "../../packages/admin/src", "../../packages/ui/src", "../../packages/core/src", "../../packages/types/src", "../../packages/data-access/src"]
 }

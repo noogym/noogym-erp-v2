@@ -1,5 +1,5 @@
 import { DesktopClient } from "../DesktopClient";
 
-export default function LoginPage() {
+export default function ForgotPasswordPage() {
   return <DesktopClient />;
 }

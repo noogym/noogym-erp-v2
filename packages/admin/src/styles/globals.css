@@ -54,7 +54,7 @@ select {
 
 @layer components {
   .app-shell {
-    @apply h-dvh min-w-[1180px] bg-noogym-bg text-white;
+    @apply h-dvh min-w-0 bg-noogym-bg text-white;
     background:
       radial-gradient(circle at 65% -10%, rgba(182, 255, 0, 0.08), transparent 26%),
       radial-gradient(circle at 20% 20%, rgba(0, 255, 187, 0.035), transparent 28%),
@@ -111,6 +111,10 @@ select {
   .checkin-content {
     @apply mt-5 grid gap-5;
     grid-template-columns: minmax(360px, 0.92fr) minmax(420px, 1fr);
+  }
+
+  .pos-layout {
+    grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
   }
 
   .auth-screen {
@@ -192,6 +196,71 @@ select {
     @apply w-full;
     max-width: 570px;
     margin-block: auto;
+  }
+}
+
+@media (max-width: 1279px) {
+  .app-shell .grid-cols-5 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .app-shell .grid-cols-4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .app-shell .grid-cols-3 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .page-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .pos-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 1023px) {
+  html,
+  body,
+  #root {
+    overflow: hidden;
+  }
+
+  .admin-workspace {
+    flex-direction: column;
+  }
+
+  .admin-sidebar {
+    max-width: 100%;
+  }
+
+  .admin-main {
+    min-height: 0;
+  }
+
+  .app-shell [class*="grid-cols-["] {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+}
+
+@media (max-width: 640px) {
+  .app-shell .panel {
+    border-radius: 0.5rem;
+  }
+
+  .app-shell .grid-cols-5,
+  .app-shell .grid-cols-4,
+  .app-shell .grid-cols-3,
+  .app-shell .grid-cols-2 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .app-shell .icon-tile {
+    height: 2.25rem;
+    width: 2.25rem;
   }
 }
 

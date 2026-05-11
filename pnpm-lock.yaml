@@ -17,6 +17,9 @@ importers:
 
   apps/desktop:
     dependencies:
+      '@noogym/admin':
+        specifier: workspace:*
+        version: link:../../packages/admin
       '@noogym/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -87,6 +90,9 @@ importers:
 
   apps/web-admin:
     dependencies:
+      '@noogym/admin':
+        specifier: workspace:*
+        version: link:../../packages/admin
       '@noogym/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -130,6 +136,43 @@ importers:
       tailwindcss:
         specifier: ^3.4.17
         version: 3.4.19
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  packages/admin:
+    dependencies:
+      '@noogym/core':
+        specifier: workspace:*
+        version: link:../core
+      '@noogym/data-access':
+        specifier: workspace:*
+        version: link:../data-access
+      '@noogym/types':
+        specifier: workspace:*
+        version: link:../types
+      '@noogym/ui':
+        specifier: workspace:*
+        version: link:../ui
+      lucide-react:
+        specifier: ^0.545.0
+        version: 0.545.0(react@19.2.6)
+      react:
+        specifier: ^19.1.1
+        version: 19.2.6
+      react-dom:
+        specifier: ^19.1.1
+        version: 19.2.6(react@19.2.6)
+      zustand:
+        specifier: ^5.0.8
+        version: 5.0.13(@types/react@19.2.14)(react@19.2.6)
+    devDependencies:
+      '@types/react':
+        specifier: ^19.1.13
+        version: 19.2.14
+      '@types/react-dom':
+        specifier: ^19.1.9
+        version: 19.2.3(@types/react@19.2.14)
       typescript:
         specifier: ^5.9.3
         version: 5.9.3

@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
+import { DesktopClient } from "./DesktopClient";
 
 export default function HomePage() {
-  redirect("/login");
+  return <DesktopClient />;
 }

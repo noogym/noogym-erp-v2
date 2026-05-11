@@ -6,6 +6,8 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
+      "@noogym/admin/styles/globals.css": path.resolve(__dirname, "../../packages/admin/src/styles/globals.css"),
+      "@noogym/admin": path.resolve(__dirname, "../../packages/admin/src/index.ts"),
       "@noogym/ui": path.resolve(__dirname, "../../packages/ui/src/index.ts"),
       "@noogym/core": path.resolve(__dirname, "../../packages/core/src/index.ts"),
       "@noogym/types": path.resolve(__dirname, "../../packages/types/src/index.ts"),
