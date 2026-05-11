@@ -13,12 +13,12 @@ export function PaymentMethodsTab({ openAction }: FinanceTabProps): FinanceTabVi
     subtitle: "Acompanhe os métodos de pagamento utilizados nas suas transações.",
     main: (
       <div className="space-y-4">
-        <div className="grid grid-cols-5 gap-3">
+        <div className="finance-kpi-grid">
           {paymentMethodsMock.kpis.map((kpi) => (
             <FinanceKpiCard key={kpi.title} {...kpi} icon={<CreditCard className="h-5 w-5" />} />
           ))}
         </div>
-        <div className="grid grid-cols-[1.45fr_.95fr_.8fr] gap-4">
+        <div className="finance-grid-table">
           <FinanceChartCard title="Evolução por método de pagamento" action={<button className="rounded-md border border-white/10 px-3 py-2 text-xs">Diário</button>}>
             <LineChart series={paymentMethodsMock.evolution} labels={financeDays} height={210} />
           </FinanceChartCard>
@@ -29,7 +29,7 @@ export function PaymentMethodsTab({ openAction }: FinanceTabProps): FinanceTabVi
             <BarChart values={paymentMethodsMock.transactions} labels={["Cartão", "Dinheiro", "Transfer.", "Outros"]} height={210} />
           </FinanceChartCard>
         </div>
-        <div className="grid grid-cols-[1fr_1.15fr_.9fr] gap-4">
+        <div className="finance-grid-3">
           <FinanceChartCard title="Desempenho por método">
             <FinanceTable columns={["Método", "Receita", "%", "Trans.", "Ticket", "Variação"]}>
               {paymentMethodsMock.performanceRows.map((row) => (

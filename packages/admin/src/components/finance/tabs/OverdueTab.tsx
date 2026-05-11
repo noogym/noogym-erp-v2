@@ -12,12 +12,12 @@ export function OverdueTab({ openAction }: FinanceTabProps): FinanceTabView {
     subtitle: "Acompanhe a inadimplência e os clientes com pagamentos em atraso.",
     main: (
       <div className="space-y-4">
-        <div className="grid grid-cols-5 gap-3">
+        <div className="finance-kpi-grid">
           {overdueMock.kpis.map((kpi) => (
             <FinanceKpiCard key={kpi.title} {...kpi} icon={<TriangleAlert className="h-5 w-5" />} />
           ))}
         </div>
-        <div className="grid grid-cols-[1.35fr_1.05fr_.75fr] gap-4">
+        <div className="finance-grid-table">
           <FinanceChartCard title="Evolução da inadimplência" action={<button className="rounded-md border border-white/10 px-3 py-2 text-xs">Diário</button>}>
             <LineChart series={overdueMock.evolution} labels={financeDays} height={210} />
           </FinanceChartCard>
@@ -28,7 +28,7 @@ export function OverdueTab({ openAction }: FinanceTabProps): FinanceTabView {
             <DonutChart items={overdueMock.origin} center="89.500 Kz" size="sm" />
           </FinanceChartCard>
         </div>
-        <div className="grid grid-cols-[1.25fr_.85fr_1fr] gap-4">
+        <div className="finance-grid-3">
           <FinanceChartCard title="Clientes inadimplentes (Top 10)" action={<button className="text-xs text-noogym-lime" onClick={() => openAction({ title: "Clientes inadimplentes", rows: overdueMock.clients })}>Ver todos</button>}>
             <FinanceTable columns={["Cliente", "Plano", "Dias", "Valor", "Último vencimento"]}>
               {overdueMock.clients.map((row) => (

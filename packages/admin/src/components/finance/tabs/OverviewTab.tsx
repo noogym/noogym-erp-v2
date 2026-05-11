@@ -21,14 +21,14 @@ export function OverviewTab({
     subtitle: "Acompanhe o fluxo financeiro do seu negócio.",
     main: (
       <div>
-        <div className="grid grid-cols-5 gap-3">
+        <div className="finance-kpi-grid">
           <MetricCard title="Receita total" value={`${revenue.toLocaleString("pt-AO")} Kz`} change="+ 22% vs período anterior" icon={<Wallet className="h-5 w-5" />} />
           <MetricCard title="Receita recebida" value="210.450 Kz" change="+ 18% vs período anterior" icon={<Wallet className="h-5 w-5" />} />
           <MetricCard title="Receita a receber" value="34.550 Kz" change="+ 12% vs período anterior" icon={<Wallet className="h-5 w-5" />} tone="yellow" />
           <MetricCard title="Despesas totais" value={`${expenses.toLocaleString("pt-AO")} Kz`} change="+ 9% vs período anterior" icon={<Wallet className="h-5 w-5" />} tone="red" />
           <MetricCard title="Lucro líquido" value={`${(revenue - expenses).toLocaleString("pt-AO")} Kz`} change="+ 24% vs período anterior" icon={<Wallet className="h-5 w-5" />} />
         </div>
-        <div className="mt-4 grid grid-cols-[1.2fr_.8fr] gap-4">
+        <div className="finance-grid-wide mt-4">
           <Card className="p-4">
             <div className="mb-3 flex justify-between">
               <h2 className="font-semibold">Evolução financeira</h2>

@@ -1,6 +1,6 @@
-import { Barcode, Check, CheckCircle2, Clock, CreditCard, Dumbbell, Info, QrCode, Search, ShieldCheck, UploadCloud, UsersRound } from "lucide-react";
+import { Barcode, Check, CheckCircle2, Clock, CreditCard, Dumbbell, Info, QrCode, Search, ShieldCheck, Tag, UploadCloud, UsersRound } from "lucide-react";
 import type { ReactNode } from "react";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Avatar } from "../ui/Avatar";
 import { Badge } from "@noogym/ui";
 import { Button } from "@noogym/ui";
@@ -392,13 +392,101 @@ export function RolesModal({ open, onClose }: { open: boolean; onClose: () => vo
   );
 }
 
+const todayInputValue = () => new Date().toISOString().slice(0, 10);
+
 export function FinanceEntryModal({ open, kind, onClose }: { open: boolean; kind: "Receita" | "Despesa"; onClose: () => void }) {
   const addRevenue = useFinanceStore((state) => state.addRevenue);
   const addExpense = useFinanceStore((state) => state.addExpense);
-  const save = () => { kind === "Receita" ? addRevenue({ value: 35000 }) : addExpense({ value: 25000 }); toastSuccess(`${kind} criada com sucesso`); onClose(); };
+  const financeCategories = useFinanceStore((state) => state.categories);
+  const categories = useMemo(() => financeCategories.filter((category) => category.kind === kind).map((category) => category.name), [financeCategories, kind]);
+  const [category, setCategory] = useState("");
+  const [value, setValue] = useState("");
+  const [status, setStatus] = useState("");
+  const [methodOrSupplier, setMethodOrSupplier] = useState("");
+  const [date, setDate] = useState(todayInputValue);
+  const [note, setNote] = useState("");
+
+  useEffect(() => {
+    if (!open) return;
+    setCategory(categories[0] ?? "");
+    setValue("");
+    setStatus(kind === "Receita" ? "Recebido" : "Pendente");
+    setMethodOrSupplier(kind === "Receita" ? "Dinheiro" : "Fornecedor local");
+    setDate(todayInputValue());
+    setNote("");
+  }, [categories, kind, open]);
+
+  const save = () => {
+    const parsedValue = Number(value);
+    if (!category) {
+      toastInfo("Categoria obrigatoria", "Crie ou selecione uma categoria para continuar.");
+      return;
+    }
+    if (!Number.isFinite(parsedValue) || parsedValue <= 0) {
+      toastInfo("Valor invalido", "Informe um valor maior que zero.");
+      return;
+    }
+
+    const record = {
+      category,
+      value: parsedValue,
+      date: date || "Hoje",
+      status,
+      note: note.trim() || methodOrSupplier
+    };
+
+    kind === "Receita" ? addRevenue(record) : addExpense(record);
+    toastSuccess(`${kind} criada com sucesso`);
+    onClose();
+  };
   return (
     <Modal open={open} title={kind === "Receita" ? "Adicionar receita" : "Adicionar despesa"} size="md" onClose={onClose} footer={<><Button onClick={onClose}>Cancelar</Button><Button variant="primary" onClick={save}>Salvar</Button></>}>
-      <div className="grid grid-cols-2 gap-3"><FormSelect label="Categoria" options={kind === "Receita" ? ["Mensalidades", "Vendas POS", "Aulas avulsas"] : ["Salários", "Aluguel", "Marketing", "Manutenção"]} /><FormInput label="Valor" defaultValue="35000" /><FormSelect label={kind === "Receita" ? "Método de pagamento" : "Fornecedor"} options={kind === "Receita" ? ["Dinheiro", "Cartão", "Transferência"] : ["Fornecedor local", "Equipe", "Prestador"]} /><FormInput label="Data" defaultValue="08/05/2026" />{kind === "Receita" ? <FormSelect label="Cliente relacionado" options={["Carlos Alberto Silva", "Consumidor final"]} /> : <FormSelect label="Status" options={["Pendente", "Pago"]} />}<FormTextarea className="col-span-2" label="Observação" /></div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <FormSelect label="Categoria" requiredMark options={categories.length ? categories : ["Sem categorias"]} value={category} onChange={(event) => setCategory(event.target.value)} />
+        <FormInput label="Valor (Kz)" requiredMark type="number" min="1" value={value} onChange={(event) => setValue(event.target.value)} placeholder="Ex: 25000" />
+        <FormSelect label={kind === "Receita" ? "Metodo de pagamento" : "Fornecedor"} options={kind === "Receita" ? ["Dinheiro", "Cartao", "Transferencia"] : ["Fornecedor local", "Equipe", "Prestador"]} value={methodOrSupplier} onChange={(event) => setMethodOrSupplier(event.target.value)} />
+        <FormInput label="Data" type="date" value={date} onChange={(event) => setDate(event.target.value)} />
+        <FormSelect label="Status" options={kind === "Receita" ? ["Recebido", "Pendente"] : ["Pendente", "Pago"]} value={status} onChange={(event) => setStatus(event.target.value)} />
+        {kind === "Receita" ? <FormSelect label="Cliente relacionado" options={["Consumidor final", "Carlos Alberto Silva", "Ana Luisa Santos"]} /> : null}
+        <FormTextarea className="sm:col-span-2" label="Observacao" value={note} onChange={(event) => setNote(event.target.value)} />
+      </div>
+    </Modal>
+  );
+}
+
+export function FinanceCategoryModal({ open, kind, onClose }: { open: boolean; kind: "Receita" | "Despesa"; onClose: () => void }) {
+  const addCategory = useFinanceStore((state) => state.addCategory);
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+
+  useEffect(() => {
+    if (!open) return;
+    setName("");
+    setDescription("");
+  }, [open]);
+
+  const save = () => {
+    if (!name.trim()) {
+      toastInfo("Nome obrigatorio", "Informe o nome da categoria.");
+      return;
+    }
+
+    const created = addCategory({ kind, name, description: description.trim() || undefined });
+    if (!created) {
+      toastInfo("Categoria ja existe", "Escolha outro nome para esta categoria.");
+      return;
+    }
+
+    toastSuccess("Categoria criada com sucesso");
+    onClose();
+  };
+
+  return (
+    <Modal open={open} title={`Nova categoria de ${kind.toLowerCase()}`} description="Organize os lancamentos financeiros por categoria." size="md" onClose={onClose} footer={<><Button onClick={onClose}>Cancelar</Button><Button variant="primary" icon={<Tag className="h-4 w-4" />} onClick={save}>Criar categoria</Button></>}>
+      <div className="space-y-3">
+        <FormInput label="Nome da categoria" requiredMark value={name} onChange={(event) => setName(event.target.value)} placeholder={kind === "Despesa" ? "Ex: Limpeza" : "Ex: Eventos"} />
+        <FormTextarea label="Descricao" value={description} onChange={(event) => setDescription(event.target.value)} />
+      </div>
     </Modal>
   );
 }
