@@ -47,7 +47,7 @@ pnpm dev:desktop
 
 O Vite roda em `http://127.0.0.1:5173` e o Electron abre a janela desktop automaticamente.
 
-## Rodar Web Admin
+## Rodar Web Admin sem Docker
 
 ```bash
 pnpm dev:web
@@ -65,20 +65,44 @@ Rotas iniciais:
 Build da imagem:
 
 ```bash
-docker build -f apps/web-admin/Dockerfile -t noogym-web-admin .
+pnpm docker:web:build
 ```
 
 Executar container:
 
 ```bash
-docker run --rm -p 3000:3000 noogym-web-admin
+pnpm docker:web:run
 ```
 
-Ou com Docker Compose:
+Comandos equivalentes:
 
 ```bash
-docker compose up --build web-admin
+docker build -f apps/web-admin/Dockerfile -t noogym-web-admin .
+docker run -p 3000:3000 noogym-web-admin
 ```
+
+O build Docker deve ser executado a partir da raiz do repositorio, porque `apps/web-admin` depende dos packages compartilhados em `packages/*`. O Dockerfile fica em `apps/web-admin/Dockerfile`, mas o contexto precisa ser `.`.
+
+## Deploy Coolify
+
+No Coolify, use deploy por Dockerfile com:
+
+- Build context: raiz do repositorio (`.`)
+- Dockerfile path: `apps/web-admin/Dockerfile`
+- Porta exposta: `3000`
+
+Nao configure o `apps/desktop` no deploy web; o `.dockerignore` remove o Electron do contexto Docker.
+
+## Deploy Vercel
+
+Na Vercel, use o app `apps/web-admin` como projeto Next.js:
+
+- Root Directory: `apps/web-admin`
+- Install Command: `pnpm install --frozen-lockfile`
+- Build Command: `pnpm build`
+- Output: gerido pelo Next.js/Vercel
+
+O `output: "standalone"` continua compativel com Vercel, embora a Vercel nao precise usar o Dockerfile.
 
 ## Rodar Tudo
 

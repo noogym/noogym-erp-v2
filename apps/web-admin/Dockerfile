@@ -1,4 +1,4 @@
-FROM node:22-alpine AS base
+FROM node:20-alpine AS base
 
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
@@ -14,13 +14,13 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps ./apps
 COPY packages ./packages
 
-RUN pnpm install --frozen-lockfile --filter @noogym/web-admin...
+RUN pnpm install --frozen-lockfile --filter noogym --filter @noogym/web-admin...
 
 FROM deps AS builder
 
-RUN pnpm --filter @noogym/web-admin build
+RUN pnpm turbo build --filter=@noogym/web-admin
 
-FROM node:22-alpine AS runner
+FROM node:20-alpine AS runner
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
@@ -37,6 +37,8 @@ COPY --from=builder --chown=nextjs:nodejs /app/apps/web-admin/.next/static ./app
 
 USER nextjs
 
+WORKDIR /app/apps/web-admin
+
 EXPOSE 3000
 
-CMD ["node", "apps/web-admin/server.js"]
+CMD ["node", "server.js"]
