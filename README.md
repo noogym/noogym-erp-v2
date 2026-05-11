@@ -1,181 +1,110 @@
-# Noogym ERP Desktop v1
+# Noogym Monorepo
 
-Aplicacao desktop do Noogym para operacao de ginasios, recepcao e administracao. Esta versao foi construida com foco em uma experiencia desktop profissional, local-first, com navegacao completa entre os principais modulos do ERP.
+Monorepo Turborepo para o Noogym, com duas aplicacoes separadas e packages compartilhados. O app desktop existente foi movido para `apps/desktop` sem remover telas, stores, mocks, estilos ou fluxos locais.
 
 ## Stack
 
-- Electron
-- React
-- TypeScript
-- Vite
-- Tailwind CSS
-- Lucide React
-- Zustand
-- Dados mockados locais
-- Adapter local-first baseado em `localStorage`
-
-## Funcionalidades
-
-- Navegacao sem reload pela sidebar.
-- Tema dark premium inspirado nas telas oficiais.
-- Tema light selecionavel e persistido localmente.
-- Controles nativos da janela: minimizar, maximizar/restaurar e fechar.
-- Simulacao de modo offline.
-- Simulacao de pendencias de sincronizacao.
-- Botao "Sincronizar agora" com estado temporario de sincronizacao.
-- Layout desktop widescreen com ajustes de responsividade.
-- Base preparada para futura troca de `localStorage` por SQLite.
-
-## Telas Implementadas
-
-- Dashboard
-- Check-in
-- Clientes
-- Planos
-- Vendas (POS)
-- Produtos
-- Aulas
-- Treinos
-- Funcionarios
-- Relatorios
-- Financas
-- Configuracoes
-
-## Como Rodar
-
-Instale as dependencias:
-
-```bash
-npm install
-```
-
-Inicie o app em modo desenvolvimento:
-
-```bash
-npm run dev
-```
-
-O Vite roda em:
-
-```bash
-http://127.0.0.1:5173
-```
-
-O Electron abre automaticamente a janela desktop.
-
-## Build
-
-Gere o build de producao:
-
-```bash
-npm run build
-```
-
-O output e gerado em:
-
-```bash
-dist/
-```
-
-## Setup Windows
-
-Gere o instalador Windows x64:
-
-```bash
-npm run dist:win
-```
-
-O instalador NSIS sera gerado em:
-
-```text
-release/Noogym-Desktop-Setup-1.0.0-x64.exe
-```
-
-Para gerar apenas a pasta executavel, sem instalador:
-
-```bash
-npm run pack:win
-```
-
-> A versao de teste e gerada sem assinatura de codigo. Em alguns computadores, o Windows SmartScreen pode exibir um aviso antes da instalacao.
-
-## Scripts
-
-```bash
-npm run dev
-```
-
-Compila o processo principal do Electron, sobe o Vite e abre a janela desktop.
-
-```bash
-npm run build
-```
-
-Executa TypeScript, build do renderer e build do processo principal.
-
-```bash
-npm run dist:win
-```
-
-Gera o setup Windows x64 em `release/`.
-
-```bash
-npm run pack:win
-```
-
-Gera a aplicacao Windows descompactada em `release/win-unpacked/`.
-
-```bash
-npm run build:main
-```
-
-Compila apenas o processo principal do Electron.
-
-```bash
-npm run lint
-```
-
-Executa checagem TypeScript sem emitir arquivos.
+- Turborepo + pnpm workspaces
+- Desktop: Electron + React + TypeScript + Vite + Tailwind CSS
+- Web Admin: Next.js App Router + React + TypeScript + Tailwind CSS
+- Packages compartilhados: UI, core, types, config e data-access
 
 ## Estrutura
 
 ```text
-src/
-  main/
-    main.ts
-    preload.ts
-  renderer/
-    main.tsx
-    App.tsx
-    routes/
-    components/
-      layout/
-      ui/
-    pages/
-    data/
-    store/
-    styles/
-scripts/
-  start-electron-dev.cjs
+apps/
+  desktop/
+    Electron + React + Vite
+  web-admin/
+    Next.js App Router
+packages/
+  ui/
+    componentes visuais compartilhados
+  core/
+    regras puras de negocio
+  types/
+    tipos, interfaces e enums
+  config/
+    Tailwind e TypeScript configs compartilhados
+  data-access/
+    interfaces de repositorio
+    adapters desktopAdapter e webAdapter
 ```
 
-## Local-First
+## Instalar Dependencias
 
-O modulo `src/renderer/data/localDb.ts` define um contrato simples de banco local. A implementacao atual usa `localStorage`, mas a interface foi criada para permitir substituicao futura por SQLite sem reescrever as telas.
-
-## Observacao Sobre Electron no Dev
-
-O script `scripts/start-electron-dev.cjs` remove variaveis como `ELECTRON_RUN_AS_NODE` antes de iniciar o Electron. Isso evita que o Electron rode como Node puro em ambientes onde essa variavel esteja definida.
-
-## Tema
-
-O tema e controlado pelo store global em `src/renderer/store/appStore.ts` e persistido em:
-
-```text
-localStorage["noogym:theme"]
+```bash
+pnpm install
 ```
 
-Valores suportados:
+## Rodar Desktop
 
-- `dark`
-- `light`
+```bash
+pnpm dev:desktop
+```
+
+O Vite roda em `http://127.0.0.1:5173` e o Electron abre a janela desktop automaticamente.
+
+## Rodar Web Admin
+
+```bash
+pnpm dev:web
+```
+
+O Next.js roda em `http://localhost:3000`.
+
+Rotas iniciais:
+
+- `/login`
+- `/dashboard`
+
+## Rodar Tudo
+
+```bash
+pnpm dev
+```
+
+## Build
+
+Build geral:
+
+```bash
+pnpm build
+```
+
+Build separado:
+
+```bash
+pnpm build:desktop
+pnpm build:web
+```
+
+## Typecheck e Lint
+
+```bash
+pnpm typecheck
+pnpm lint
+```
+
+## Packages Compartilhados
+
+- `@noogym/ui`: `Button`, `Card`, `Badge`, `Input`, `Select`, `Modal`, `Tabs`, `Table`, `DropdownMenu`, `Toast`, `FormInput`, `FormSelect`, `FormTextarea`, `FormCheckbox`, `FormSwitch`, `MetricCard`.
+- `@noogym/core`: regras puras de negocio, calculos de check-in, planos, faturacao, KPIs e helpers de moeda `Kz`.
+- `@noogym/types`: tipos de dominio como `ClientRecord`, `PlanRecord`, `ProductRecord`, `CheckinRecord`, `SaleRecord` e `FinanceRecord`.
+- `@noogym/config`: presets compartilhados de Tailwind e TypeScript.
+- `@noogym/data-access`: interfaces de repositorio e adapters separados para desktop e web.
+
+## Regras de Separacao
+
+- `apps/web-admin` consome `@noogym/data-access/webAdapter` e nao importa Electron, IPC, SQLite, `fs`, `path` ou codigo especifico do desktop.
+- `apps/desktop` continua isolado de Next.js.
+- `packages/core` nao depende de React, Electron, Next.js, browser APIs ou banco de dados.
+- `packages/ui` nao depende de Electron.
+
+## Desktop Local-First
+
+O desktop preserva o fluxo offline/local-first existente com stores Zustand, mocks locais, sidebar, topbar, bottom sync bar, autenticacao, modais e telas operacionais. A base segue preparada para trocar o armazenamento local por SQLite + Electron IPC.
+
+## Web Admin SaaS
+
+O `web-admin` prova o consumo dos packages compartilhados com login, layout administrativo e dashboard. O adapter atual usa mocks, mas a fronteira esta preparada para REST API + cookies/session.

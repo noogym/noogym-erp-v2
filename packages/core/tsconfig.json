@@ -1,0 +1,11 @@
+{
+  "extends": "../config/tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022"],
+    "noEmit": true,
+    "paths": {
+      "@noogym/types": ["../types/src/index.ts"]
+    }
+  },
+  "include": ["src"]
+}
