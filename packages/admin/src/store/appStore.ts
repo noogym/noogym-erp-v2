@@ -26,9 +26,11 @@ interface AppState {
   syncState: SyncState;
   syncLabel: string;
   pendingSync: number;
+  isStatusPanelCollapsed: boolean;
   addPendingSync: (amount?: number) => void;
   setRoute: (route: RouteId) => void;
   setOnlineOnly: (onlineOnly: boolean) => void;
+  toggleStatusPanel: () => void;
   setTheme: (theme: ThemeMode) => void;
   toggleTheme: () => void;
   toggleOffline: () => void;
@@ -48,6 +50,7 @@ export const useAppStore = create<AppState>((set) => ({
   syncState: "idle",
   syncLabel: "Sincronizado: Hoje, 10:30",
   pendingSync: 12,
+  isStatusPanelCollapsed: false,
   addPendingSync: (amount = 1) => set((state) => ({ pendingSync: state.isOffline && !state.onlineOnly ? state.pendingSync + amount : state.pendingSync })),
   setRoute: (route) => set({ activeRoute: route }),
   setOnlineOnly: (onlineOnly) =>
@@ -57,6 +60,7 @@ export const useAppStore = create<AppState>((set) => ({
       pendingSync: onlineOnly ? 0 : state.pendingSync,
       syncLabel: onlineOnly ? "Online: sincronizado" : state.syncLabel
     })),
+  toggleStatusPanel: () => set((state) => ({ isStatusPanelCollapsed: !state.isStatusPanelCollapsed })),
   setTheme: (theme) => {
     localStorage.setItem("noogym:theme", theme);
     set({ theme });

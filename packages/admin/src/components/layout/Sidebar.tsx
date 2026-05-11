@@ -1,6 +1,6 @@
 import { Badge } from "@noogym/ui";
 import { Button } from "@noogym/ui";
-import { LogOut, Wifi, WifiOff } from "lucide-react";
+import { ChevronDown, ChevronUp, LogOut, Wifi, WifiOff } from "lucide-react";
 import { NoogymLogo } from "../brand/NoogymLogo";
 import { navItems } from "../../routes/nav";
 import { useAppStore } from "../../store/appStore";
@@ -10,8 +10,11 @@ export function Sidebar() {
   const activeRoute = useAppStore((state) => state.activeRoute);
   const setRoute = useAppStore((state) => state.setRoute);
   const onlineOnly = useAppStore((state) => state.onlineOnly);
+  const isStatusPanelCollapsed = useAppStore((state) => state.isStatusPanelCollapsed);
+  const toggleStatusPanel = useAppStore((state) => state.toggleStatusPanel);
   const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
+  const StatusIcon = onlineOnly ? Wifi : WifiOff;
 
   return (
     <aside className="admin-sidebar flex min-h-0 shrink-0 flex-col border-b border-white/10 bg-black/25 p-2 lg:h-full lg:w-[248px] lg:border-b-0 lg:border-r lg:p-3">
@@ -58,19 +61,32 @@ export function Sidebar() {
         })}
       </nav>
 
-      <div className="panel mt-4 hidden shrink-0 p-4 shadow-none lg:block">
-        <div className="mb-3 flex items-center gap-2 text-noogym-lime">
-          {onlineOnly ? <Wifi className="h-5 w-5" /> : <WifiOff className="h-5 w-5" />}
-          <span className="text-sm font-medium">{onlineOnly ? "Modo Online" : "Modo Offline"}</span>
+      <div className={`panel mt-4 hidden shrink-0 shadow-none transition-all lg:block ${isStatusPanelCollapsed ? "p-2" : "p-4"}`}>
+        <div className={`flex items-center gap-2 text-noogym-lime ${isStatusPanelCollapsed ? "" : "mb-3"}`}>
+          <StatusIcon className="h-5 w-5 shrink-0" />
+          <span className="min-w-0 flex-1 truncate text-sm font-medium">{onlineOnly ? "Modo Online" : "Modo Offline"}</span>
+          <button
+            type="button"
+            className="no-drag flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-zinc-300 transition hover:bg-white/10 hover:text-white"
+            onClick={toggleStatusPanel}
+            aria-label={isStatusPanelCollapsed ? "Expandir estado de conexao" : "Minimizar estado de conexao"}
+            title={isStatusPanelCollapsed ? "Expandir" : "Minimizar"}
+          >
+            {isStatusPanelCollapsed ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          </button>
         </div>
-        <p className="text-xs leading-6 text-zinc-300">
-          {onlineOnly
-            ? "A versao web opera conectada e mantem os dados sincronizados com o servidor."
-            : "O sistema esta funcionando sem internet. Seus dados serao sincronizados quando a conexao retornar."}
-        </p>
-        <Button className="mt-4 w-full" variant="secondary">
-          {onlineOnly ? "Ver estado online" : "Ver sincronizacao"}
-        </Button>
+        {isStatusPanelCollapsed ? null : (
+          <>
+            <p className="text-xs leading-6 text-zinc-300">
+              {onlineOnly
+                ? "A versao web opera conectada e mantem os dados sincronizados com o servidor."
+                : "O sistema esta funcionando sem internet. Seus dados serao sincronizados quando a conexao retornar."}
+            </p>
+            <Button className="mt-4 w-full" variant="secondary">
+              {onlineOnly ? "Ver estado online" : "Ver sincronizacao"}
+            </Button>
+          </>
+        )}
       </div>
     </aside>
   );

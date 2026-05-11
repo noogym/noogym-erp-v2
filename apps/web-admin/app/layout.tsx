@@ -3,7 +3,10 @@ import "@noogym/admin/styles/globals.css";
 
 export const metadata: Metadata = {
   title: "Noogym Web Admin",
-  description: "Administracao SaaS Noogym para ginasios em Angola"
+  description: "Administracao SaaS Noogym para ginasios em Angola",
+  icons: {
+    icon: "/icon.png"
+  }
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
