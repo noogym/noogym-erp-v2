@@ -87,9 +87,11 @@ O build Docker deve ser executado a partir da raiz do repositorio, porque `apps/
 
 No Coolify, use deploy por Dockerfile com:
 
-- Build context: raiz do repositorio (`.`)
-- Dockerfile path: `apps/web-admin/Dockerfile`
+- Base Directory / Build context: raiz do repositorio (`.` ou vazio)
+- Dockerfile path / Dockerfile Location: `apps/web-admin/Dockerfile`
 - Porta exposta: `3000`
+
+Nao use `apps/web-admin` como Base Directory no Coolify. Se o contexto for `apps/web-admin`, o build falha porque o Dockerfile precisa de `pnpm-workspace.yaml`, `apps/*` e `packages/*` da raiz do monorepo.
 
 Nao configure o `apps/desktop` no deploy web; o `.dockerignore` remove o Electron do contexto Docker.
 
