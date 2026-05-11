@@ -140,13 +140,17 @@ select {
     margin-bottom: clamp(22px, 4vh, 48px);
   }
 
+  .auth-logo {
+    @apply gap-3;
+  }
+
   .auth-logo-mark {
-    @apply font-black leading-[0.8] text-noogym-lime;
-    font-size: clamp(52px, 5vw, 76px);
+    height: clamp(44px, 4.6vw, 70px);
+    width: clamp(104px, 10vw, 160px);
   }
 
   .auth-logo-text {
-    @apply pb-1 font-semibold tracking-normal sm:pb-2;
+    @apply font-semibold tracking-normal;
     font-size: clamp(30px, 3vw, 36px);
   }
 
@@ -281,7 +285,8 @@ select {
   }
 
   .auth-logo-mark {
-    font-size: 52px;
+    height: 44px;
+    width: 104px;
   }
 
   .auth-logo-text {

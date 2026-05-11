@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Maximize2, Minus, X } from "lucide-react";
+import { NoogymLogo } from "../brand/NoogymLogo";
 import { AuthFeatureItem } from "./AuthFeatureItem";
 
 interface Feature {
@@ -59,12 +60,7 @@ export function AuthLayout({ headline, description, features, children, footer, 
           <div className="absolute inset-0 opacity-45 [background-image:linear-gradient(162deg,transparent_0_18%,rgba(255,255,255,0.18)_18.3%,transparent_19.2%_100%),linear-gradient(0deg,transparent_0_68%,rgba(255,255,255,0.16)_68.2%,transparent_69.2%_100%)]" />
           <div className="auth-visual-content">
             <div className="auth-logo-block">
-              <div className="flex items-end gap-2 sm:gap-3">
-                <div className="auth-logo-mark">n</div>
-                <div className="auth-logo-text">
-                  <span className="text-noogym-lime">noo</span>gym
-                </div>
-              </div>
+              <NoogymLogo className="auth-logo" markClassName="auth-logo-mark" textClassName="auth-logo-text" />
               <p className="mt-3 text-sm text-zinc-300">Sistema de gestao para academias</p>
             </div>
 

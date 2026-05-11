@@ -25,6 +25,7 @@ interface AppState {
   syncState: SyncState;
   syncLabel: string;
   pendingSync: number;
+  addPendingSync: (amount?: number) => void;
   setRoute: (route: RouteId) => void;
   setTheme: (theme: ThemeMode) => void;
   toggleTheme: () => void;
@@ -44,6 +45,7 @@ export const useAppStore = create<AppState>((set) => ({
   syncState: "idle",
   syncLabel: "Sincronizado: Hoje, 10:30",
   pendingSync: 12,
+  addPendingSync: (amount = 1) => set((state) => ({ pendingSync: state.isOffline ? state.pendingSync + amount : state.pendingSync })),
   setRoute: (route) => set({ activeRoute: route }),
   setTheme: (theme) => {
     localStorage.setItem("noogym:theme", theme);
@@ -60,7 +62,5 @@ export const useAppStore = create<AppState>((set) => ({
     set({ syncState: "syncing", syncLabel: "Sincronizando..." });
     await new Promise((resolve) => window.setTimeout(resolve, 1300));
     set({ syncState: "idle", syncLabel: "Sincronizado: Hoje, 10:30", pendingSync: 0 });
-    await new Promise((resolve) => window.setTimeout(resolve, 1800));
-    set({ pendingSync: 12 });
   }
 }));

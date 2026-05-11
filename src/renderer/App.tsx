@@ -19,6 +19,7 @@ import Configuracoes from "./pages/Configuracoes";
 import ForgotPassword from "./pages/auth/ForgotPassword";
 import Login from "./pages/auth/Login";
 import Register from "./pages/auth/Register";
+import { ToastViewport } from "./components/ui/Toast";
 
 const pages = {
   dashboard: Dashboard,
@@ -160,6 +161,7 @@ export default function App() {
         </main>
       </div>
       <BottomSyncBar />
+      <ToastViewport />
     </div>
   );
 }

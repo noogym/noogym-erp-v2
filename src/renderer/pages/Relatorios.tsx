@@ -1,44 +1,87 @@
-import { CalendarDays, Download, ShoppingBag, UsersRound } from "lucide-react";
+import { CalendarDays, Download, RefreshCw } from "lucide-react";
+import { useMemo, useState } from "react";
 import { PageHeader } from "../components/layout/PageHeader";
+import { ExportReportModal } from "../components/reports/ExportReportModal";
+import { ReportsTabs, type ReportsTabLabel } from "../components/reports/ReportsTabs";
+import { CheckinsReport } from "../components/reports/tabs/CheckinsReport";
+import { ClassesReport } from "../components/reports/tabs/ClassesReport";
+import { ClientsReport } from "../components/reports/tabs/ClientsReport";
+import { EmployeesReport } from "../components/reports/tabs/EmployeesReport";
+import { FinancialReport } from "../components/reports/tabs/FinancialReport";
+import { OverviewReport } from "../components/reports/tabs/OverviewReport";
+import { PlansReport } from "../components/reports/tabs/PlansReport";
+import { ProductsReport } from "../components/reports/tabs/ProductsReport";
+import { SalesReport } from "../components/reports/tabs/SalesReport";
+import { WorkoutsReport } from "../components/reports/tabs/WorkoutsReport";
 import { Button } from "../components/ui/Button";
-import { BarChart, DonutChart, LineChart } from "../components/ui/Charts";
-import { MetricCard } from "../components/ui/MetricCard";
 import { Select } from "../components/ui/Select";
-import { Tabs } from "../components/ui/Tabs";
-import { Card } from "../components/ui/Card";
-import { chart15 } from "../data/mock";
+import { comparePeriods, reportPeriods, reportUnits, reportsMock } from "../data/reportsMock";
+
+const tabSubtitles: Record<ReportsTabLabel, string> = {
+  "Visão geral": "Acompanhe indicadores e desempenho da academia.",
+  Financeiro: reportsMock.financial.subtitle,
+  Clientes: reportsMock.clients.subtitle,
+  "Check-ins": reportsMock.checkins.subtitle,
+  Planos: reportsMock.plans.subtitle,
+  Aulas: reportsMock.classes.subtitle,
+  Treinos: reportsMock.workouts.subtitle,
+  "Vendas (POS)": reportsMock.sales.subtitle,
+  Produtos: reportsMock.products.subtitle,
+  Funcionários: reportsMock.employees.subtitle
+};
 
 export default function Relatorios() {
+  const [tab, setTab] = useState<ReportsTabLabel>("Visão geral");
+  const [period, setPeriod] = useState(reportPeriods[0]);
+  const [comparePeriod, setComparePeriod] = useState(comparePeriods[0]);
+  const [unit, setUnit] = useState(reportUnits[0]);
+  const [exportOpen, setExportOpen] = useState(false);
+
+  const factor = useMemo(() => {
+    const periodFactor = period === reportPeriods[1] ? 0.88 : period === reportPeriods[2] ? 1.12 : 1;
+    const compareFactor = comparePeriod === "Sem comparação" ? 0.94 : 1;
+    const unitFactor = unit === reportUnits[1] ? 0.82 : unit === reportUnits[2] ? 0.74 : 1;
+    return periodFactor * compareFactor * unitFactor;
+  }, [comparePeriod, period, unit]);
+  const showComparison = comparePeriod !== "Sem comparação";
+
   return (
     <div className="panel p-6">
       <PageHeader
         title="Relatórios"
-        subtitle="Acompanhe os principais indicadores e desempenho do seu ginásio."
+        subtitle={tabSubtitles[tab]}
         actions={
           <>
-            <Button icon={<CalendarDays className="h-4 w-4" />}>01/05/2024 - 15/05/2024</Button>
-            <Select className="w-80"><option>Comparar com: 16/04/2024 - 30/04/2024</option></Select>
-            <Button variant="primary" icon={<Download className="h-4 w-4" />}>Exportar</Button>
+            <Select className="w-72" value={period} onChange={(event) => setPeriod(event.target.value)}>
+              {reportPeriods.map((option) => <option key={option} value={option}>{option}</option>)}
+            </Select>
+            <Select className="w-80" value={comparePeriod} onChange={(event) => setComparePeriod(event.target.value)}>
+              {comparePeriods.map((option) => <option key={option} value={option}>Comparar com: {option}</option>)}
+            </Select>
+            <Button variant="primary" icon={<Download className="h-4 w-4" />} onClick={() => setExportOpen(true)}>
+              Exportar
+            </Button>
           </>
         }
       />
-      <Tabs tabs={["Visão geral", "Financeiro", "Clientes", "Check-ins", "Planos", "Aulas", "Treinos", "Vendas (POS)", "Produtos", "Funcionários"]} active="Visão geral" onChange={() => undefined} />
-      <div className="mt-4 grid grid-cols-5 gap-4">
-        <MetricCard title="Receita total" value="2.245.000 Kz" change="+ 18% vs período anterior" icon={<UsersRound className="h-5 w-5" />} />
-        <MetricCard title="Novos clientes" value="56" change="+ 12% vs período anterior" icon={<UsersRound className="h-5 w-5" />} tone="yellow" />
-        <MetricCard title="Check-ins realizados" value="1.340" change="+ 15% vs período anterior" icon={<CalendarDays className="h-5 w-5" />} tone="blue" />
-        <MetricCard title="Aulas realizadas" value="248" change="+ 8% vs período anterior" icon={<CalendarDays className="h-5 w-5" />} tone="purple" />
-        <MetricCard title="Vendas (POS)" value="154" change="+ 22% vs período anterior" icon={<ShoppingBag className="h-5 w-5" />} tone="green" />
+      <div className="mb-2 flex items-center gap-2 text-xs text-zinc-500">
+        <CalendarDays className="h-3.5 w-3.5" />
+        <span>Período ativo: {period}</span>
+        <RefreshCw className="ml-3 h-3.5 w-3.5" />
+        <span>{comparePeriod === "Sem comparação" ? "Sem comparação ativa" : `Comparação: ${comparePeriod}`}</span>
       </div>
-      <div className="mt-4 grid grid-cols-[1fr_.95fr] gap-4">
-        <Card className="p-4"><div className="mb-3 flex justify-between"><h2 className="font-semibold">Receita ao longo do tempo</h2><Button className="h-8">Diário</Button></div><div className="h-64"><LineChart values={chart15.map((v) => v * 38000)} labels={["01/05", "03/05", "05/05", "07/05", "09/05", "11/05", "13/05", "15/05"]} /></div></Card>
-        <Card className="p-4"><div className="mb-3 flex justify-between"><h2 className="font-semibold">Check-ins por dia da semana</h2><Button className="h-8">Total</Button></div><BarChart values={[185, 210, 245, 230, 280, 120, 70]} labels={["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"]} /></Card>
-      </div>
-      <div className="mt-4 grid grid-cols-[1fr_.7fr_.85fr] gap-4">
-        <Card className="p-4"><div className="mb-3 flex justify-between"><h2 className="font-semibold">Novos clientes ao longo do tempo</h2><Button className="h-8">Diário</Button></div><div className="h-48"><LineChart values={[10, 19, 26, 20, 25, 30, 19, 20, 34, 28, 24, 33, 27, 28]} /></div></Card>
-        <Card className="p-4"><h2 className="mb-5 font-semibold">Clientes ativos</h2><DonutChart center="1.248" items={[{ label: "Ativos (1.070)", value: 86, color: "#B6FF00" }, { label: "Inativos (128)", value: 10, color: "#FACC15" }, { label: "Cancelados (50)", value: 4, color: "#EF4444" }]} /></Card>
-        <Card className="p-4"><h2 className="mb-5 font-semibold">Receita por categoria</h2><DonutChart center="2.245.000 Kz" items={[{ label: "Planos", value: 72, color: "#B6FF00" }, { label: "Aulas", value: 13, color: "#FACC15" }, { label: "Vendas (POS)", value: 15, color: "#A78BFA" }]} /></Card>
-      </div>
+      <ReportsTabs active={tab} onChange={setTab} />
+      {tab === "Visão geral" ? <OverviewReport /> : null}
+      {tab === "Financeiro" ? <FinancialReport factor={factor} showComparison={showComparison} /> : null}
+      {tab === "Clientes" ? <ClientsReport factor={factor} showComparison={showComparison} /> : null}
+      {tab === "Check-ins" ? <CheckinsReport factor={factor} showComparison={showComparison} /> : null}
+      {tab === "Planos" ? <PlansReport factor={factor} showComparison={showComparison} /> : null}
+      {tab === "Aulas" ? <ClassesReport factor={factor} showComparison={showComparison} /> : null}
+      {tab === "Treinos" ? <WorkoutsReport factor={factor} showComparison={showComparison} /> : null}
+      {tab === "Vendas (POS)" ? <SalesReport factor={factor} showComparison={showComparison} /> : null}
+      {tab === "Produtos" ? <ProductsReport factor={factor} showComparison={showComparison} /> : null}
+      {tab === "Funcionários" ? <EmployeesReport factor={factor} showComparison={showComparison} /> : null}
+      <ExportReportModal open={exportOpen} activeReport={tab} period={period} unit={unit} onClose={() => setExportOpen(false)} />
     </div>
   );
 }
