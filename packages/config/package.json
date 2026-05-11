@@ -1,0 +1,9 @@
+{
+  "name": "@noogym/config",
+  "version": "0.0.0",
+  "private": true,
+  "exports": {
+    "./tailwind": "./tailwind.config.js",
+    "./tsconfig/base": "./tsconfig.base.json"
+  }
+}

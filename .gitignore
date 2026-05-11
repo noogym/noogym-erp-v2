@@ -9,6 +9,8 @@ build/
 
 # Vite / tooling cache
 .vite/
+.turbo/
+.next/
 .cache/
 .parcel-cache/
 *.tsbuildinfo

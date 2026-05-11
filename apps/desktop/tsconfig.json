@@ -1,0 +1,28 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "lib": ["DOM", "DOM.Iterable", "ES2022"],
+    "allowJs": false,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
+    "forceConsistentCasingInFileNames": true,
+    "module": "ESNext",
+    "moduleResolution": "Node",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "baseUrl": ".",
+    "paths": {
+      "@noogym/ui": ["../../packages/ui/src/index.ts"],
+      "@noogym/core": ["../../packages/core/src/index.ts"],
+      "@noogym/types": ["../../packages/types/src/index.ts"],
+      "@noogym/data-access": ["../../packages/data-access/src/index.ts"],
+      "@noogym/data-access/*": ["../../packages/data-access/src/adapters/*"]
+    }
+  },
+  "include": ["src/renderer", "../../packages/ui/src", "../../packages/core/src", "../../packages/types/src", "../../packages/data-access/src"]
+}
