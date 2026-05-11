@@ -60,6 +60,26 @@ Rotas iniciais:
 - `/login`
 - `/dashboard`
 
+## Rodar Web Admin com Docker
+
+Build da imagem:
+
+```bash
+docker build -f apps/web-admin/Dockerfile -t noogym-web-admin .
+```
+
+Executar container:
+
+```bash
+docker run --rm -p 3000:3000 noogym-web-admin
+```
+
+Ou com Docker Compose:
+
+```bash
+docker compose up --build web-admin
+```
+
 ## Rodar Tudo
 
 ```bash
