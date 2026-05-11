@@ -34,7 +34,7 @@ export default function Financas() {
 
   return (
     <>
-      <div className="page-grid min-w-[1280px]">
+      <div className="page-grid">
         <div className="panel p-6">
           <PageHeader
             title="Finanças"

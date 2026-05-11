@@ -51,6 +51,7 @@
     }
   },
   "dependencies": {
+    "@noogym/admin": "workspace:*",
     "@noogym/core": "workspace:*",
     "@noogym/data-access": "workspace:*",
     "@noogym/types": "workspace:*",

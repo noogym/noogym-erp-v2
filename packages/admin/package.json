@@ -1,31 +1,34 @@
 {
-  "name": "@noogym/web-admin",
+  "name": "@noogym/admin",
   "version": "0.0.0",
   "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./styles/globals.css": "./src/styles/globals.css"
+  },
   "scripts": {
-    "dev": "next dev -p 3000",
-    "build": "next build",
+    "build": "tsc --noEmit",
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@noogym/admin": "workspace:*",
     "@noogym/core": "workspace:*",
     "@noogym/data-access": "workspace:*",
     "@noogym/types": "workspace:*",
     "@noogym/ui": "workspace:*",
+    "zustand": "^5.0.8"
+  },
+  "peerDependencies": {
     "lucide-react": "^0.545.0",
-    "next": "latest",
     "react": "^19.1.1",
     "react-dom": "^19.1.1"
   },
   "devDependencies": {
-    "@types/node": "^24.7.2",
     "@types/react": "^19.1.13",
     "@types/react-dom": "^19.1.9",
-    "autoprefixer": "^10.4.21",
-    "postcss": "^8.5.6",
-    "tailwindcss": "^3.4.17",
     "typescript": "^5.9.3"
   }
 }

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import "./globals.css";
+import "@noogym/admin/styles/globals.css";
 
 export const metadata: Metadata = {
   title: "Noogym Web Admin",

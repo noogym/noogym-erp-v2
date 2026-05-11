@@ -21,12 +21,14 @@ type SyncState = "idle" | "syncing";
 interface AppState {
   activeRoute: RouteId;
   theme: ThemeMode;
+  onlineOnly: boolean;
   isOffline: boolean;
   syncState: SyncState;
   syncLabel: string;
   pendingSync: number;
   addPendingSync: (amount?: number) => void;
   setRoute: (route: RouteId) => void;
+  setOnlineOnly: (onlineOnly: boolean) => void;
   setTheme: (theme: ThemeMode) => void;
   toggleTheme: () => void;
   toggleOffline: () => void;
@@ -41,12 +43,20 @@ const getInitialTheme = (): ThemeMode => {
 export const useAppStore = create<AppState>((set) => ({
   activeRoute: "dashboard",
   theme: getInitialTheme(),
+  onlineOnly: false,
   isOffline: true,
   syncState: "idle",
   syncLabel: "Sincronizado: Hoje, 10:30",
   pendingSync: 12,
-  addPendingSync: (amount = 1) => set((state) => ({ pendingSync: state.isOffline ? state.pendingSync + amount : state.pendingSync })),
+  addPendingSync: (amount = 1) => set((state) => ({ pendingSync: state.isOffline && !state.onlineOnly ? state.pendingSync + amount : state.pendingSync })),
   setRoute: (route) => set({ activeRoute: route }),
+  setOnlineOnly: (onlineOnly) =>
+    set((state) => ({
+      onlineOnly,
+      isOffline: onlineOnly ? false : state.isOffline,
+      pendingSync: onlineOnly ? 0 : state.pendingSync,
+      syncLabel: onlineOnly ? "Online: sincronizado" : state.syncLabel
+    })),
   setTheme: (theme) => {
     localStorage.setItem("noogym:theme", theme);
     set({ theme });
@@ -57,10 +67,10 @@ export const useAppStore = create<AppState>((set) => ({
       localStorage.setItem("noogym:theme", theme);
       return { theme };
     }),
-  toggleOffline: () => set((state) => ({ isOffline: !state.isOffline })),
+  toggleOffline: () => set((state) => (state.onlineOnly ? { isOffline: false, pendingSync: 0 } : { isOffline: !state.isOffline })),
   syncNow: async () => {
     set({ syncState: "syncing", syncLabel: "Sincronizando..." });
     await new Promise((resolve) => window.setTimeout(resolve, 1300));
-    set({ syncState: "idle", syncLabel: "Sincronizado: Hoje, 10:30", pendingSync: 0 });
+    set((state) => ({ syncState: "idle", syncLabel: state.onlineOnly ? "Online: sincronizado" : "Sincronizado: Hoje, 10:30", pendingSync: 0 }));
   }
 }));

@@ -31,7 +31,7 @@ export default function VendasPOS() {
   });
 
   return (
-    <div className="grid gap-3" style={{ gridTemplateColumns: "minmax(0, 1fr) 420px" }}>
+    <div className="pos-layout grid gap-3">
       <div className="panel p-6">
         <h1 className="text-3xl font-semibold">Vendas (POS)</h1>
         <p className="mt-2 text-sm text-zinc-300">Selecione os produtos e finalize a venda em Kz.</p>
@@ -39,7 +39,7 @@ export default function VendasPOS() {
         <div className="mt-5 grid grid-cols-[1fr_190px_170px] gap-3"><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar produto por nome ou código..." /><Select><option>Todas as categorias</option></Select><Button icon={<Barcode className="h-4 w-4" />} onClick={() => setModal("barcode")}>Código de barras</Button></div>
         <div className="mt-5 grid grid-cols-[190px_1fr] gap-4">
           <Card className="p-3">{["Todos os produtos", "Suplementos", "Bebidas", "Roupas", "Acessórios", "Serviços"].map((cat, index) => <button key={cat} className={`flex h-10 w-full items-center gap-3 rounded-md px-3 text-sm ${index === 0 ? "bg-noogym-lime/10 text-noogym-lime" : "text-zinc-200"}`}><ShoppingCart className="h-4 w-4" /> {cat}</button>)}</Card>
-          <div className="grid grid-cols-5 gap-3">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
             {filtered.slice(0, 15).map((product) => <Card key={product.id} className="p-3"><ProductVisual label={product.emoji} className="mx-auto h-24 w-full" /><p className="mt-3 text-sm">{product.name}</p><p className="mt-1 text-xs text-zinc-400">Estoque: {product.stock} un</p><p className="mt-1 text-sm font-semibold text-noogym-lime">{money(product.price)}</p><Button className="mt-3 h-8 w-full" icon={<Plus className="h-4 w-4" />} onClick={() => addToCart(product)}>Adicionar</Button></Card>)}
           </div>
         </div>
