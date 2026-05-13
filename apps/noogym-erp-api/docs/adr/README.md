@@ -1,6 +1,6 @@
 # Architecture Decision Records
 
-Este diretorio guarda as decisoes arquiteturais do backend Noogym ERP.
+Este diretorio guarda as decisoes arquiteturais do backend Noogym ERP. O `noogym-erp-api` e a API NestJS que concentra as funcionalidades backend para o `web-admin` e para integracoes futuras do desktop.
 
 Cada ADR documenta uma decisao relevante, o contexto em que foi tomada e as consequencias esperadas. O objetivo e manter um historico claro para futuras mudancas tecnicas.
 

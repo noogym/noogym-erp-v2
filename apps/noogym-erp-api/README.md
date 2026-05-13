@@ -2,6 +2,8 @@
 
 Backend REST para o Noogym, um SaaS de gestao de ginasios, academias, membros, planos, pagamentos, treinos, agenda, check-ins, comunicacao, relatorios e integracoes.
 
+Este app representa a camada backend/API do monorepo para o `web-admin` e para integracoes futuras do desktop. Ele foi construido com NestJS e centraliza autenticacao, multi-tenancy, autorizacao, persistencia, regras server-side e documentacao OpenAPI.
+
 ## Stack
 
 - NestJS
