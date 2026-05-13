@@ -10,6 +10,7 @@
     "dev": "turbo dev",
     "dev:desktop": "turbo dev --filter=@noogym/desktop",
     "dev:web": "turbo dev --filter=@noogym/web-admin",
+    "dev:noogym-erp-api": "turbo dev --filter=@noogym/noogym-erp-api",
     "build": "turbo build",
     "build:desktop": "turbo build --filter=@noogym/desktop",
     "build:web": "turbo build --filter=@noogym/web-admin",
