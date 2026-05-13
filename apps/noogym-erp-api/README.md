@@ -56,6 +56,7 @@ As principais decisoes arquiteturais estao documentadas em [docs/adr](./docs/adr
 - Reports
 - Integrations
 - Audit Logs
+- Client Entrypoints para web-admin, mobile e desktop
 
 ## Requisitos
 
@@ -318,6 +319,12 @@ Reports:
 - `GET /reports/classes`
 - `GET /reports/employees`
 
+Client Entrypoints:
+
+- `GET /entrypoints/web-admin/dashboard`
+- `GET /entrypoints/mobile/me/summary`
+- `GET /entrypoints/desktop/sync/bootstrap?since=2026-05-01T00:00:00.000Z&limit=500`
+
 Integrations:
 
 - `GET /integrations`
@@ -363,6 +370,7 @@ GET /payments?page=1&limit=10&status=PAID&method=CASH&startDate=2026-04-01&endDa
 - Cancelar venda POS cancela pagamentos vinculados e devolve estoque dos itens controlados.
 - Aulas possuem capacidade, instrutor, sala e inscricoes/presencas de membros.
 - Funcionarios podem existir como perfil operacional independente e opcionalmente vinculado a `User`.
+- EntryPoints por cliente compoem payloads especificos para web-admin, mobile e desktop sem criar BFFs separados.
 - Reports calculam KPIs de membros, receita, despesas, lucro, check-ins e treinos.
 - Treinos suportam multiplos exercicios ordenados.
 - Mensagens suportam WhatsApp, SMS, E-mail e Push como canais, salvando inicialmente no banco.

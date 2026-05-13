@@ -18,6 +18,8 @@ A API deve concentrar as funcionalidades server-side usadas pelo `web-admin` e e
 
 Os modulos operacionais devem ser explicitos quando representam fluxos reais do frontend. Produtos, vendas POS, aulas e funcionarios nao devem ser tratados apenas como mocks ou campos genericos; eles fazem parte do dominio ERP que o backend precisa persistir e validar.
 
+Para necessidades especificas de web-admin, mobile e desktop, a API deve preferir entrypoints modulares dentro do mesmo NestJS antes de criar BFFs fisicos separados. Esses entrypoints podem compor payloads por experiencia, mas continuam usando os mesmos services, auth, RBAC, Prisma e regras de dominio.
+
 As decisoes internas do backend ficam detalhadas em `apps/noogym-erp-api/docs/adr`.
 
 ## Consequencias

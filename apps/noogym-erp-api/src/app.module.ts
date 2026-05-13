@@ -13,6 +13,7 @@ import { AuditLogInterceptor } from './common/interceptors/audit-log.interceptor
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
 import { validateEnv } from './config/env.validation';
 import { EmployeesModule } from './employees/employees.module';
+import { EntrypointsModule } from './entrypoints/entrypoints.module';
 import { ExercisesModule } from './exercises/exercises.module';
 import { ExpensesModule } from './expenses/expenses.module';
 import { GymsModule } from './gyms/gyms.module';
@@ -37,6 +38,7 @@ import { WorkoutsModule } from './workouts/workouts.module';
       validate: validateEnv,
     }),
     PrismaModule,
+    EntrypointsModule,
     AuthModule,
     OrganizationsModule,
     GymsModule,

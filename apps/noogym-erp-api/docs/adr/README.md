@@ -15,3 +15,4 @@ Cada ADR documenta uma decisao relevante, o contexto em que foi tomada e as cons
 - [ADR-0007: Registrar auditoria automatica para operacoes de escrita](./0007-use-automatic-audit-logs-for-write-operations.md)
 - [ADR-0008: Versionar schema com Prisma migrations e seed demo](./0008-use-prisma-migrations-and-demo-seed.md)
 - [ADR-0009: Alinhar dominio operacional da API aos fluxos do admin](./0009-align-operational-domain-with-admin-flows.md)
+- [ADR-0010: Usar entrypoints modulares por cliente dentro da API unica](./0010-use-modular-client-entrypoints-in-single-api.md)
