@@ -42,7 +42,11 @@ export class PaymentsService {
         skip,
         take,
         orderBy: { createdAt: 'desc' },
-        include: { member: true, subscription: { include: { plan: true } } },
+        include: {
+          member: true,
+          subscription: { include: { plan: true } },
+          sale: { include: { items: true } },
+        },
       }),
       this.prisma.payment.count({ where }),
     ]);

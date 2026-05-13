@@ -43,4 +43,19 @@ export class ReportsController {
   sales(@CurrentUser() user: AuthUser) {
     return this.reportsService.sales(user.organizationId);
   }
+
+  @Get('products')
+  products(@CurrentUser() user: AuthUser) {
+    return this.reportsService.products(user.organizationId);
+  }
+
+  @Get('classes')
+  classes(@CurrentUser() user: AuthUser) {
+    return this.reportsService.classes(user.organizationId);
+  }
+
+  @Get('employees')
+  employees(@CurrentUser() user: AuthUser) {
+    return this.reportsService.employees(user.organizationId);
+  }
 }

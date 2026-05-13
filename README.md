@@ -202,6 +202,6 @@ O `web-admin` e o wrapper Next.js sobre `@noogym/admin`, portanto expoe as mesma
 
 ## Backend ERP API
 
-O `noogym-erp-api` e o backend NestJS do Noogym ERP. Ele organiza a regra de negocio server-side em modulos de Auth, Organizations, Gyms, Users, Members, Plans, Subscriptions, Payments, Expenses, Check-ins, Exercises, Workouts, Appointments, Messages, Reports, Integrations e Audit Logs.
+O `noogym-erp-api` e o backend NestJS do Noogym ERP. Ele organiza a regra de negocio server-side em modulos de Auth, Organizations, Gyms, Users, Members, Plans, Subscriptions, Payments, Products, Sales, Employees, Classes, Expenses, Check-ins, Exercises, Workouts, Appointments, Messages, Reports, Integrations e Audit Logs.
 
 A API usa Prisma com PostgreSQL, autenticacao JWT, RBAC por `UserRole`, multi-tenancy por `organizationId`, validacao global de DTOs, respostas HTTP padronizadas, documentacao Swagger/Scalar e seed demo. O objetivo e servir o `web-admin` como backend SaaS e oferecer uma superficie de sincronizacao/integracao para o desktop quando os fluxos locais deixarem de ser apenas simulados.

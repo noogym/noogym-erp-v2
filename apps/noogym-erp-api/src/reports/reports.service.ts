@@ -1,7 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import {
+  EmployeeStatus,
+  GymClassStatus,
   MemberStatus,
   PaymentStatus,
+  ProductStatus,
+  SaleStatus,
   SubscriptionStatus,
   WorkoutStatus,
 } from '@prisma/client';
@@ -29,6 +33,8 @@ export class ReportsService {
       weeklyCheckins,
       activeWorkouts,
       activeSubscriptions,
+      completedSales,
+      activeProducts,
     ] = await this.prisma.$transaction([
       this.prisma.member.count({ where: { organizationId } }),
       this.prisma.member.count({
@@ -61,6 +67,12 @@ export class ReportsService {
           endDate: { gte: new Date() },
         },
       }),
+      this.prisma.sale.count({
+        where: { organizationId, status: SaleStatus.COMPLETED },
+      }),
+      this.prisma.product.count({
+        where: { organizationId, status: ProductStatus.ACTIVE },
+      }),
     ]);
 
     const revenueTotal = Number(income._sum.amount ?? 0);
@@ -77,6 +89,8 @@ export class ReportsService {
       checkinsToday,
       weeklyFrequency: weeklyCheckins,
       activeWorkouts,
+      completedSales,
+      activeProducts,
     };
   }
 
@@ -225,24 +239,39 @@ export class ReportsService {
   }
 
   async sales(organizationId: string) {
-    const [subscriptions, payments, topPlans] = await this.prisma.$transaction([
-      this.prisma.subscription.count({ where: { organizationId } }),
-      this.prisma.payment.aggregate({
-        where: { organizationId, status: PaymentStatus.PAID },
-        _sum: { amount: true },
-        _count: { id: true },
-      }),
-      this.prisma.plan.findMany({
-        where: { organizationId },
-        include: { _count: { select: { subscriptions: true } } },
-        orderBy: { createdAt: 'desc' },
-      }),
-    ]);
+    const [subscriptions, payments, posSales, topPlans, recentSales] =
+      await this.prisma.$transaction([
+        this.prisma.subscription.count({ where: { organizationId } }),
+        this.prisma.payment.aggregate({
+          where: { organizationId, status: PaymentStatus.PAID },
+          _sum: { amount: true },
+          _count: { id: true },
+        }),
+        this.prisma.sale.aggregate({
+          where: { organizationId, status: SaleStatus.COMPLETED },
+          _sum: { total: true },
+          _count: { id: true },
+        }),
+        this.prisma.plan.findMany({
+          where: { organizationId },
+          include: { _count: { select: { subscriptions: true } } },
+          orderBy: { createdAt: 'desc' },
+        }),
+        this.prisma.sale.findMany({
+          where: { organizationId },
+          orderBy: { soldAt: 'desc' },
+          take: 10,
+          include: { member: true, seller: true, items: true },
+        }),
+      ]);
 
     return {
       subscriptionsTotal: subscriptions,
       salesCount: payments._count.id,
       salesTotal: Number(payments._sum.amount ?? 0),
+      posSalesCount: posSales._count.id,
+      posSalesTotal: Number(posSales._sum.total ?? 0),
+      recentSales,
       plans: topPlans
         .map((plan) => ({
           id: plan.id,
@@ -252,5 +281,143 @@ export class ReportsService {
         }))
         .sort((a, b) => b.subscriptions - a.subscriptions),
     };
+  }
+
+  async products(organizationId: string) {
+    const [total, active, inactive, lowStock, inventory, saleItems, recent] =
+      await this.prisma.$transaction([
+        this.prisma.product.count({ where: { organizationId } }),
+        this.prisma.product.count({
+          where: { organizationId, status: ProductStatus.ACTIVE },
+        }),
+        this.prisma.product.count({
+          where: { organizationId, status: ProductStatus.INACTIVE },
+        }),
+        this.prisma.product.findMany({
+          where: {
+            organizationId,
+            trackStock: true,
+          },
+          orderBy: { stock: 'asc' },
+          take: 10,
+        }),
+        this.prisma.product.findMany({
+          where: { organizationId },
+          select: { stock: true, price: true, cost: true },
+        }),
+        this.prisma.saleItem.findMany({
+          where: {
+            sale: { organizationId, status: SaleStatus.COMPLETED },
+          },
+          select: { productName: true, quantity: true, total: true },
+        }),
+        this.prisma.product.findMany({
+          where: { organizationId },
+          orderBy: { createdAt: 'desc' },
+          take: 10,
+        }),
+      ]);
+
+    return {
+      total,
+      byStatus: { active, inactive },
+      lowStock: lowStock.filter((product) => product.stock <= product.minStock),
+      inventoryValue: inventory.reduce(
+        (sum, product) => sum + product.stock * Number(product.price),
+        0,
+      ),
+      inventoryCost: inventory.reduce(
+        (sum, product) => sum + product.stock * Number(product.cost),
+        0,
+      ),
+      topItems: this.aggregateSaleItems(saleItems),
+      recent,
+    };
+  }
+
+  async classes(organizationId: string) {
+    const [total, scheduled, inProgress, completed, cancelled, upcoming] =
+      await this.prisma.$transaction([
+        this.prisma.gymClass.count({ where: { organizationId } }),
+        this.prisma.gymClass.count({
+          where: { organizationId, status: GymClassStatus.SCHEDULED },
+        }),
+        this.prisma.gymClass.count({
+          where: { organizationId, status: GymClassStatus.IN_PROGRESS },
+        }),
+        this.prisma.gymClass.count({
+          where: { organizationId, status: GymClassStatus.COMPLETED },
+        }),
+        this.prisma.gymClass.count({
+          where: { organizationId, status: GymClassStatus.CANCELLED },
+        }),
+        this.prisma.gymClass.findMany({
+          where: { organizationId },
+          orderBy: [{ startAt: 'asc' }, { createdAt: 'desc' }],
+          take: 10,
+          include: { instructor: true, room: true, gym: true },
+        }),
+      ]);
+
+    return {
+      total,
+      byStatus: { scheduled, inProgress, completed, cancelled },
+      upcoming,
+    };
+  }
+
+  async employees(organizationId: string) {
+    const [total, active, inactive, onLeave, terminated, recent] =
+      await this.prisma.$transaction([
+        this.prisma.employee.count({ where: { organizationId } }),
+        this.prisma.employee.count({
+          where: { organizationId, status: EmployeeStatus.ACTIVE },
+        }),
+        this.prisma.employee.count({
+          where: { organizationId, status: EmployeeStatus.INACTIVE },
+        }),
+        this.prisma.employee.count({
+          where: { organizationId, status: EmployeeStatus.ON_LEAVE },
+        }),
+        this.prisma.employee.count({
+          where: { organizationId, status: EmployeeStatus.TERMINATED },
+        }),
+        this.prisma.employee.findMany({
+          where: { organizationId },
+          orderBy: { createdAt: 'desc' },
+          take: 10,
+          include: {
+            gym: true,
+            user: true,
+            _count: { select: { classes: true } },
+          },
+        }),
+      ]);
+
+    return {
+      total,
+      byStatus: { active, inactive, onLeave, terminated },
+      recent,
+    };
+  }
+
+  private aggregateSaleItems(
+    items: Array<{ productName: string; quantity: number; total: unknown }>,
+  ) {
+    const totals = new Map<string, { quantity: number; revenue: number }>();
+    for (const item of items) {
+      const current = totals.get(item.productName) ?? {
+        quantity: 0,
+        revenue: 0,
+      };
+      current.quantity += item.quantity;
+      current.revenue += Number(item.total ?? 0);
+      totals.set(item.productName, current);
+    }
+
+    return [...totals.entries()]
+      .map(([productName, data]) => ({ productName, ...data }))
+      .sort((a, b) => b.quantity - a.quantity)
+      .slice(0, 10);
   }
 }

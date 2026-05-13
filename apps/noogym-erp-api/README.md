@@ -43,6 +43,10 @@ As principais decisoes arquiteturais estao documentadas em [docs/adr](./docs/adr
 - Plans
 - Subscriptions
 - Payments
+- Products
+- Sales
+- Employees
+- Classes
 - Expenses
 - Check-ins
 - Exercises
@@ -224,6 +228,40 @@ Payments:
 - `POST /payments`
 - `PATCH /payments/:id/mark-paid`
 
+Products:
+
+- `GET /products`
+- `GET /products/:id`
+- `POST /products`
+- `PATCH /products/:id`
+- `PATCH /products/:id/stock`
+- `DELETE /products/:id`
+
+Sales:
+
+- `GET /sales`
+- `GET /sales/:id`
+- `POST /sales`
+- `PATCH /sales/:id/cancel`
+
+Employees:
+
+- `GET /employees`
+- `GET /employees/:id`
+- `POST /employees`
+- `PATCH /employees/:id`
+- `DELETE /employees/:id`
+
+Classes:
+
+- `GET /classes`
+- `GET /classes/:id`
+- `POST /classes`
+- `PATCH /classes/:id`
+- `POST /classes/:id/enrollments`
+- `PATCH /classes/:id/enrollments/:memberId`
+- `DELETE /classes/:id`
+
 Expenses:
 
 - `GET /expenses`
@@ -276,6 +314,9 @@ Reports:
 - `GET /reports/workouts`
 - `GET /reports/checkins`
 - `GET /reports/sales`
+- `GET /reports/products`
+- `GET /reports/classes`
+- `GET /reports/employees`
 
 Integrations:
 
@@ -318,6 +359,10 @@ GET /payments?page=1&limit=10&status=PAID&method=CASH&startDate=2026-04-01&endDa
 - Criar assinatura gera pagamento pendente quando o plano tem preco.
 - Check-in so e permitido para membro `ACTIVE` com assinatura valida.
 - Marcar pagamento como pago atualiza `paidAt`.
+- Vendas POS geram itens, pagamento vinculado e baixa de estoque para produtos controlados.
+- Cancelar venda POS cancela pagamentos vinculados e devolve estoque dos itens controlados.
+- Aulas possuem capacidade, instrutor, sala e inscricoes/presencas de membros.
+- Funcionarios podem existir como perfil operacional independente e opcionalmente vinculado a `User`.
 - Reports calculam KPIs de membros, receita, despesas, lucro, check-ins e treinos.
 - Treinos suportam multiplos exercicios ordenados.
 - Mensagens suportam WhatsApp, SMS, E-mail e Push como canais, salvando inicialmente no banco.

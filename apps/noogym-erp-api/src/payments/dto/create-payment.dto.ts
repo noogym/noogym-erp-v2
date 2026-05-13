@@ -19,6 +19,10 @@ export class CreatePaymentDto {
   @IsString()
   subscriptionId?: string;
 
+  @IsOptional()
+  @IsString()
+  saleId?: string;
+
   @Type(() => Number)
   @IsNumber()
   @Min(0)
