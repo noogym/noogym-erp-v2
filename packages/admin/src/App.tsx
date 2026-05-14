@@ -4,6 +4,15 @@ import { Sidebar } from "./components/layout/Sidebar";
 import { Topbar } from "./components/layout/Topbar";
 import { useAppStore } from "./store/appStore";
 import { useAuthStore } from "./store/authStore";
+import { useCheckinsStore } from "./store/checkinsStore";
+import { useClassesStore } from "./store/classesStore";
+import { useClientsStore } from "./store/clientsStore";
+import { useEmployeesStore } from "./store/employeesStore";
+import { useFinanceStore } from "./store/financeStore";
+import { usePlansStore } from "./store/plansStore";
+import { useProductsStore } from "./store/productsStore";
+import { useSalesStore } from "./store/salesStore";
+import { useWorkoutsStore } from "./store/workoutsStore";
 import Dashboard from "./pages/Dashboard";
 import CheckIn from "./pages/CheckIn";
 import Clientes from "./pages/Clientes";
@@ -107,6 +116,16 @@ export default function App({ onlineOnly = false }: AdminAppProps) {
   const setOnlineOnly = useAppStore((state) => state.setOnlineOnly);
   const theme = useAppStore((state) => state.theme);
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const accessToken = useAuthStore((state) => state.accessToken);
+  const loadClients = useClientsStore((state) => state.loadOnline);
+  const loadPlans = usePlansStore((state) => state.loadOnline);
+  const loadProducts = useProductsStore((state) => state.loadOnline);
+  const loadCheckins = useCheckinsStore((state) => state.loadOnline);
+  const loadSales = useSalesStore((state) => state.loadOnline);
+  const loadClasses = useClassesStore((state) => state.loadOnline);
+  const loadEmployees = useEmployeesStore((state) => state.loadOnline);
+  const loadFinance = useFinanceStore((state) => state.loadOnline);
+  const loadWorkouts = useWorkoutsStore((state) => state.loadOnline);
   const [authRoute, setAuthRoute] = useState<AuthRoute>(getAuthRoute);
   const Page = pages[activeRoute];
 
@@ -142,6 +161,22 @@ export default function App({ onlineOnly = false }: AdminAppProps) {
     setAuthRoute(nextRoute);
     if (!isAuthPath()) updateAuthUrl(nextRoute, "replaceState");
   }, [isAuthenticated, setRoute]);
+
+  useEffect(() => {
+    if (!onlineOnly || !isAuthenticated || !accessToken) return;
+
+    void Promise.allSettled([
+      loadClients(),
+      loadPlans(),
+      loadProducts(),
+      loadCheckins(),
+      loadSales(),
+      loadClasses(),
+      loadEmployees(),
+      loadFinance(),
+      loadWorkouts()
+    ]);
+  }, [accessToken, isAuthenticated, loadCheckins, loadClasses, loadClients, loadEmployees, loadFinance, loadPlans, loadProducts, loadSales, loadWorkouts, onlineOnly]);
 
   const navigateAuth = useCallback((route: AuthRoute) => {
     setAuthRoute(route);

@@ -50,7 +50,7 @@ export const useAppStore = create<AppState>((set) => ({
   syncState: "idle",
   syncLabel: "Sincronizado: Hoje, 10:30",
   pendingSync: 12,
-  isStatusPanelCollapsed: false,
+  isStatusPanelCollapsed: true,
   addPendingSync: (amount = 1) => set((state) => ({ pendingSync: state.isOffline && !state.onlineOnly ? state.pendingSync + amount : state.pendingSync })),
   setRoute: (route) => set({ activeRoute: route }),
   setOnlineOnly: (onlineOnly) =>

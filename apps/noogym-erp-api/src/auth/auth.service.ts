@@ -7,6 +7,7 @@ import { JwtService } from '@nestjs/jwt';
 import { UserStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 
@@ -104,12 +105,27 @@ export class AuthService {
     });
   }
 
+  async forgotPassword(dto: ForgotPasswordDto) {
+    await this.prisma.user.findUnique({
+      where: { email: dto.email },
+      select: { id: true },
+    });
+
+    return {
+      message:
+        'If this email is registered, password recovery instructions will be sent.',
+    };
+  }
+
   private buildAuthResponse(user: {
     id: string;
     email: string;
     name: string;
     role: string;
     organizationId: string;
+    organization?: {
+      name: string;
+    };
   }) {
     const payload = {
       sub: user.id,
@@ -126,6 +142,7 @@ export class AuthService {
         email: user.email,
         role: user.role,
         organizationId: user.organizationId,
+        organizationName: user.organization?.name,
       },
     };
   }

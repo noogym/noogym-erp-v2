@@ -44,6 +44,10 @@ export function ManualCheckinModal({ open, onClose }: { open: boolean; onClose: 
   const selected = clients.find((client) => `${client.name} ${client.id} ${client.email} ${client.phone}`.toLowerCase().includes(query.toLowerCase())) ?? clients[0];
 
   const confirm = () => {
+    if (!selected) {
+      toastInfo("Sem clientes", "Cadastre um cliente antes de realizar check-in.");
+      return;
+    }
     addCheckin({ clientName: selected.name, clientId: selected.id, type: "Manual", accessType, dateTime: today });
     toastSuccess("Check-in realizado", `${selected.name} registado com sucesso.`);
     onClose();
@@ -61,7 +65,7 @@ export function ManualCheckinModal({ open, onClose }: { open: boolean; onClose: 
               <Search className="absolute left-3 top-3 h-4 w-4 text-zinc-400" />
               <input className="h-11 w-full rounded-md border border-white/10 bg-black/20 pl-10 pr-3 outline-none focus:border-noogym-lime/70" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Digite nome, código, e-mail ou telefone..." />
             </div>
-            <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
+            {selected ? <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
               <p className="mb-3 text-noogym-lime">Aluno encontrado</p>
               <div className="flex items-center gap-4">
                 <Avatar label={selected.avatar ?? "CL"} className="h-16 w-16" />
@@ -74,7 +78,7 @@ export function ManualCheckinModal({ open, onClose }: { open: boolean; onClose: 
                 </div>
                 <div className="text-sm"><p className="text-zinc-400">Vencimento</p><p className="text-noogym-lime">{selected.expires}</p><p className="mt-3 text-zinc-400">Dias restantes</p><p className="text-noogym-lime">15 dias</p></div>
               </div>
-            </div>
+            </div> : <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4 text-sm text-zinc-300">Nenhum cliente encontrado. Cadastre um cliente para liberar o check-in.</div>}
           </Section>
           <Section title="2. Informações do check-in">
             <div className="grid grid-cols-2 gap-3">
@@ -91,8 +95,8 @@ export function ManualCheckinModal({ open, onClose }: { open: boolean; onClose: 
             <p className="mt-4">Check-in será realizado com sucesso.</p>
           </div>
           <div className="mt-6 space-y-4 border-t border-white/10 pt-4 text-sm">
-            <p className="flex items-center gap-3"><UsersRound className="h-4 w-4 text-zinc-400" /> {selected.name}</p>
-            <p className="flex items-center gap-3"><CreditCard className="h-4 w-4 text-zinc-400" /> {selected.plan}</p>
+            <p className="flex items-center gap-3"><UsersRound className="h-4 w-4 text-zinc-400" /> {selected?.name ?? "Sem cliente selecionado"}</p>
+            <p className="flex items-center gap-3"><CreditCard className="h-4 w-4 text-zinc-400" /> {selected?.plan ?? "Sem plano"}</p>
             <p className="flex items-center gap-3"><Clock className="h-4 w-4 text-zinc-400" /> 08/05/2026 - 10:30</p>
             <p className="flex items-center gap-3"><Info className="h-4 w-4 text-zinc-400" /> {accessType}</p>
           </div>
@@ -108,6 +112,10 @@ export function QrScannerModal({ open, onClose }: { open: boolean; onClose: () =
   const [scanned, setScanned] = useState(false);
   const client = clients[0];
   const confirm = () => {
+    if (!client) {
+      toastInfo("Sem clientes", "Cadastre um cliente antes de realizar check-in.");
+      return;
+    }
     addCheckin({ clientName: client.name, clientId: client.id, type: "QR Code", accessType: "Entrada", dateTime: today });
     toastSuccess("Check-in realizado", "QR Code confirmado com sucesso.");
     setScanned(false);
@@ -117,7 +125,7 @@ export function QrScannerModal({ open, onClose }: { open: boolean; onClose: () =
     <Modal open={open} title="Escanear QR Code" description="Use a leitura simulada para identificar o aluno." size="md" onClose={onClose}>
       <div className="flex flex-col items-center text-center">
         <div className="flex h-72 w-full items-center justify-center rounded-lg border border-dashed border-noogym-lime/35 bg-black/30">
-          {scanned ? <div><Avatar label={client.avatar ?? "CL"} className="mx-auto h-16 w-16" /><p className="mt-3 font-semibold">{client.name}</p><p className="text-sm text-zinc-400">{client.plan}</p></div> : <QrCode className="h-24 w-24 text-noogym-lime" />}
+          {scanned && client ? <div><Avatar label={client.avatar ?? "CL"} className="mx-auto h-16 w-16" /><p className="mt-3 font-semibold">{client.name}</p><p className="text-sm text-zinc-400">{client.plan}</p></div> : <QrCode className="h-24 w-24 text-noogym-lime" />}
         </div>
         <div className="mt-5 grid w-full grid-cols-3 gap-3">
           <Button onClick={() => setScanned(true)}>Simular leitura</Button>
@@ -134,8 +142,13 @@ export function NewCheckinModal({ open, onClose }: { open: boolean; onClose: () 
   const clients = useClientsStore((state) => state.clients);
   const addCheckin = useCheckinsStore((state) => state.addCheckin);
   const [tab, setTab] = useState("Buscar cliente");
-  const client = clients[0];
+  const hasClient = Boolean(clients[0]);
+  const client = clients[0] ?? { id: "", name: "Nenhum cliente encontrado", avatar: "CL", document: "-", plan: "Sem plano" };
   const confirm = () => {
+    if (!hasClient) {
+      toastInfo("Sem clientes", "Cadastre um cliente antes de realizar check-in.");
+      return;
+    }
     addCheckin({ clientName: client.name, clientId: client.id, type: tab === "Check-in avulso" ? "Manual" : "Presencial", accessType: "Entrada", dateTime: today });
     toastSuccess("Check-in realizado", "Resumo do dia atualizado.");
     onClose();
@@ -148,7 +161,7 @@ export function NewCheckinModal({ open, onClose }: { open: boolean; onClose: () 
         </div>
         <FormInput label="Busca por nome, CPF/BI ou código" placeholder="Digite o nome ou BI do cliente..." />
         <div className="flex items-center gap-4 rounded-lg border border-white/10 bg-white/[0.03] p-4">
-          <Avatar label={client.avatar ?? "CL"} className="h-14 w-14" />
+          <Avatar label={client?.avatar ?? "CL"} className="h-14 w-14" />
           <div className="flex-1"><p className="font-semibold">{client.name}</p><p className="text-sm text-zinc-400">BI: {client.document} • {client.plan}</p></div>
           <Badge>Ativo</Badge>
         </div>
@@ -305,8 +318,21 @@ export function FinalizeSaleModal({ open, total, onClose, onConfirmed }: { open:
 export function BarcodeModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const found = useProductsStore((state) => state.products[0]);
   return (
-    <Modal open={open} title="Código de barras" size="sm" onClose={onClose} footer={<><Button onClick={onClose}>Cancelar</Button><Button variant="primary" onClick={() => { toastSuccess("Produto encontrado", found.name); onClose(); }}>Adicionar produto</Button></>}>
-      <div className="space-y-4 text-center"><Barcode className="mx-auto h-16 w-16 text-noogym-lime" /><FormInput label="Código de barras" defaultValue="7891234567890" /><div className="rounded-lg border border-white/10 bg-white/[0.03] p-4"><p className="font-semibold">{found.name}</p><p className="text-sm text-zinc-400">Estoque: {found.stock} un</p></div></div>
+    <Modal open={open} title="Código de barras" size="sm" onClose={onClose} footer={<><Button onClick={onClose}>Cancelar</Button><Button variant="primary" disabled={!found} onClick={() => { if (!found) return; toastSuccess("Produto encontrado", found.name); onClose(); }}>Adicionar produto</Button></>}>
+      <div className="space-y-4 text-center">
+        <Barcode className="mx-auto h-16 w-16 text-noogym-lime" />
+        <FormInput label="Código de barras" defaultValue="7891234567890" />
+        <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
+          {found ? (
+            <>
+              <p className="font-semibold">{found.name}</p>
+              <p className="text-sm text-zinc-400">Estoque: {found.stock} un</p>
+            </>
+          ) : (
+            <p className="text-sm text-zinc-400">Nenhum produto disponivel para leitura.</p>
+          )}
+        </div>
+      </div>
     </Modal>
   );
 }

@@ -1,0 +1,418 @@
+import type {
+  CheckinRecord,
+  ClassRecord,
+  ClientRecord,
+  EmployeeRecord,
+  FinanceRecord,
+  PlanRecord,
+  ProductRecord,
+  SaleRecord,
+  WorkoutRecord
+} from "@noogym/types";
+import { apiPath, apiRequest, type PaginatedResponse } from "./api";
+
+type Entity = Record<string, unknown>;
+
+export type ResourceName = "members" | "plans" | "products" | "checkins" | "sales" | "classes" | "employees" | "workouts";
+
+export const listResource = async <T>(resource: ResourceName, token: string) => {
+  const response = await apiRequest<PaginatedResponse<T>>(apiPath(`/${resource}`, { limit: 100 }), { token });
+  return response.items;
+};
+
+export const createResource = <T>(resource: ResourceName, token: string, body: unknown) =>
+  apiRequest<T>(`/${resource}`, { method: "POST", token, body });
+
+export const updateResource = <T>(resource: ResourceName, id: string, token: string, body: unknown) =>
+  apiRequest<T>(`/${resource}/${id}`, { method: "PATCH", token, body });
+
+export const deleteResource = <T>(resource: ResourceName, id: string, token: string) =>
+  apiRequest<T>(`/${resource}/${id}`, { method: "DELETE", token });
+
+export const listFinanceRecords = async (token: string) => {
+  const [payments, expenses] = await Promise.all([
+    apiRequest<PaginatedResponse<Entity>>(apiPath("/payments", { limit: 100 }), { token }),
+    apiRequest<PaginatedResponse<Entity>>(apiPath("/expenses", { limit: 100 }), { token })
+  ]);
+
+  return [
+    ...payments.items.map(paymentToFinanceRecord),
+    ...expenses.items.map(expenseToFinanceRecord)
+  ].sort((a, b) => b.id.localeCompare(a.id));
+};
+
+export const createRevenue = (token: string, record: Partial<FinanceRecord>) =>
+  apiRequest<Entity>("/payments", { method: "POST", token, body: financeRecordToPaymentDto(record) });
+
+export const createExpense = (token: string, record: Partial<FinanceRecord>) =>
+  apiRequest<Entity>("/expenses", { method: "POST", token, body: financeRecordToExpenseDto(record) });
+
+export const clientFromApi = (member: Entity): ClientRecord => {
+  const subscription = first<Entity>(member.subscriptions);
+  const plan = getEntity(subscription?.plan);
+  const expires = asDate(subscription?.endDate);
+
+  return {
+    id: asString(member.id),
+    name: asString(member.name, "Cliente Noogym"),
+    phone: asString(member.phone, "+244 900 000 000"),
+    email: asString(member.email, "cliente@email.com"),
+    plan: asString(plan?.name, "Sem plano"),
+    planTone: member.status === "OVERDUE" ? "red" : "lime",
+    status: statusLabel(member.status, { ACTIVE: "Ativo", INACTIVE: "Inativo", OVERDUE: "Em atraso", BLOCKED: "Bloqueado", CANCELLED: "Cancelado" }),
+    lastCheckin: "Sem check-in",
+    expires: formatDate(expires),
+    birthday: formatBirthday(asDate(member.birthDate)),
+    avatar: initials(asString(member.name, "CN")),
+    document: asString(member.documentNumber, "000000000LA000")
+  };
+};
+
+export const clientToDto = (client: Partial<ClientRecord>) => ({
+  name: client.name ?? "Novo cliente",
+  email: cleanEmail(client.email),
+  phone: client.phone,
+  documentNumber: client.document,
+  status: client.status === "Inativo" ? "INACTIVE" : "ACTIVE"
+});
+
+export const planFromApi = (plan: Entity): PlanRecord => ({
+  id: asString(plan.id),
+  name: asString(plan.name, "Plano"),
+  description: asString(plan.description, ""),
+  category: asBoolean(plan.includesClasses) ? "Aulas" : "Musculacao",
+  price: `${formatNumber(plan.price)} Kz/${durationLabel(Number(plan.durationDays ?? 30)).toLowerCase()}`,
+  duration: durationLabel(Number(plan.durationDays ?? 30)),
+  type: asBoolean(plan.isPopular) ? "Popular" : "Recorrente",
+  clients: 0,
+  status: statusLabel(plan.status, { ACTIVE: "Ativo", INACTIVE: "Inativo" })
+});
+
+export const planToDto = (plan: Partial<PlanRecord>) => ({
+  name: plan.name ?? "Novo plano",
+  description: plan.description,
+  price: parseMoney(plan.price),
+  durationDays: durationDays(plan.duration),
+  status: plan.status === "Inativo" ? "INACTIVE" : "ACTIVE",
+  includesClasses: true,
+  includesWorkouts: plan.category?.toLowerCase().includes("muscula") ?? false,
+  isPopular: plan.type === "Popular"
+});
+
+export const productFromApi = (product: Entity): ProductRecord => ({
+  id: asString(product.id),
+  name: asString(product.name, "Produto"),
+  category: asString(product.category, "Outros"),
+  stock: asNumber(product.stock),
+  price: asNumber(product.price),
+  cost: asNumber(product.cost),
+  emoji: asString(product.label, "PRD"),
+  sku: asString(product.sku, undefined),
+  barcode: asString(product.barcode, undefined),
+  status: statusLabel(product.status, { ACTIVE: "Ativo", INACTIVE: "Inativo", ARCHIVED: "Arquivado" })
+});
+
+export const productToDto = (product: Partial<ProductRecord>) => ({
+  name: product.name ?? "Novo produto",
+  category: product.category ?? "Suplementos",
+  sku: product.sku,
+  barcode: product.barcode,
+  price: product.price ?? 0,
+  cost: product.cost ?? 0,
+  stock: product.stock ?? 0,
+  minStock: 0,
+  label: product.emoji ?? "PRD",
+  status: product.status === "Inativo" ? "INACTIVE" : "ACTIVE"
+});
+
+export const checkinFromApi = (checkin: Entity): CheckinRecord => {
+  const member = getEntity(checkin.member);
+  return {
+    id: asString(checkin.id),
+    clientName: asString(member?.name, "Cliente Noogym"),
+    clientId: asString(checkin.memberId),
+    type: methodLabel(checkin.method),
+    accessType: "Entrada",
+    dateTime: relativeDate(asDate(checkin.checkedAt)),
+    observation: asString(checkin.notes, undefined)
+  };
+};
+
+export const checkinToDto = (checkin: Partial<CheckinRecord>) => ({
+  memberId: checkin.clientId ?? "",
+  method: methodValue(checkin.type),
+  notes: checkin.observation
+});
+
+export const saleFromApi = (sale: Entity): SaleRecord => ({
+  id: asString(sale.id),
+  total: asNumber(sale.total),
+  customer: asString(sale.customerName, undefined) || asString(getEntity(sale.member)?.name, undefined),
+  seller: asString(sale.sellerName, "Admin"),
+  type: saleTypeLabel(sale.type),
+  paymentMethod: paymentMethodLabel(sale.paymentMethod),
+  dateTime: relativeDate(asDate(sale.soldAt))
+});
+
+export const saleToDto = (sale: Partial<SaleRecord>, items: ProductRecord[] = []) => ({
+  customerName: sale.customer,
+  sellerName: sale.seller ?? "Admin",
+  type: "NORMAL",
+  status: "COMPLETED",
+  paymentMethod: paymentMethodValue(sale.paymentMethod),
+  soldAt: new Date().toISOString(),
+  items: items.length
+    ? items.map((item) => ({
+        productId: item.id,
+        productName: item.name,
+        sku: item.sku,
+        quantity: Math.max(1, Number((item as ProductRecord & { qty?: number }).qty ?? 1)),
+        unitPrice: item.price
+      }))
+    : [{ productName: "Venda POS", quantity: 1, unitPrice: sale.total ?? 0 }]
+});
+
+export const classFromApi = (lesson: Entity): ClassRecord => ({
+  id: asString(lesson.id),
+  name: asString(lesson.name, "Aula"),
+  room: asString(getEntity(lesson.room)?.name, "Sala 1"),
+  category: asString(lesson.category, "Cardio"),
+  instructor: asString(getEntity(lesson.instructor)?.name, "Instrutor"),
+  time: relativeDate(asDate(lesson.startAt)),
+  duration: `${asNumber(lesson.durationMinutes, 55)} min`,
+  seats: asNumber(lesson.capacity),
+  participants: asNumber(lesson.participants),
+  status: statusLabel(lesson.status, { SCHEDULED: "Agendada", IN_PROGRESS: "Em andamento", COMPLETED: "Encerrada", CANCELLED: "Cancelada" }),
+  description: asString(lesson.description, undefined)
+});
+
+export const classToDto = (lesson: Partial<ClassRecord>) => ({
+  name: lesson.name ?? "Nova aula",
+  category: lesson.category ?? "Cardio",
+  description: lesson.description,
+  durationMinutes: parseDuration(lesson.duration),
+  capacity: lesson.seats ?? 25,
+  participants: lesson.participants ?? 0,
+  status: lesson.status === "Encerrada" ? "COMPLETED" : lesson.status === "Em andamento" ? "IN_PROGRESS" : "SCHEDULED"
+});
+
+export const employeeFromApi = (employee: Entity): EmployeeRecord => ({
+  id: asString(employee.id),
+  name: asString(employee.name, "Funcionario"),
+  role: asString(employee.role, "Recepcionista"),
+  email: asString(employee.email, "funcionario@noogym.com"),
+  phone: asString(employee.phone, "+244 900 000 000"),
+  status: statusLabel(employee.status, { ACTIVE: "Ativo", INACTIVE: "Inativo", ON_LEAVE: "Licenca", TERMINATED: "Desligado" }),
+  salary: `${formatNumber(employee.salary)} Kz`
+});
+
+export const employeeToDto = (employee: Partial<EmployeeRecord>) => ({
+  name: employee.name ?? "Novo funcionario",
+  role: employee.role ?? "Recepcionista",
+  email: cleanEmail(employee.email),
+  phone: employee.phone,
+  salary: parseMoney(employee.salary),
+  status: employee.status === "Inativo" ? "INACTIVE" : "ACTIVE"
+});
+
+export const workoutFromApi = (workout: Entity): WorkoutRecord => ({
+  id: asString(workout.id),
+  name: asString(workout.name, "Treino"),
+  client: asString(getEntity(first<Entity>(workout.assignments)?.member)?.name, "Sem cliente"),
+  goal: asString(workout.goal, "Condicionamento"),
+  author: asString(getEntity(workout.createdBy)?.name, "Admin"),
+  updated: relativeDate(asDate(workout.updatedAt)),
+  status: statusLabel(workout.status, { ACTIVE: "Ativo", PAUSED: "Pausado", DRAFT: "Rascunho", ARCHIVED: "Arquivado" }),
+  exercises: Array.isArray(workout.exercises) ? workout.exercises.length : 0
+});
+
+export const workoutToDto = (workout: Partial<WorkoutRecord>) => ({
+  name: workout.name ?? "Novo treino",
+  goal: workout.goal,
+  status: workout.status === "Ativo" ? "ACTIVE" : workout.status === "Rascunho" ? "DRAFT" : "PAUSED",
+  durationMinutes: parseDuration(workout.updated) || 60
+});
+
+function paymentToFinanceRecord(payment: Entity): FinanceRecord {
+  return {
+    id: asString(payment.id),
+    kind: "Receita",
+    category: "Receitas",
+    value: asNumber(payment.amount),
+    date: relativeDate(asDate(payment.paidAt) ?? asDate(payment.createdAt)),
+    status: statusLabel(payment.status, { PAID: "Recebido", PENDING: "Pendente", FAILED: "Falhou", CANCELLED: "Cancelado", REFUNDED: "Reembolsado" }),
+    note: asString(payment.notes, asString(payment.reference, undefined))
+  };
+}
+
+function expenseToFinanceRecord(expense: Entity): FinanceRecord {
+  return {
+    id: asString(expense.id),
+    kind: "Despesa",
+    category: asString(expense.category, "Operacional"),
+    value: asNumber(expense.amount),
+    date: relativeDate(asDate(expense.paidAt) ?? asDate(expense.createdAt)),
+    status: statusLabel(expense.status, { PAID: "Pago", PENDING: "Pendente", FAILED: "Falhou", CANCELLED: "Cancelado", REFUNDED: "Reembolsado" }),
+    note: asString(expense.description, asString(expense.notes, undefined))
+  };
+}
+
+function financeRecordToPaymentDto(record: Partial<FinanceRecord>) {
+  return {
+    amount: record.value ?? 0,
+    method: paymentMethodValue(record.note),
+    status: record.status === "Pendente" ? "PENDING" : "PAID",
+    dueDate: dateToIso(record.date),
+    notes: record.note
+  };
+}
+
+function financeRecordToExpenseDto(record: Partial<FinanceRecord>) {
+  return {
+    category: record.category ?? "Operacional",
+    description: record.note ?? record.category ?? "Despesa",
+    amount: record.value ?? 0,
+    method: "OTHER",
+    status: record.status === "Pago" ? "PAID" : "PENDING",
+    paidAt: record.status === "Pago" ? dateToIso(record.date) : undefined,
+    dueDate: dateToIso(record.date),
+    supplier: record.note
+  };
+}
+
+function asString(value: unknown, fallback = ""): string {
+  return typeof value === "string" && value.trim() ? value : fallback;
+}
+
+function asNumber(value: unknown, fallback = 0) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function asBoolean(value: unknown) {
+  return value === true;
+}
+
+function asDate(value: unknown) {
+  if (!value) return null;
+  const date = new Date(String(value));
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function first<T extends Entity>(value: unknown): T | undefined {
+  return Array.isArray(value) ? getEntity(value[0]) as T | undefined : undefined;
+}
+
+function getEntity(value: unknown) {
+  return value && typeof value === "object" ? value as Entity : undefined;
+}
+
+function initials(value: string) {
+  return value.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase();
+}
+
+function statusLabel(value: unknown, labels: Record<string, string>) {
+  return labels[String(value)] ?? String(value ?? "");
+}
+
+function formatDate(date: Date | null) {
+  if (!date) return "Sem vencimento";
+  return new Intl.DateTimeFormat("pt-AO").format(date);
+}
+
+function formatBirthday(date: Date | null) {
+  if (!date) return "Sem data";
+  return new Intl.DateTimeFormat("pt-AO", { day: "2-digit", month: "short" }).format(date);
+}
+
+function relativeDate(date: Date | null) {
+  if (!date) return "Hoje";
+  const today = new Date();
+  const sameDay = today.toDateString() === date.toDateString();
+  const time = new Intl.DateTimeFormat("pt-AO", { hour: "2-digit", minute: "2-digit" }).format(date);
+  return sameDay ? `Hoje, ${time}` : `${formatDate(date)}, ${time}`;
+}
+
+function parseMoney(value: unknown) {
+  if (typeof value === "number") return value;
+  const normalized = String(value ?? "0").replace(/[^\d,.-]/g, "").replace(/\./g, "").replace(",", ".");
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function formatNumber(value: unknown) {
+  return asNumber(value).toLocaleString("pt-AO");
+}
+
+function durationDays(value: unknown) {
+  const text = String(value ?? "").toLowerCase();
+  if (text.includes("anual")) return 365;
+  if (text.includes("semestral")) return 180;
+  if (text.includes("trimestral")) return 90;
+  return 30;
+}
+
+function durationLabel(days: number) {
+  if (days >= 365) return "Anual";
+  if (days >= 180) return "Semestral";
+  if (days >= 90) return "Trimestral";
+  return "Mensal";
+}
+
+function parseDuration(value: unknown) {
+  const parsed = Number(String(value ?? "").match(/\d+/)?.[0] ?? 0);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 55;
+}
+
+function methodLabel(value: unknown) {
+  const labels: Record<string, string> = { QR_CODE: "QR Code", MANUAL: "Manual", BIOMETRIC: "Biometria", APP: "App", NFC: "NFC" };
+  return labels[String(value)] ?? "Manual";
+}
+
+function methodValue(value: unknown) {
+  const text = String(value ?? "").toLowerCase();
+  if (text.includes("qr")) return "QR_CODE";
+  if (text.includes("bio")) return "BIOMETRIC";
+  if (text.includes("app")) return "APP";
+  if (text.includes("nfc")) return "NFC";
+  return "MANUAL";
+}
+
+function saleTypeLabel(value: unknown) {
+  const labels: Record<string, string> = { NORMAL: "Venda normal", QUOTE: "Orcamento", SUBSCRIPTION: "Plano", SERVICE: "Servico" };
+  return labels[String(value)] ?? "Venda normal";
+}
+
+function paymentMethodLabel(value: unknown) {
+  const labels: Record<string, string> = {
+    CASH: "Dinheiro",
+    BANK_TRANSFER: "Transferencia",
+    CARD: "Cartao",
+    MULTICAIXA: "Multicaixa",
+    PIX: "PIX",
+    DIRECT_DEBIT: "Debito direto",
+    OTHER: "Outro"
+  };
+  return labels[String(value)] ?? "Dinheiro";
+}
+
+function paymentMethodValue(value: unknown) {
+  const text = String(value ?? "").toLowerCase();
+  if (text.includes("transfer")) return "BANK_TRANSFER";
+  if (text.includes("cart")) return "CARD";
+  if (text.includes("multi")) return "MULTICAIXA";
+  if (text.includes("pix")) return "PIX";
+  if (text.includes("debito")) return "DIRECT_DEBIT";
+  if (text.includes("dinheiro")) return "CASH";
+  return "OTHER";
+}
+
+function cleanEmail(value: unknown) {
+  const email = asString(value, "");
+  return email.includes("@") ? email : undefined;
+}
+
+function dateToIso(value: unknown) {
+  const date = asDate(value) ?? new Date();
+  return date.toISOString();
+}
