@@ -12,7 +12,7 @@ export function ReportChartCard({ section, factor = 1, showComparison = true }: 
 
   return (
     <>
-      <Card className={`min-h-[260px] p-4 ${span}`}>
+      <Card className={`min-h-[260px] overflow-hidden p-4 ${span}`}>
         <div className="mb-4 flex items-center justify-between gap-3">
           <h2 className="min-w-0 truncate font-semibold">{section.title}</h2>
           {"control" in section && section.control ? (
@@ -65,8 +65,8 @@ function LineVisual({ series, factor, showComparison }: { series: ReportSeries; 
   const area = `0,96 ${points.join(" ")} 100,96`;
 
   return (
-    <div className="h-56">
-      <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="h-full w-full">
+    <div className="min-w-0 overflow-hidden">
+      <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="block h-56 w-full">
         {[20, 40, 60, 80].map((y) => <line key={y} x1="0" x2="100" y1={y} y2={y} stroke="rgba(255,255,255,.07)" strokeWidth=".35" />)}
         <polygon points={area} fill="rgba(182,255,0,.15)" />
         {comparePoints ? <polyline points={comparePoints.join(" ")} fill="none" stroke="rgba(160,170,170,.55)" strokeDasharray="4 4" strokeWidth="1.5" vectorEffect="non-scaling-stroke" /> : null}
@@ -77,9 +77,9 @@ function LineVisual({ series, factor, showComparison }: { series: ReportSeries; 
         })}
       </svg>
       <div className="mt-2 grid grid-flow-col text-center text-xs text-zinc-400">
-        {series.labels.map((label) => <span key={label}>{label}</span>)}
+        {series.labels.map((label) => <span key={label} className="min-w-0 truncate px-0.5">{label}</span>)}
       </div>
-      <div className="mt-3 flex justify-center gap-6 text-xs text-zinc-400">
+      <div className="mt-3 flex flex-wrap justify-center gap-x-6 gap-y-2 text-xs text-zinc-400">
         <span className="inline-flex items-center gap-2"><span className="h-0.5 w-8 bg-noogym-lime" />01/05 - 15/05/2024</span>
         {series.compare ? <span className="inline-flex items-center gap-2"><span className="h-0 w-8 border-t border-dashed border-zinc-500" />16/04 - 30/04/2024</span> : null}
       </div>
@@ -91,12 +91,12 @@ function BarVisual({ series, factor }: { series: ReportSeries; factor: number })
   const values = series.values.map((value) => Math.round(value * factor));
   const max = Math.max(...values, 1);
   return (
-    <div className="flex h-56 items-end gap-4 px-3 pt-3">
+    <div className="flex h-56 min-w-0 items-end gap-2 px-1 pt-3 sm:gap-4 sm:px-3">
       {values.map((value, index) => (
         <div key={series.labels[index]} className="flex min-w-0 flex-1 flex-col items-center gap-2">
           <span className="text-xs text-zinc-100">{value}</span>
           <div className="w-full max-w-9 rounded-t bg-gradient-to-t from-[#6f9700] to-noogym-lime shadow-glow" style={{ height: `${Math.max(18, (value / max) * 150)}px` }} />
-          <span className="text-xs text-zinc-400">{series.labels[index]}</span>
+          <span className="max-w-full truncate text-xs text-zinc-400">{series.labels[index]}</span>
         </div>
       ))}
     </div>
@@ -107,8 +107,8 @@ function DonutVisual({ center, items }: { center: string; items: DonutItem[] }) 
   let offset = 25;
   const total = items.reduce((sum, item) => sum + item.value, 0);
   return (
-    <div className="flex h-full items-center gap-6">
-      <div className="relative h-40 w-40 shrink-0">
+    <div className="flex min-w-0 flex-col items-center gap-5 sm:flex-row sm:items-center sm:gap-6">
+      <div className="relative h-32 w-32 shrink-0 sm:h-40 sm:w-40">
         <svg viewBox="0 0 42 42" className="-rotate-90">
           <circle cx="21" cy="21" r="15.9" fill="transparent" stroke="rgba(255,255,255,.08)" strokeWidth="6" />
           {items.map((item) => {
@@ -123,7 +123,7 @@ function DonutVisual({ center, items }: { center: string; items: DonutItem[] }) 
           <span className="text-xs text-zinc-400">Total</span>
         </div>
       </div>
-      <div className="min-w-0 flex-1 space-y-3 text-sm">
+      <div className="w-full min-w-0 flex-1 space-y-3 text-sm">
         {items.map((item) => (
           <div key={item.label} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
             <span className="flex min-w-0 items-center gap-2 text-zinc-200">
@@ -169,7 +169,7 @@ function HorizontalBars({ labels, values, suffix = "" }: { labels: string[]; val
   return (
     <div className="space-y-4 py-3">
       {labels.map((label, index) => (
-        <div key={label} className="grid grid-cols-[150px_1fr_52px] items-center gap-3 text-sm">
+        <div key={label} className="grid grid-cols-[minmax(96px,150px)_minmax(0,1fr)_52px] items-center gap-3 text-sm">
           <span className="truncate text-zinc-300">{label}</span>
           <span className="h-7 rounded bg-white/[0.035]"><span className="block h-full rounded bg-gradient-to-r from-[#6f9700] to-noogym-lime" style={{ width: `${(values[index] / max) * 100}%` }} /></span>
           <span className="text-right text-zinc-100">{Math.round(values[index])}{suffix}</span>
@@ -197,7 +197,7 @@ function Funnel({ section }: { section: Extract<ReportSection, { type: "funnel" 
   return (
     <div className="space-y-3">
       {section.items.map((item) => (
-        <div key={item.label} className="grid grid-cols-[1fr_64px] items-center gap-4 text-sm">
+        <div key={item.label} className="grid grid-cols-[minmax(0,1fr)_64px] items-center gap-4 text-sm">
           <span className="rounded bg-white/[0.06] px-3 py-2 text-zinc-200" style={{ width: `${item.percent}%` }}>{item.label}</span>
           <span className="text-right text-zinc-100">{item.value}</span>
         </div>

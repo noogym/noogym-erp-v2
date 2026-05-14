@@ -30,14 +30,14 @@ export default function Dashboard() {
   ].slice(0, 5);
 
   return (
-    <div className="page-grid">
-      <div className="panel p-6">
-        <div className="mb-5 flex items-center justify-between">
-          <h1 className="text-3xl font-semibold">Dashboard</h1>
-          <Button icon={<Calendar className="h-4 w-4" />}>08 de Maio de 2026</Button>
+    <div className="page-grid dashboard-page-grid">
+      <div className="panel min-w-0 p-4 sm:p-5 lg:p-6">
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+          <h1 className="text-2xl font-semibold sm:text-3xl">Dashboard</h1>
+          <Button className="shrink-0" icon={<Calendar className="h-4 w-4" />}>08 de Maio de 2026</Button>
         </div>
 
-        <div className="grid grid-cols-5 gap-4">
+        <div className="dashboard-metric-grid">
           <MetricCard title="Check-ins hoje" value={String(todayCount)} change="+ 18% vs ontem" icon={<ClipboardCheck className="h-5 w-5" />} />
           <MetricCard title="Clientes ativos" value="1.248" change="+ 12% vs mês passado" icon={<UsersRound className="h-5 w-5" />} tone="yellow" />
           <MetricCard title="Receita hoje" value="245.000 Kz" change="+ 22% vs ontem" icon={<CreditCard className="h-5 w-5" />} tone="yellow" />
@@ -45,21 +45,21 @@ export default function Dashboard() {
           <MetricCard title="Aulas hoje" value="8" change="Próxima: 17:00" icon={<Calendar className="h-5 w-5" />} tone="purple" />
         </div>
 
-        <div className="mt-4 grid grid-cols-[1.35fr_.9fr] gap-4">
-          <Card className="p-4">
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="font-semibold">Check-ins nos últimos 7 dias</h2>
-              <Button className="h-8 px-3">Últimos 7 dias</Button>
+        <div className="dashboard-chart-grid mt-4">
+          <Card className="min-h-[280px] p-4">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <h2 className="min-w-0 font-semibold">Check-ins nos últimos 7 dias</h2>
+              <Button className="h-8 shrink-0 px-3">Últimos 7 dias</Button>
             </div>
             <LineChart values={chart7} labels={["Qui", "Sex", "Sáb", "Dom", "Seg", "Ter", "Hoje"]} />
           </Card>
-          <Card className="p-4">
+          <Card className="min-h-[280px] p-4">
             <h2 className="mb-4 font-semibold">Distribuição de planos</h2>
             <DonutChart center="982" items={[{ label: "Musculação", value: 45, color: "#B6FF00" }, { label: "Premium", value: 30, color: "#FACC15" }, { label: "Funcional", value: 15, color: "#F97316" }, { label: "Aulas", value: 10, color: "#A78BFA" }]} />
           </Card>
         </div>
 
-        <div className="mt-4 grid grid-cols-[.9fr_1.1fr] gap-4">
+        <div className="dashboard-lists-grid mt-4">
           <Card className="p-4">
             <h2 className="mb-3 font-semibold">Atividades recentes</h2>
             <div className="space-y-3">
@@ -77,11 +77,11 @@ export default function Dashboard() {
             <div className="mb-3 flex items-center justify-between"><h2 className="font-semibold">Clientes ativos</h2><button className="text-xs text-noogym-lime" onClick={() => setRoute("clientes")}>Ver todos</button></div>
             <div className="space-y-3">
               {clients.slice(0, 5).map((client, index) => (
-                <div key={client.id} className="flex items-center gap-3 border-b border-white/[0.07] pb-3 last:border-0">
+                <div key={client.id} className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 border-b border-white/[0.07] pb-3 last:border-0 sm:grid-cols-[auto_minmax(0,1fr)_auto_auto_auto]">
                   <Avatar label={client.avatar ?? "CL"} />
-                  <p className="flex-1 text-sm">{client.name}</p>
+                  <p className="min-w-0 truncate text-sm">{client.name}</p>
                   <Badge tone={badgeTone(client.planTone)}>{client.plan.replace(" Mensal", "")}</Badge>
-                  <p className="text-xs text-zinc-400">Último check-in: {client.lastCheckin}</p>
+                  <p className="col-span-2 text-xs text-zinc-400 sm:col-span-1 sm:text-right">Último check-in: {client.lastCheckin}</p>
                   <CheckCircle2 className={`h-5 w-5 ${index === 4 ? "text-zinc-300" : "text-noogym-lime"}`} />
                 </div>
               ))}
@@ -90,7 +90,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <aside className="space-y-3">
+      <aside className="dashboard-side">
         <Card className="p-4">
           <h2 className="mb-4 text-lg font-semibold">Check-in rápido</h2>
           <Input placeholder="Buscar cliente (nome, telefone ou ID)" />

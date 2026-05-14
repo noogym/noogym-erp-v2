@@ -103,6 +103,25 @@ select {
     grid-template-columns: minmax(0, 1fr) minmax(300px, 340px);
   }
 
+  .dashboard-metric-grid {
+    @apply grid gap-4;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr));
+  }
+
+  .dashboard-chart-grid {
+    @apply grid gap-4;
+    grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.9fr);
+  }
+
+  .dashboard-lists-grid {
+    @apply grid gap-4;
+    grid-template-columns: minmax(0, 0.9fr) minmax(360px, 1.1fr);
+  }
+
+  .dashboard-side {
+    @apply grid content-start gap-3;
+  }
+
   .finance-kpi-grid {
     @apply grid gap-3;
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 172px), 1fr));
@@ -245,6 +264,16 @@ select {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .dashboard-chart-grid,
+  .dashboard-lists-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dashboard-side {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+
   .finance-grid-wide,
   .finance-grid-table {
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
@@ -294,10 +323,17 @@ select {
   }
 
   .finance-kpi-grid,
+  .dashboard-metric-grid,
+  .dashboard-chart-grid,
+  .dashboard-lists-grid,
   .finance-grid-2,
   .finance-grid-3,
   .finance-grid-wide,
   .finance-grid-table {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dashboard-side {
     grid-template-columns: minmax(0, 1fr);
   }
 

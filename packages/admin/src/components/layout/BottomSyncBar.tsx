@@ -9,7 +9,7 @@ export function BottomSyncBar() {
   const syncNow = useAppStore((state) => state.syncNow);
 
   return (
-    <footer className="hidden h-[92px] shrink-0 items-center gap-5 overflow-x-auto border-t border-white/10 bg-noogym-panel/95 px-4 lg:flex 2xl:gap-7 2xl:px-6">
+    <footer className="hidden h-[92px] shrink-0 items-center gap-5 overflow-x-auto border-t border-white/10 bg-noogym-panel/95 px-4 xl:flex 2xl:gap-7 2xl:px-6">
       <div className="flex items-center gap-4 border-r border-white/10 pr-7 text-sm">
         <span className="text-zinc-300">Versao 1.0.0</span>
         <span className="rounded border border-noogym-lime/30 bg-noogym-lime/10 px-3 py-1 text-noogym-lime">
