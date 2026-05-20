@@ -15,9 +15,9 @@ export class AuditLogsService {
       ...(query.search
         ? {
             OR: [
-              { action: { contains: query.search, mode: 'insensitive' } },
-              { entity: { contains: query.search, mode: 'insensitive' } },
-              { entityId: { contains: query.search, mode: 'insensitive' } },
+              { action: { contains: query.search } },
+              { entity: { contains: query.search } },
+              { entityId: { contains: query.search } },
             ],
           }
         : {}),

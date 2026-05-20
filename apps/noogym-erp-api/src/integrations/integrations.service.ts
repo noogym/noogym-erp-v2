@@ -21,8 +21,8 @@ export class IntegrationsService {
       ...(query.search
         ? {
             OR: [
-              { provider: { contains: query.search, mode: 'insensitive' } },
-              { name: { contains: query.search, mode: 'insensitive' } },
+              { provider: { contains: query.search } },
+              { name: { contains: query.search } },
             ],
           }
         : {}),

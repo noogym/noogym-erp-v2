@@ -27,7 +27,7 @@ export class SubscriptionsService {
           }
         : {}),
       ...(query.search
-        ? { member: { name: { contains: query.search, mode: 'insensitive' } } }
+        ? { member: { name: { contains: query.search } } }
         : {}),
     };
     const [items, total] = await this.prisma.$transaction([

@@ -26,10 +26,10 @@ export class PaymentsService {
       ...(query.search
         ? {
             OR: [
-              { reference: { contains: query.search, mode: 'insensitive' } },
+              { reference: { contains: query.search } },
               {
                 member: {
-                  name: { contains: query.search, mode: 'insensitive' },
+                  name: { contains: query.search },
                 },
               },
             ],

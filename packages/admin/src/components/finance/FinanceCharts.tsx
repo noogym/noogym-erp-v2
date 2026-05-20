@@ -109,7 +109,12 @@ export function GroupedBarChart({
 
 export function DonutChart({ items, center, size = "md" }: { items: FinanceSlice[]; center?: string; size?: "sm" | "md" }) {
   let offset = 25;
-  const total = items.reduce((sum, item) => sum + item.value, 0);
+  const chartItems = items.map((item) => ({
+    ...item,
+    value: Number.isFinite(item.value) && item.value > 0 ? item.value : 0
+  }));
+  const total = chartItems.reduce((sum, item) => sum + item.value, 0);
+  const hasSlices = total > 0;
   const box = size === "sm" ? "h-32 w-32" : "h-40 w-40";
 
   return (
@@ -117,7 +122,7 @@ export function DonutChart({ items, center, size = "md" }: { items: FinanceSlice
       <div className={`relative shrink-0 ${box}`}>
         <svg viewBox="0 0 42 42" className="-rotate-90">
           <circle cx="21" cy="21" r="15.9" fill="transparent" stroke="rgba(255,255,255,.08)" strokeWidth="6" />
-          {items.map((item) => {
+          {hasSlices ? chartItems.map((item) => {
             const dash = (item.value / total) * 100;
             const circle = (
               <circle
@@ -134,7 +139,7 @@ export function DonutChart({ items, center, size = "md" }: { items: FinanceSlice
             );
             offset -= dash;
             return circle;
-          })}
+          }) : null}
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
           <span className="max-w-[92px] text-lg font-semibold leading-tight">{center ?? total.toLocaleString("pt-AO")}</span>
@@ -142,7 +147,7 @@ export function DonutChart({ items, center, size = "md" }: { items: FinanceSlice
         </div>
       </div>
       <div className="w-full min-w-0 flex-1 space-y-3 text-sm">
-        {items.map((item) => (
+        {chartItems.map((item) => (
           <div key={item.label} className="flex items-start justify-between gap-4">
             <span className="flex min-w-0 items-center gap-2 text-zinc-200">
               <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: item.color }} />
@@ -170,7 +175,7 @@ export function StackedBarChart({ series, labels }: { series: FinanceSeries[]; l
           <div key={label} className="flex min-w-0 flex-1 flex-col items-center gap-2">
             <div className="flex w-full max-w-8 flex-col-reverse overflow-hidden rounded-t" style={{ height: `${Math.max(24, (totals[index] / max) * 170)}px` }}>
               {series.map((item) => (
-                <span key={item.name} className="block w-full" style={{ height: `${(item.values[index] / totals[index]) * 100}%`, backgroundColor: item.color }} />
+                <span key={item.name} className="block w-full" style={{ height: `${totals[index] > 0 ? (item.values[index] / totals[index]) * 100 : 0}%`, backgroundColor: item.color }} />
               ))}
             </div>
             <span className="max-w-full truncate text-[11px] text-zinc-500">{label}</span>

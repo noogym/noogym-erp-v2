@@ -57,14 +57,19 @@ export function DonutChart({
   center?: string;
 }) {
   let offset = 25;
-  const total = items.reduce((sum, item) => sum + item.value, 0);
+  const chartItems = items.map((item) => ({
+    ...item,
+    value: Number.isFinite(item.value) && item.value > 0 ? item.value : 0
+  }));
+  const total = chartItems.reduce((sum, item) => sum + item.value, 0);
+  const hasSlices = total > 0;
 
   return (
     <div className="flex min-w-0 flex-col items-center gap-5 sm:flex-row sm:items-center sm:gap-6">
       <div className="relative h-32 w-32 shrink-0 sm:h-36 sm:w-36">
         <svg viewBox="0 0 42 42" className="-rotate-90">
           <circle cx="21" cy="21" r="15.9" fill="transparent" stroke="rgba(255,255,255,.08)" strokeWidth="6" />
-          {items.map((item) => {
+          {hasSlices ? chartItems.map((item) => {
             const dash = (item.value / total) * 100;
             const circle = (
               <circle
@@ -81,7 +86,7 @@ export function DonutChart({
             );
             offset -= dash;
             return circle;
-          })}
+          }) : null}
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
           <span className="text-xl font-semibold">{center ?? total}</span>
@@ -89,7 +94,7 @@ export function DonutChart({
         </div>
       </div>
       <div className="w-full min-w-0 flex-1 space-y-3 text-sm">
-        {items.map((item) => (
+        {chartItems.map((item) => (
           <div key={item.label} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
             <span className="flex min-w-0 items-center gap-2 text-zinc-200">
               <span className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: item.color }} />

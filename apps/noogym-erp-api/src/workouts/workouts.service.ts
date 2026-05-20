@@ -23,8 +23,8 @@ export class WorkoutsService {
       ...(query.search
         ? {
             OR: [
-              { name: { contains: query.search, mode: 'insensitive' } },
-              { goal: { contains: query.search, mode: 'insensitive' } },
+              { name: { contains: query.search } },
+              { goal: { contains: query.search } },
             ],
           }
         : {}),

@@ -27,7 +27,7 @@ export class CheckinsService {
           }
         : {}),
       ...(query.search
-        ? { member: { name: { contains: query.search, mode: 'insensitive' } } }
+        ? { member: { name: { contains: query.search } } }
         : {}),
     };
     const [items, total] = await this.prisma.$transaction([

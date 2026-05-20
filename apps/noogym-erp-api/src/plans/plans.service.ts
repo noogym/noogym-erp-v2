@@ -15,7 +15,7 @@ export class PlansService {
     const where: Prisma.PlanWhereInput = {
       organizationId,
       ...(query.search
-        ? { name: { contains: query.search, mode: 'insensitive' } }
+        ? { name: { contains: query.search } }
         : {}),
     };
     const [items, total] = await this.prisma.$transaction([

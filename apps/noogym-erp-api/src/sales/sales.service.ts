@@ -35,11 +35,11 @@ export class SalesService {
       ...(query.search
         ? {
             OR: [
-              { customerName: { contains: query.search, mode: 'insensitive' } },
-              { sellerName: { contains: query.search, mode: 'insensitive' } },
+              { customerName: { contains: query.search } },
+              { sellerName: { contains: query.search } },
               {
                 member: {
-                  name: { contains: query.search, mode: 'insensitive' },
+                  name: { contains: query.search },
                 },
               },
               {
@@ -47,7 +47,6 @@ export class SalesService {
                   some: {
                     productName: {
                       contains: query.search,
-                      mode: 'insensitive',
                     },
                   },
                 },
