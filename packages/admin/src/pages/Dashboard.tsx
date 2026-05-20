@@ -1,4 +1,4 @@
-import { Calendar, CheckCircle2, ClipboardCheck, CreditCard, Plus, QrCode, ShoppingCart, UsersRound } from "lucide-react";
+import { Calendar, CheckCircle2, ClipboardCheck, CreditCard, Fingerprint, Keyboard, Plus, QrCode, ShoppingCart, UsersRound } from "lucide-react";
 import { useState } from "react";
 import { ManualCheckinModal, QrScannerModal } from "../components/modals/OperationalModals";
 import { Avatar } from "../components/ui/Avatar";
@@ -9,25 +9,62 @@ import { DonutChart, LineChart } from "../components/ui/Charts";
 import { Input } from "@noogym/ui";
 import { MetricCard } from "@noogym/ui";
 import { Tabs } from "@noogym/ui";
+import { formatKz as money } from "@noogym/core";
 import { chart7, recentActivities } from "../data/mock";
 import { useAppStore } from "../store/appStore";
 import { useCheckinsStore } from "../store/checkinsStore";
+import { useClassesStore } from "../store/classesStore";
 import { useClientsStore } from "../store/clientsStore";
+import { usePlansStore } from "../store/plansStore";
+import { useProductsStore } from "../store/productsStore";
+import { toastSuccess } from "../store/toastStore";
 
 const badgeTone = (tone?: string) => (["lime", "yellow", "purple", "blue", "orange", "red", "gray", "green"].includes(tone ?? "") ? tone as "lime" | "yellow" | "purple" | "blue" | "orange" | "red" | "gray" | "green" : "lime");
 
+const quickServices = [
+  { name: "Avaliação física", price: "8.000 Kz", detail: "Sessão individual" },
+  { name: "Personal trainer", price: "12.000 Kz", detail: "Treino acompanhado" },
+  { name: "Plano alimentar", price: "10.000 Kz", detail: "Consulta nutricional" },
+  { name: "Massagem desportiva", price: "15.000 Kz", detail: "Recuperação muscular" }
+];
+
 export default function Dashboard() {
+  const [checkinTab, setCheckinTab] = useState("QR Code");
   const [tab, setTab] = useState("Planos");
   const [manualOpen, setManualOpen] = useState(false);
   const [qrOpen, setQrOpen] = useState(false);
   const setRoute = useAppStore((state) => state.setRoute);
   const clients = useClientsStore((state) => state.clients);
+  const classes = useClassesStore((state) => state.classes);
   const todayCount = useCheckinsStore((state) => state.todayCount);
   const checkins = useCheckinsStore((state) => state.checkins);
+  const plans = usePlansStore((state) => state.plans);
+  const products = useProductsStore((state) => state.products);
   const activities = [
     ...checkins.slice(0, 3).map((checkin) => ({ title: "Check-in realizado", subject: checkin.clientName, time: checkin.dateTime, amount: "" })),
     ...recentActivities
   ].slice(0, 5);
+  const quickSaleItems = tab === "Produtos"
+    ? products.slice(0, 5).map((product) => ({ name: product.name, price: money(product.price), detail: `${product.stock} un` }))
+    : tab === "Serviços"
+      ? quickServices
+      : tab === "Aulas"
+        ? classes.slice(0, 5).map((lesson) => ({ name: lesson.name, price: "3.000 Kz", detail: lesson.time }))
+        : plans.slice(0, 5).map((plan) => ({ name: plan.name, price: plan.price, detail: plan.duration }));
+
+  const handleQuickCheckin = () => {
+    if (checkinTab === "QR Code") {
+      setQrOpen(true);
+      return;
+    }
+
+    if (checkinTab === "Biometria") {
+      toastSuccess("Biometria iniciada", "Leitura biométrica simulada.");
+      return;
+    }
+
+    toastSuccess("Código validado", "Check-in por código simulado.");
+  };
 
   return (
     <div className="page-grid dashboard-page-grid">
@@ -94,13 +131,28 @@ export default function Dashboard() {
         <Card className="p-4">
           <h2 className="mb-4 text-lg font-semibold">Check-in rápido</h2>
           <Input placeholder="Buscar cliente (nome, telefone ou ID)" />
-          <Tabs tabs={["QR Code", "Biometria", "Código"]} active="QR Code" onChange={() => undefined} />
-          <div className="mt-4 flex h-44 flex-col items-center justify-center rounded-lg border border-white/10 bg-black/20 text-center text-zinc-400">
-            <QrCode className="mb-4 h-10 w-10 text-zinc-300" />
-            <p className="max-w-56 text-sm">Aponte a câmera para o QR Code do cliente para realizar o check-in.</p>
+          <Tabs tabs={["QR Code", "Biometria", "Código"]} active={checkinTab} onChange={setCheckinTab} />
+          <div className="mt-4 flex h-44 flex-col items-center justify-center rounded-lg border border-white/10 bg-black/20 p-4 text-center text-zinc-400">
+            {checkinTab === "Biometria" ? (
+              <>
+                <Fingerprint className="mb-4 h-10 w-10 text-zinc-300" />
+                <p className="max-w-56 text-sm">Encoste o dedo no leitor biométrico para identificar o cliente.</p>
+              </>
+            ) : checkinTab === "Código" ? (
+              <>
+                <Keyboard className="mb-4 h-10 w-10 text-zinc-300" />
+                <Input className="max-w-60 text-center" placeholder="Código do cliente" />
+                <p className="mt-3 max-w-56 text-xs">Digite o código do cliente para validar o acesso.</p>
+              </>
+            ) : (
+              <>
+                <QrCode className="mb-4 h-10 w-10 text-zinc-300" />
+                <p className="max-w-56 text-sm">Aponte a câmera para o QR Code do cliente para realizar o check-in.</p>
+              </>
+            )}
           </div>
           <div className="mt-3 grid grid-cols-2 gap-2">
-            <Button onClick={() => setQrOpen(true)}>Escanear QR Code</Button>
+            <Button onClick={handleQuickCheckin}>{checkinTab === "QR Code" ? "Escanear QR Code" : checkinTab === "Biometria" ? "Iniciar leitura" : "Validar código"}</Button>
             <Button onClick={() => setManualOpen(true)}>Check-in manual</Button>
           </div>
         </Card>
@@ -108,10 +160,14 @@ export default function Dashboard() {
           <h2 className="mb-4 text-lg font-semibold">Venda rápida (POS)</h2>
           <Tabs tabs={["Planos", "Produtos", "Serviços", "Aulas"]} active={tab} onChange={setTab} />
           <div className="mt-3 space-y-2">
-            {["Plano Musculação Mensal", "Plano Premium Mensal", "Plano Trimestral", "Plano Anual", "Aula Avulsa"].map((item, index) => (
-              <div key={item} className="flex items-center justify-between border-b border-white/[0.07] py-2 text-sm">
-                <span>{item}</span><span>{["25.000 Kz", "35.000 Kz", "60.000 Kz", "200.000 Kz", "3.000 Kz"][index]}</span>
-                <button className="rounded border border-noogym-lime/50 p-1 text-noogym-lime"><Plus className="h-4 w-4" /></button>
+            {quickSaleItems.map((item) => (
+              <div key={`${tab}-${item.name}`} className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 border-b border-white/[0.07] py-2 text-sm">
+                <span className="min-w-0 truncate">{item.name}</span>
+                <span className="text-right">{item.price}</span>
+                <button className="rounded border border-noogym-lime/50 p-1 text-noogym-lime" onClick={() => toastSuccess("Item adicionado", `${item.name} foi adicionado à venda rápida.`)}>
+                  <Plus className="h-4 w-4" />
+                </button>
+                {item.detail ? <span className="col-span-3 text-xs text-zinc-400">{item.detail}</span> : null}
               </div>
             ))}
           </div>

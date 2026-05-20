@@ -193,7 +193,7 @@ export const classToDto = (lesson: Partial<ClassRecord>) => ({
   durationMinutes: parseDuration(lesson.duration),
   capacity: lesson.seats ?? 25,
   participants: lesson.participants ?? 0,
-  status: lesson.status === "Encerrada" ? "COMPLETED" : lesson.status === "Em andamento" ? "IN_PROGRESS" : "SCHEDULED"
+  status: lesson.status === "Encerrada" ? "COMPLETED" : lesson.status === "Cancelada" ? "CANCELLED" : lesson.status === "Em andamento" ? "IN_PROGRESS" : "SCHEDULED"
 });
 
 export const employeeFromApi = (employee: Entity): EmployeeRecord => ({

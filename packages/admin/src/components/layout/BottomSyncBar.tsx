@@ -5,6 +5,7 @@ import { useAppStore } from "../../store/appStore";
 export function BottomSyncBar() {
   const pendingSync = useAppStore((state) => state.pendingSync);
   const onlineOnly = useAppStore((state) => state.onlineOnly);
+  const setRoute = useAppStore((state) => state.setRoute);
   const syncState = useAppStore((state) => state.syncState);
   const syncNow = useAppStore((state) => state.syncNow);
 
@@ -57,7 +58,7 @@ export function BottomSyncBar() {
       >
         {syncState === "syncing" ? "Sincronizando..." : "Sincronizar agora"}
       </Button>
-      <button className="no-drag icon-tile h-12 w-12">
+      <button className="no-drag icon-tile h-12 w-12" onClick={() => setRoute("configuracoes")} aria-label="Abrir configuracoes" title="Abrir configuracoes">
         <Settings className="h-5 w-5" />
       </button>
     </footer>
