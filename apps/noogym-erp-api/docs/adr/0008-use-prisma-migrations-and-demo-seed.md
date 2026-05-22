@@ -28,9 +28,9 @@ Manter `prisma/seed.ts` com dados iniciais para desenvolvimento:
 Scripts principais:
 
 ```bash
-npm run prisma:generate
-npm run prisma:migrate
-npm run prisma:seed
+pnpm prisma:generate
+pnpm prisma:migrate
+pnpm prisma:seed
 ```
 
 ## Consequencias
