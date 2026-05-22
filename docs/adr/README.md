@@ -1,6 +1,6 @@
 # Architecture Decision Records
 
-Este diretorio guarda as decisoes arquiteturais do Noogym Desktop.
+Este diretorio guarda as decisoes arquiteturais do Noogym Monorepo, incluindo o desktop Electron, o web-admin Next.js, os packages compartilhados e o backend `noogym-erp-api`.
 
 Formato usado:
 
@@ -23,3 +23,8 @@ ADRs atuais:
 - [0010 - Interface em portugues, moeda Kz e contexto Angola](0010-portuguese-angola-kz.md)
 - [0011 - Autenticacao preservada no shell principal](0011-auth-shell-separation.md)
 - [0012 - Sem APIs externas obrigatorias no MVP desktop](0012-no-required-external-apis.md)
+- [0013 - Backend ERP API com NestJS para web-admin e desktop](0013-nestjs-erp-api-for-clients.md)
+
+ADRs especificos do backend:
+
+- [apps/noogym-erp-api/docs/adr](../../apps/noogym-erp-api/docs/adr/README.md)

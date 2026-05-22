@@ -3,6 +3,7 @@ import { BarChart3, Calendar, Check, DollarSign, Eye, EyeOff, Lock, Mail, Phone,
 import { AuthInput } from "../../components/auth/AuthInput";
 import { AuthLayout } from "../../components/auth/AuthLayout";
 import { GoogleButton } from "../../components/auth/GoogleButton";
+import { useAppStore } from "../../store/appStore";
 import { useAuthStore } from "../../store/authStore";
 
 interface RegisterProps {
@@ -11,15 +12,21 @@ interface RegisterProps {
 
 interface RegisterErrors {
   name?: string;
+  gymName?: string;
   email?: string;
   password?: string;
   confirmPassword?: string;
   terms?: string;
+  form?: string;
 }
 
 export default function Register({ onNavigateToLogin }: RegisterProps) {
+  const onlineOnly = useAppStore((state) => state.onlineOnly);
+  const register = useAuthStore((state) => state.register);
   const registerMock = useAuthStore((state) => state.registerMock);
+  const isLoading = useAuthStore((state) => state.isLoading);
   const [name, setName] = useState("");
+  const [gymName, setGymName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -32,6 +39,7 @@ export default function Register({ onNavigateToLogin }: RegisterProps) {
   const validate = () => {
     const nextErrors: RegisterErrors = {};
     if (!name.trim()) nextErrors.name = "Informe seu nome.";
+    if (onlineOnly && !gymName.trim()) nextErrors.gymName = "Informe o nome do ginasio.";
     if (!email.trim()) nextErrors.email = "Informe o e-mail.";
     if (!password) nextErrors.password = "Informe a senha.";
     if (!confirmPassword) nextErrors.confirmPassword = "Confirme a senha.";
@@ -41,13 +49,31 @@ export default function Register({ onNavigateToLogin }: RegisterProps) {
     return Object.keys(nextErrors).length === 0;
   };
 
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!validate()) return;
-    registerMock(name);
+    try {
+      if (onlineOnly) {
+        await register({ name, email, password, phone, organizationName: gymName });
+        return;
+      }
+
+      registerMock(name);
+    } catch (error) {
+      setErrors({
+        form: error instanceof Error ? error.message : "Nao foi possivel criar a conta."
+      });
+    }
   };
 
-  const handleGoogleRegister = () => registerMock("Admin");
+  const handleGoogleRegister = () => {
+    if (onlineOnly) {
+      setErrors({ form: "Cadastro com Google ainda nao esta configurado na API." });
+      return;
+    }
+
+    registerMock("Admin");
+  };
 
   return (
     <AuthLayout
@@ -99,6 +125,15 @@ export default function Register({ onNavigateToLogin }: RegisterProps) {
             placeholder="Seu nome completo"
             autoComplete="name"
             onChange={(event) => setName(event.target.value)}
+          />
+          <AuthInput
+            label="Nome do ginasio"
+            icon={Users}
+            value={gymName}
+            error={errors.gymName}
+            placeholder="Noogym Fitness Center"
+            autoComplete="organization"
+            onChange={(event) => setGymName(event.target.value)}
           />
           <AuthInput
             label="Telefone (opcional)"
@@ -168,6 +203,8 @@ export default function Register({ onNavigateToLogin }: RegisterProps) {
           />
         </div>
 
+        {errors.form ? <p className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">{errors.form}</p> : null}
+
         <div className="mt-5 2xl:mt-8">
           <label className="flex items-start gap-3 text-sm leading-6 text-white 2xl:gap-4 2xl:text-base 2xl:leading-7">
             <button
@@ -190,9 +227,10 @@ export default function Register({ onNavigateToLogin }: RegisterProps) {
 
         <button
           type="submit"
+          disabled={isLoading}
           className="no-drag mt-6 h-12 w-full rounded-lg bg-noogym-lime text-base font-bold text-black shadow-glow transition hover:bg-noogym-lime2 sm:h-14 sm:text-lg 2xl:mt-9 2xl:h-[72px] 2xl:text-xl"
         >
-          Criar conta
+          {isLoading ? "A criar conta..." : "Criar conta"}
         </button>
 
         <div className="my-6 flex items-center gap-6 text-zinc-400 2xl:my-9">

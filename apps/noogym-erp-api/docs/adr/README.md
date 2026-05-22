@@ -1,0 +1,20 @@
+# Architecture Decision Records
+
+Este diretorio guarda as decisoes arquiteturais do backend Noogym ERP. O `noogym-erp-api` e a API NestJS que concentra as funcionalidades backend para o `web-admin` e para integracoes futuras do desktop.
+
+Cada ADR documenta uma decisao relevante, o contexto em que foi tomada e as consequencias esperadas. O objetivo e manter um historico claro para futuras mudancas tecnicas.
+
+## Indice
+
+- [ADR-0001: Usar NestJS modular para a API backend](./0001-use-nestjs-modular-backend.md)
+- [ADR-0002: Usar Prisma ORM com PostgreSQL](./0002-use-prisma-with-postgresql.md)
+- [ADR-0003: Implementar multi-tenancy por organizationId](./0003-use-organization-scoped-multitenancy.md)
+- [ADR-0004: Usar JWT com RBAC por UserRole](./0004-use-jwt-auth-and-role-based-access-control.md)
+- [ADR-0005: Expor API REST documentada com Swagger](./0005-use-rest-api-with-swagger-documentation.md)
+- [ADR-0006: Padronizar validacao, respostas e erros HTTP](./0006-standardize-validation-responses-and-errors.md)
+- [ADR-0007: Registrar auditoria automatica para operacoes de escrita](./0007-use-automatic-audit-logs-for-write-operations.md)
+- [ADR-0008: Versionar schema com Prisma migrations e seed demo](./0008-use-prisma-migrations-and-demo-seed.md)
+- [ADR-0009: Alinhar dominio operacional da API aos fluxos do admin](./0009-align-operational-domain-with-admin-flows.md)
+- [ADR-0010: Usar entrypoints modulares por cliente dentro da API unica](./0010-use-modular-client-entrypoints-in-single-api.md)
+- [ADR-0011: Adiar WSO2 API Manager como camada de governanca de APIs](./0011-defer-wso2-api-manager-as-edge-governance.md)
+- [ADR-0012: Tratar prontidao do banco de dados explicitamente](./0012-handle-database-readiness-explicitly.md)

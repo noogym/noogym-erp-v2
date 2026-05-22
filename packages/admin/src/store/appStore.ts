@@ -2,6 +2,11 @@ import { create } from "zustand";
 
 export type ThemeMode = "dark" | "light";
 
+export const MIN_ZOOM_FACTOR = 0.85;
+export const MAX_ZOOM_FACTOR = 1.25;
+export const ZOOM_STEP = 0.05;
+export const DEFAULT_ZOOM_FACTOR = 1;
+
 export type RouteId =
   | "dashboard"
   | "checkin"
@@ -26,10 +31,15 @@ interface AppState {
   syncState: SyncState;
   syncLabel: string;
   pendingSync: number;
+  zoomFactor: number;
   isStatusPanelCollapsed: boolean;
   addPendingSync: (amount?: number) => void;
   setRoute: (route: RouteId) => void;
   setOnlineOnly: (onlineOnly: boolean) => void;
+  decreaseZoom: () => void;
+  increaseZoom: () => void;
+  resetZoom: () => void;
+  setZoomFactor: (zoomFactor: number) => void;
   toggleStatusPanel: () => void;
   setTheme: (theme: ThemeMode) => void;
   toggleTheme: () => void;
@@ -42,6 +52,22 @@ const getInitialTheme = (): ThemeMode => {
   return localStorage.getItem("noogym:theme") === "light" ? "light" : "dark";
 };
 
+const clampZoomFactor = (zoomFactor: number) => {
+  const clamped = Math.min(MAX_ZOOM_FACTOR, Math.max(MIN_ZOOM_FACTOR, zoomFactor));
+  return Math.round(clamped * 100) / 100;
+};
+
+const getInitialZoomFactor = () => {
+  if (typeof window === "undefined") return DEFAULT_ZOOM_FACTOR;
+  const storedZoomFactor = Number(localStorage.getItem("noogym:desktop-zoom-factor"));
+  if (!Number.isFinite(storedZoomFactor)) return DEFAULT_ZOOM_FACTOR;
+  return clampZoomFactor(storedZoomFactor);
+};
+
+const persistZoomFactor = (zoomFactor: number) => {
+  localStorage.setItem("noogym:desktop-zoom-factor", String(zoomFactor));
+};
+
 export const useAppStore = create<AppState>((set) => ({
   activeRoute: "dashboard",
   theme: getInitialTheme(),
@@ -50,7 +76,8 @@ export const useAppStore = create<AppState>((set) => ({
   syncState: "idle",
   syncLabel: "Sincronizado: Hoje, 10:30",
   pendingSync: 12,
-  isStatusPanelCollapsed: false,
+  zoomFactor: getInitialZoomFactor(),
+  isStatusPanelCollapsed: true,
   addPendingSync: (amount = 1) => set((state) => ({ pendingSync: state.isOffline && !state.onlineOnly ? state.pendingSync + amount : state.pendingSync })),
   setRoute: (route) => set({ activeRoute: route }),
   setOnlineOnly: (onlineOnly) =>
@@ -60,6 +87,27 @@ export const useAppStore = create<AppState>((set) => ({
       pendingSync: onlineOnly ? 0 : state.pendingSync,
       syncLabel: onlineOnly ? "Online: sincronizado" : state.syncLabel
     })),
+  decreaseZoom: () =>
+    set((state) => {
+      const zoomFactor = clampZoomFactor(state.zoomFactor - ZOOM_STEP);
+      persistZoomFactor(zoomFactor);
+      return { zoomFactor };
+    }),
+  increaseZoom: () =>
+    set((state) => {
+      const zoomFactor = clampZoomFactor(state.zoomFactor + ZOOM_STEP);
+      persistZoomFactor(zoomFactor);
+      return { zoomFactor };
+    }),
+  resetZoom: () => {
+    persistZoomFactor(DEFAULT_ZOOM_FACTOR);
+    set({ zoomFactor: DEFAULT_ZOOM_FACTOR });
+  },
+  setZoomFactor: (nextZoomFactor) => {
+    const zoomFactor = clampZoomFactor(nextZoomFactor);
+    persistZoomFactor(zoomFactor);
+    set({ zoomFactor });
+  },
   toggleStatusPanel: () => set((state) => ({ isStatusPanelCollapsed: !state.isStatusPanelCollapsed })),
   setTheme: (theme) => {
     localStorage.setItem("noogym:theme", theme);

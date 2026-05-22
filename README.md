@@ -1,12 +1,13 @@
 # Noogym Monorepo
 
-Monorepo Turborepo para o Noogym, com duas aplicacoes wrapper e packages compartilhados. As telas administrativas vivem em `packages/admin` e sao consumidas pelo desktop Electron e pelo web-admin Next.js.
+Monorepo Turborepo para o Noogym, com wrappers desktop e web, packages compartilhados e o backend `noogym-erp-api`. As telas administrativas vivem em `packages/admin` e sao consumidas pelo desktop Electron e pelo web-admin Next.js. O `apps/noogym-erp-api` representa a API/backend NestJS que concentra as funcionalidades ERP para o web-admin e para integracoes futuras do desktop.
 
 ## Stack
 
 - Turborepo + pnpm workspaces
 - Desktop: Electron + React + TypeScript + Vite + Tailwind CSS
 - Web Admin: Next.js App Router + React + TypeScript + Tailwind CSS
+- Backend ERP API: NestJS + TypeScript + Prisma ORM + PostgreSQL + JWT + Swagger/OpenAPI
 - Packages compartilhados: admin, UI, core, types, config e data-access
 
 ## Estrutura
@@ -17,6 +18,8 @@ apps/
     Electron + React + Vite
   web-admin/
     Next.js App Router
+  noogym-erp-api/
+    NestJS REST API para o ERP Noogym
 packages/
   admin/
     telas, layout, stores, mocks e estilos administrativos compartilhados
@@ -59,6 +62,42 @@ Rotas iniciais:
 
 - `/login`
 - `/dashboard`
+
+## Rodar Backend ERP API
+
+O backend vive em `apps/noogym-erp-api` e e a API REST para gestao de ginasios, academias, membros, planos, assinaturas, pagamentos, despesas, check-ins, treinos, agenda, mensagens, relatorios, integracoes e auditoria.
+
+Configure `apps/noogym-erp-api/.env` com PostgreSQL e JWT:
+
+```env
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/noogym?schema=public"
+JWT_SECRET="change-me"
+JWT_EXPIRES_IN="1d"
+PORT=3000
+```
+
+Comandos a partir da raiz do monorepo:
+
+```bash
+pnpm --filter @noogym/noogym-erp-api prisma:generate
+pnpm --filter @noogym/noogym-erp-api prisma:migrate
+pnpm --filter @noogym/noogym-erp-api prisma:seed
+pnpm dev:noogym-erp-api
+```
+
+URLs principais:
+
+- API: `http://localhost:3000`
+- Swagger: `http://localhost:3000/docs`
+- Scalar API Reference: `http://localhost:3000/reference`
+- OpenAPI JSON: `http://localhost:3000/openapi.json`
+
+Credenciais demo criadas pelo seed:
+
+```text
+Email: admin@noogym.com
+Password: Noogym@123
+```
 
 ## Rodar Web Admin com Docker
 
@@ -125,6 +164,7 @@ Build separado:
 ```bash
 pnpm build:desktop
 pnpm build:web
+pnpm --filter @noogym/noogym-erp-api build
 ```
 
 ## Typecheck e Lint
@@ -147,6 +187,7 @@ pnpm lint
 
 - `apps/web-admin` consome `@noogym/admin` e nao importa Electron, IPC, SQLite, `fs`, `path` ou codigo especifico de `apps/desktop`.
 - `apps/desktop` consome `@noogym/admin` e continua isolado de Next.js.
+- `apps/noogym-erp-api` e o backend NestJS e nao importa UI React, Electron ou codigo de shell dos clientes.
 - `packages/admin` nao pertence ao desktop nem ao web-admin; ele e a superficie compartilhada das telas reais.
 - `packages/core` nao depende de React, Electron, Next.js, browser APIs ou banco de dados.
 - `packages/ui` nao depende de Electron.
@@ -157,4 +198,10 @@ O desktop e o wrapper Electron/Vite sobre `@noogym/admin`. Ele preserva o fluxo 
 
 ## Web Admin SaaS
 
-O `web-admin` e o wrapper Next.js sobre `@noogym/admin`, portanto expõe as mesmas telas da versao desktop. O adapter atual usa mocks, mas a fronteira continua preparada para REST API + cookies/session.
+O `web-admin` e o wrapper Next.js sobre `@noogym/admin`, portanto expoe as mesmas telas da versao desktop. O adapter atual usa mocks, mas a fronteira continua preparada para consumir o `noogym-erp-api` via REST API + cookies/session.
+
+## Backend ERP API
+
+O `noogym-erp-api` e o backend NestJS do Noogym ERP. Ele organiza a regra de negocio server-side em modulos de Auth, Organizations, Gyms, Users, Members, Plans, Subscriptions, Payments, Products, Sales, Employees, Classes, Expenses, Check-ins, Exercises, Workouts, Appointments, Messages, Reports, Integrations e Audit Logs.
+
+A API usa Prisma com PostgreSQL, autenticacao JWT, RBAC por `UserRole`, multi-tenancy por `organizationId`, validacao global de DTOs, respostas HTTP padronizadas, documentacao Swagger/Scalar e seed demo. O objetivo e servir o `web-admin` como backend SaaS e oferecer uma superficie de sincronizacao/integracao para o desktop quando os fluxos locais deixarem de ser apenas simulados.

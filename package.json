@@ -10,6 +10,12 @@
     "dev": "turbo dev",
     "dev:desktop": "turbo dev --filter=@noogym/desktop",
     "dev:web": "turbo dev --filter=@noogym/web-admin",
+    "dev:noogym-erp-api": "turbo dev --filter=@noogym/noogym-erp-api",
+    "cypress:open": "pnpm --filter @noogym/cypress open",
+    "cypress:install": "pnpm --filter @noogym/cypress install:binary",
+    "cypress:verify": "pnpm --filter @noogym/cypress verify",
+    "cypress:run": "pnpm --filter @noogym/cypress test",
+    "e2e": "turbo e2e",
     "build": "turbo build",
     "build:desktop": "turbo build --filter=@noogym/desktop",
     "build:web": "turbo build --filter=@noogym/web-admin",
@@ -21,5 +27,11 @@
   "devDependencies": {
     "turbo": "latest",
     "typescript": "^5.9.3"
+  },
+  "pnpm": {
+    "overrides": {
+      "postcss": "8.5.14",
+      "qs": "6.15.2"
+    }
   }
 }

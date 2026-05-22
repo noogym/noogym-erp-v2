@@ -6,5 +6,9 @@ contextBridge.exposeInMainWorld("noogym", {
     minimize: () => ipcRenderer.invoke("window:minimize"),
     maximize: () => ipcRenderer.invoke("window:maximize"),
     close: () => ipcRenderer.invoke("window:close")
+  },
+  zoomControls: {
+    getZoomFactor: () => ipcRenderer.invoke("window:zoom:get"),
+    setZoomFactor: (zoomFactor: number) => ipcRenderer.invoke("window:zoom:set", zoomFactor)
   }
 });
