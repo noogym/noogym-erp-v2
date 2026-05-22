@@ -83,6 +83,17 @@ export class CheckinsService {
       );
     }
 
+    if (dto.gymId) {
+      const gym = await this.prisma.gym.findFirst({
+        where: { id: dto.gymId, organizationId },
+        select: { id: true },
+      });
+
+      if (!gym) {
+        throw new NotFoundException('Gym not found');
+      }
+    }
+
     return this.prisma.checkIn.create({
       data: {
         organizationId,

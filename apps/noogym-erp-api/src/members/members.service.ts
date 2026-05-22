@@ -66,7 +66,9 @@ export class MembersService {
     return member;
   }
 
-  create(organizationId: string, dto: CreateMemberDto) {
+  async create(organizationId: string, dto: CreateMemberDto) {
+    await this.ensureGym(organizationId, dto.gymId);
+
     return this.prisma.member.create({
       data: {
         ...dto,
@@ -77,6 +79,7 @@ export class MembersService {
 
   async update(organizationId: string, id: string, dto: UpdateMemberDto) {
     await this.ensureExists(organizationId, id);
+    await this.ensureGym(organizationId, dto.gymId);
 
     return this.prisma.member.update({
       where: { id },
@@ -98,6 +101,19 @@ export class MembersService {
 
     if (!exists) {
       throw new NotFoundException('Member not found');
+    }
+  }
+
+  private async ensureGym(organizationId: string, gymId?: string) {
+    if (!gymId) return;
+
+    const gym = await this.prisma.gym.findFirst({
+      where: { id: gymId, organizationId },
+      select: { id: true },
+    });
+
+    if (!gym) {
+      throw new NotFoundException('Gym not found');
     }
   }
 }

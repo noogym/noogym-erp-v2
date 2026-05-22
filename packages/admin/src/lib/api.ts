@@ -9,6 +9,7 @@ type ApiEnvelope<T> =
       success: false;
       error?: {
         message?: string | string[];
+        code?: string;
       };
     };
 
@@ -51,7 +52,8 @@ export interface PaginatedResponse<T> {
 export class ApiError extends Error {
   constructor(
     message: string,
-    readonly status?: number
+    readonly status?: number,
+    readonly code?: string
   ) {
     super(message);
     this.name = "ApiError";
@@ -92,14 +94,24 @@ export const apiRequest = async <T>(
     token?: string;
   } = {}
 ) => {
-  const response = await fetch(`${apiBaseUrl()}${path}`, {
-    method: options.method ?? "GET",
-    headers: {
-      "Content-Type": "application/json",
-      ...(options.token ? { Authorization: `Bearer ${options.token}` } : {})
-    },
-    body: options.body === undefined ? undefined : JSON.stringify(options.body)
-  });
+  let response: Response;
+
+  try {
+    response = await fetch(`${apiBaseUrl()}${path}`, {
+      method: options.method ?? "GET",
+      headers: {
+        "Content-Type": "application/json",
+        ...(options.token ? { Authorization: `Bearer ${options.token}` } : {})
+      },
+      body: options.body === undefined ? undefined : JSON.stringify(options.body)
+    });
+  } catch {
+    throw new ApiError(
+      "Nao foi possivel conectar ao servidor. Confirme se a API esta online e tente novamente em instantes.",
+      undefined,
+      "API_UNREACHABLE"
+    );
+  }
 
   let payload: ApiEnvelope<T> | null = null;
 
@@ -110,17 +122,27 @@ export const apiRequest = async <T>(
   }
 
   if (!response.ok || !payload?.success) {
-    throw new ApiError(resolveApiMessage(payload) ?? "Nao foi possivel comunicar com a API.", response.status);
+    const code = resolveApiCode(payload);
+    throw new ApiError(resolveApiMessage(payload, response.status, code), response.status, code);
   }
 
   return payload.data;
 };
 
-const resolveApiMessage = <T>(payload: ApiEnvelope<T> | null) => {
-  if (!payload || payload.success) return null;
+const resolveApiMessage = <T>(payload: ApiEnvelope<T> | null, status?: number, code?: string) => {
+  if (status === 503 || code === "DATABASE_UNAVAILABLE") {
+    return "O sistema ainda esta a iniciar. Tente novamente em alguns segundos.";
+  }
+
+  if (!payload || payload.success) return "Nao foi possivel comunicar com a API.";
   const message = payload.error?.message;
   if (Array.isArray(message)) return message.join(" ");
-  return message ?? null;
+  return message ?? "Nao foi possivel comunicar com a API.";
+};
+
+const resolveApiCode = <T>(payload: ApiEnvelope<T> | null) => {
+  if (!payload || payload.success) return undefined;
+  return payload.error?.code;
 };
 
 const readEnv = () => {
