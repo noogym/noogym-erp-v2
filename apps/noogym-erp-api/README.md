@@ -61,7 +61,7 @@ As principais decisoes arquiteturais estao documentadas em [docs/adr](./docs/adr
 ## Requisitos
 
 - Node.js 18+
-- npm
+- pnpm
 - PostgreSQL
 
 ## Configuracao
@@ -78,7 +78,7 @@ PORT=3000
 ## Instalacao
 
 ```bash
-npm install
+pnpm install
 ```
 
 ## Prisma
@@ -86,19 +86,19 @@ npm install
 Gerar Prisma Client:
 
 ```bash
-npm run prisma:generate
+pnpm prisma:generate
 ```
 
 Aplicar migrations no PostgreSQL:
 
 ```bash
-npm run prisma:migrate
+pnpm prisma:migrate
 ```
 
 Executar seed demo:
 
 ```bash
-npm run prisma:seed
+pnpm prisma:seed
 ```
 
 Credenciais demo criadas pelo seed:
@@ -113,14 +113,14 @@ Password: Noogym@123
 Desenvolvimento:
 
 ```bash
-npm run start:dev
+pnpm start:dev
 ```
 
 Producao:
 
 ```bash
-npm run build
-npm run start:prod
+pnpm build
+pnpm start:prod
 ```
 
 API:
@@ -150,15 +150,15 @@ http://localhost:3000/openapi.json
 ## Scripts
 
 ```bash
-npm run build
-npm run format
-npm run lint
-npm run test
-npm run test:e2e
-npm run test:cov
-npm run prisma:generate
-npm run prisma:migrate
-npm run prisma:seed
+pnpm build
+pnpm format
+pnpm lint
+pnpm test
+pnpm test:e2e
+pnpm test:cov
+pnpm prisma:generate
+pnpm prisma:migrate
+pnpm prisma:seed
 ```
 
 ## Autenticacao
@@ -378,7 +378,7 @@ GET /payments?page=1&limit=10&status=PAID&method=CASH&startDate=2026-04-01&endDa
 ## Testes
 
 ```bash
-npm run test
+pnpm test
 ```
 
 Testes unitarios cobrem atualmente:
@@ -392,5 +392,5 @@ Testes unitarios cobrem atualmente:
 Build:
 
 ```bash
-npm run build
+pnpm build
 ```

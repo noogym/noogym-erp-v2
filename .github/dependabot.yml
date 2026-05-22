@@ -2,132 +2,18 @@ version: 2
 
 updates:
   - package-ecosystem: npm
-    directory: /
+    directories:
+      - /
+      - /apps/*
+      - /packages/*
     schedule:
       interval: weekly
       day: monday
       time: "08:00"
       timezone: Africa/Luanda
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 3
     groups:
       noogym-npm:
-        patterns:
-          - "*"
-
-  - package-ecosystem: npm
-    directory: /apps/noogym-erp-api
-    schedule:
-      interval: weekly
-      day: monday
-      time: "08:10"
-      timezone: Africa/Luanda
-    open-pull-requests-limit: 10
-    groups:
-      noogym-api:
-        patterns:
-          - "*"
-
-  - package-ecosystem: npm
-    directory: /apps/web-admin
-    schedule:
-      interval: weekly
-      day: monday
-      time: "08:20"
-      timezone: Africa/Luanda
-    open-pull-requests-limit: 10
-    groups:
-      noogym-web-admin:
-        patterns:
-          - "*"
-
-  - package-ecosystem: npm
-    directory: /apps/desktop
-    schedule:
-      interval: weekly
-      day: monday
-      time: "08:30"
-      timezone: Africa/Luanda
-    open-pull-requests-limit: 10
-    groups:
-      noogym-desktop:
-        patterns:
-          - "*"
-
-  - package-ecosystem: npm
-    directory: /apps/cypress
-    schedule:
-      interval: weekly
-      day: monday
-      time: "08:35"
-      timezone: Africa/Luanda
-    open-pull-requests-limit: 5
-    groups:
-      noogym-cypress:
-        patterns:
-          - "*"
-
-  - package-ecosystem: npm
-    directory: /packages/admin
-    schedule:
-      interval: weekly
-      day: monday
-      time: "08:36"
-      timezone: Africa/Luanda
-    open-pull-requests-limit: 5
-    groups:
-      noogym-package-admin:
-        patterns:
-          - "*"
-
-  - package-ecosystem: npm
-    directory: /packages/core
-    schedule:
-      interval: weekly
-      day: monday
-      time: "08:37"
-      timezone: Africa/Luanda
-    open-pull-requests-limit: 5
-    groups:
-      noogym-package-core:
-        patterns:
-          - "*"
-
-  - package-ecosystem: npm
-    directory: /packages/data-access
-    schedule:
-      interval: weekly
-      day: monday
-      time: "08:38"
-      timezone: Africa/Luanda
-    open-pull-requests-limit: 5
-    groups:
-      noogym-package-data-access:
-        patterns:
-          - "*"
-
-  - package-ecosystem: npm
-    directory: /packages/types
-    schedule:
-      interval: weekly
-      day: monday
-      time: "08:39"
-      timezone: Africa/Luanda
-    open-pull-requests-limit: 5
-    groups:
-      noogym-package-types:
-        patterns:
-          - "*"
-
-  - package-ecosystem: npm
-    directory: /packages/ui
-    schedule:
-      interval: weekly
-      day: monday
-      time: "08:40"
-      timezone: Africa/Luanda
-    open-pull-requests-limit: 5
-    groups:
-      noogym-package-ui:
         patterns:
           - "*"
 
@@ -136,15 +22,19 @@ updates:
     schedule:
       interval: weekly
       day: monday
-      time: "08:45"
+      time: "08:30"
       timezone: Africa/Luanda
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 1
 
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
       day: monday
-      time: "08:55"
+      time: "08:45"
       timezone: Africa/Luanda
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 2
+    groups:
+      github-actions:
+        patterns:
+          - "*"

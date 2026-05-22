@@ -14,6 +14,6 @@ Nao usar API externa obrigatoria nos fluxos operacionais atuais. Integracoes com
 
 ## Consequencias
 
-- `npm run dev` e `npm run build` devem funcionar sem credenciais externas.
+- `pnpm dev` e `pnpm build` devem funcionar sem credenciais externas.
 - Uploads, exportacoes, importacoes, QR Code, codigo de barras e sincronizacao sao simulados.
 - Futuras integracoes devem ser adicionadas por adaptadores, preservando a operacao offline.

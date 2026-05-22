@@ -14,7 +14,7 @@ Usar Vite como servidor e bundler do renderer React.
 
 ## Consequencias
 
-- `npm run dev` compila o processo principal, sobe Vite e abre Electron.
-- `npm run build` valida renderer e processo principal.
+- `pnpm dev` compila o processo principal, sobe Vite e abre Electron.
+- `pnpm build` valida renderer e processo principal.
 - Paginas e componentes devem continuar sob `src/renderer`.
 - Imports devem permanecer compativeis com o fluxo de build Vite.
