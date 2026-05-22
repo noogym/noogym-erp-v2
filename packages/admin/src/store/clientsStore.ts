@@ -1,13 +1,16 @@
 import { create } from "zustand";
 import { clients as mockClients } from "../data/mock";
+import { clientFromApi, clientToDto, createResource, listResource, updateResource } from "../lib/domainApi";
 import { readLocal, uid, writeLocal } from "../lib/storage";
 import { useAppStore } from "./appStore";
+import { useAuthStore } from "./authStore";
 import type { ClientRecord } from "@noogym/types";
 
 const initialClients = mockClients.map((client) => ({ ...client, document: "000000000LA000" })) as ClientRecord[];
 
 interface ClientsState {
   clients: ClientRecord[];
+  loadOnline: () => Promise<void>;
   addClient: (client: Partial<ClientRecord>) => ClientRecord;
   updateClient: (id: string, data: Partial<ClientRecord>) => void;
   deactivateClient: (id: string) => void;
@@ -18,6 +21,14 @@ const persist = (clients: ClientRecord[]) => writeLocal("noogym:clients", client
 
 export const useClientsStore = create<ClientsState>((set, get) => ({
   clients: readLocal("noogym:clients", initialClients),
+  loadOnline: async () => {
+    const token = useAuthStore.getState().accessToken;
+    if (!token) return;
+    const members = await listResource<Record<string, unknown>>("members", token);
+    const clients = members.map(clientFromApi);
+    persist(clients);
+    set({ clients });
+  },
   addClient: (client) => {
     const created: ClientRecord = {
       id: client.id ?? uid("CLI"),
@@ -37,12 +48,34 @@ export const useClientsStore = create<ClientsState>((set, get) => ({
     persist(clients);
     useAppStore.getState().addPendingSync();
     set({ clients });
+    const token = useAuthStore.getState().accessToken;
+    if (useAppStore.getState().onlineOnly && token) {
+      createResource<Record<string, unknown>>("members", token, clientToDto(created))
+        .then((member) => {
+          const synced = clientFromApi(member);
+          const nextClients = get().clients.map((item) => item.id === created.id ? synced : item);
+          persist(nextClients);
+          set({ clients: nextClients });
+        })
+        .catch(console.error);
+    }
     return created;
   },
   updateClient: (id, data) => set((state) => {
     const clients = state.clients.map((client) => client.id === id ? { ...client, ...data } : client);
     persist(clients);
     useAppStore.getState().addPendingSync();
+    const token = useAuthStore.getState().accessToken;
+    if (useAppStore.getState().onlineOnly && token) {
+      updateResource<Record<string, unknown>>("members", id, token, clientToDto({ ...state.clients.find((client) => client.id === id), ...data }))
+        .then((member) => {
+          const synced = clientFromApi(member);
+          const nextClients = get().clients.map((client) => client.id === id ? synced : client);
+          persist(nextClients);
+          set({ clients: nextClients });
+        })
+        .catch(console.error);
+    }
     return { clients };
   }),
   deactivateClient: (id) => get().updateClient(id, { status: "Inativo" }),

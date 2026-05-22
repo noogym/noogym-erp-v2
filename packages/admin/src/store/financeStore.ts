@@ -1,6 +1,8 @@
 import { create } from "zustand";
+import { createExpense, createRevenue, listFinanceRecords } from "../lib/domainApi";
 import { readLocal, uid, writeLocal } from "../lib/storage";
 import { useAppStore } from "./appStore";
+import { useAuthStore } from "./authStore";
 import type { FinanceRecord } from "@noogym/types";
 
 export type FinanceCategoryKind = "Receita" | "Despesa";
@@ -35,22 +37,40 @@ const normalize = (value: string) => value.trim().toLocaleLowerCase("pt-AO");
 export const useFinanceStore = create<{
   records: FinanceRecord[];
   categories: FinanceCategory[];
+  loadOnline: () => Promise<void>;
   addRevenue: (record: Partial<FinanceRecord>) => void;
   addExpense: (record: Partial<FinanceRecord>) => void;
   addCategory: (category: Omit<FinanceCategory, "id">) => boolean;
 }>((set) => ({
   records: readLocal("noogym:finance", initial),
   categories: readLocal("noogym:finance-categories", initialCategories),
+  loadOnline: async () => {
+    const token = useAuthStore.getState().accessToken;
+    if (!token) return;
+    const records = await listFinanceRecords(token);
+    persist(records);
+    set({ records });
+  },
   addRevenue: (record) => set((state) => {
-    const records = [{ id: uid("FIN"), kind: "Receita" as const, category: "Mensalidades", value: 0, date: "Hoje", status: "Recebido", ...record }, ...state.records];
+    const created: FinanceRecord = { id: uid("FIN"), kind: "Receita", category: "Mensalidades", value: 0, date: "Hoje", status: "Recebido", ...record };
+    const records = [created, ...state.records];
     persist(records);
     useAppStore.getState().addPendingSync();
+
+    const token = useAuthStore.getState().accessToken;
+    if (useAppStore.getState().onlineOnly && token) createRevenue(token, created).catch(console.error);
+
     return { records };
   }),
   addExpense: (record) => set((state) => {
-    const records = [{ id: uid("FIN"), kind: "Despesa" as const, category: "Operacional", value: 0, date: "Hoje", status: "Pendente", ...record }, ...state.records];
+    const created: FinanceRecord = { id: uid("FIN"), kind: "Despesa", category: "Operacional", value: 0, date: "Hoje", status: "Pendente", ...record };
+    const records = [created, ...state.records];
     persist(records);
     useAppStore.getState().addPendingSync();
+
+    const token = useAuthStore.getState().accessToken;
+    if (useAppStore.getState().onlineOnly && token) createExpense(token, created).catch(console.error);
+
     return { records };
   }),
   addCategory: (category) => {

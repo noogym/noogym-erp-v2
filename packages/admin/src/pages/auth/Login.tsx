@@ -3,6 +3,7 @@ import { BarChart3, Check, Clock, Eye, EyeOff, Lock, Mail, ShieldCheck, Users } 
 import { AuthInput } from "../../components/auth/AuthInput";
 import { AuthLayout } from "../../components/auth/AuthLayout";
 import { GoogleButton } from "../../components/auth/GoogleButton";
+import { useAppStore } from "../../store/appStore";
 import { useAuthStore } from "../../store/authStore";
 
 interface LoginProps {
@@ -13,10 +14,14 @@ interface LoginProps {
 interface LoginErrors {
   email?: string;
   password?: string;
+  form?: string;
 }
 
 export default function Login({ onNavigateToRegister, onNavigateToForgotPassword }: LoginProps) {
+  const onlineOnly = useAppStore((state) => state.onlineOnly);
+  const login = useAuthStore((state) => state.login);
   const loginMock = useAuthStore((state) => state.loginMock);
+  const isLoading = useAuthStore((state) => state.isLoading);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [remember, setRemember] = useState(true);
@@ -31,9 +36,29 @@ export default function Login({ onNavigateToRegister, onNavigateToForgotPassword
     return Object.keys(nextErrors).length === 0;
   };
 
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!validate()) return;
+    try {
+      if (onlineOnly) {
+        await login(email, password);
+        return;
+      }
+
+      loginMock();
+    } catch (error) {
+      setErrors({
+        form: error instanceof Error ? error.message : "Nao foi possivel iniciar sessao."
+      });
+    }
+  };
+
+  const handleGoogleLogin = () => {
+    if (onlineOnly) {
+      setErrors({ form: "Login com Google ainda nao esta configurado na API." });
+      return;
+    }
+
     loginMock();
   };
 
@@ -117,6 +142,8 @@ export default function Login({ onNavigateToRegister, onNavigateToForgotPassword
           />
         </div>
 
+        {errors.form ? <p className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">{errors.form}</p> : null}
+
         <div className="mt-5 flex flex-wrap items-center justify-between gap-4 2xl:mt-8">
           <label className="flex items-center gap-3 text-base text-white">
             <button
@@ -143,9 +170,10 @@ export default function Login({ onNavigateToRegister, onNavigateToForgotPassword
 
         <button
           type="submit"
+          disabled={isLoading}
           className="no-drag mt-7 h-12 w-full rounded-lg bg-noogym-lime text-base font-bold text-black shadow-glow transition hover:bg-noogym-lime2 sm:h-14 sm:text-lg 2xl:mt-10 2xl:h-[72px] 2xl:text-xl"
         >
-          Entrar
+          {isLoading ? "A entrar..." : "Entrar"}
         </button>
 
         <div className="my-6 flex items-center gap-6 text-zinc-400 2xl:my-10">
@@ -154,7 +182,7 @@ export default function Login({ onNavigateToRegister, onNavigateToForgotPassword
           <span className="h-px flex-1 bg-zinc-700/70" />
         </div>
 
-        <GoogleButton onClick={loginMock}>Entrar com Google</GoogleButton>
+        <GoogleButton onClick={handleGoogleLogin}>Entrar com Google</GoogleButton>
 
         <p className="mt-7 text-center text-base text-zinc-400 2xl:mt-12 2xl:text-lg">
           Ainda não tem uma conta?{" "}
