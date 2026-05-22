@@ -1,7 +1,16 @@
 import { app, BrowserWindow, ipcMain, type IpcMainInvokeEvent } from "electron";
 import path from "node:path";
 
+const MIN_ZOOM_FACTOR = 0.85;
+const MAX_ZOOM_FACTOR = 1.25;
+
 const getWindowFromEvent = (event: IpcMainInvokeEvent) => BrowserWindow.fromWebContents(event.sender);
+
+const clampZoomFactor = (zoomFactor: number) => {
+  if (!Number.isFinite(zoomFactor)) return 1;
+  const clamped = Math.min(MAX_ZOOM_FACTOR, Math.max(MIN_ZOOM_FACTOR, zoomFactor));
+  return Math.round(clamped * 100) / 100;
+};
 
 const createWindow = () => {
   const window = new BrowserWindow({
@@ -44,6 +53,13 @@ app.whenReady().then(() => {
   });
   ipcMain.handle("window:close", (event) => {
     getWindowFromEvent(event)?.close();
+  });
+  ipcMain.handle("window:zoom:get", (event) => getWindowFromEvent(event)?.webContents.getZoomFactor() ?? 1);
+  ipcMain.handle("window:zoom:set", (event, zoomFactor: number) => {
+    const window = getWindowFromEvent(event);
+    const nextZoomFactor = clampZoomFactor(zoomFactor);
+    window?.webContents.setZoomFactor(nextZoomFactor);
+    return nextZoomFactor;
   });
   createWindow();
 

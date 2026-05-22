@@ -31,11 +31,11 @@ export class AppointmentsService {
       ...(query.search
         ? {
             OR: [
-              { title: { contains: query.search, mode: 'insensitive' } },
-              { description: { contains: query.search, mode: 'insensitive' } },
+              { title: { contains: query.search } },
+              { description: { contains: query.search } },
               {
                 member: {
-                  name: { contains: query.search, mode: 'insensitive' },
+                  name: { contains: query.search },
                 },
               },
             ],

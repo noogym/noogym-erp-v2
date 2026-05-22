@@ -8,5 +8,9 @@ interface Window {
       maximize: () => Promise<void>;
       close: () => Promise<void>;
     };
+    zoomControls?: {
+      getZoomFactor: () => Promise<number>;
+      setZoomFactor: (zoomFactor: number) => Promise<number>;
+    };
   };
 }

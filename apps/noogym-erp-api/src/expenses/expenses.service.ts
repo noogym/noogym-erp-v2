@@ -27,9 +27,9 @@ export class ExpensesService {
       ...(query.search
         ? {
             OR: [
-              { category: { contains: query.search, mode: 'insensitive' } },
-              { description: { contains: query.search, mode: 'insensitive' } },
-              { supplier: { contains: query.search, mode: 'insensitive' } },
+              { category: { contains: query.search } },
+              { description: { contains: query.search } },
+              { supplier: { contains: query.search } },
             ],
           }
         : {}),

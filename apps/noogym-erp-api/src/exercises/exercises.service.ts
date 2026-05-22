@@ -17,8 +17,8 @@ export class ExercisesService {
       ...(query.search
         ? {
             OR: [
-              { name: { contains: query.search, mode: 'insensitive' } },
-              { equipment: { contains: query.search, mode: 'insensitive' } },
+              { name: { contains: query.search } },
+              { equipment: { contains: query.search } },
             ],
           }
         : {}),

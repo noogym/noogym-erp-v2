@@ -35,11 +35,11 @@ export class SalesService {
       ...(query.search
         ? {
             OR: [
-              { customerName: { contains: query.search, mode: 'insensitive' } },
-              { sellerName: { contains: query.search, mode: 'insensitive' } },
+              { customerName: { contains: query.search } },
+              { sellerName: { contains: query.search } },
               {
                 member: {
-                  name: { contains: query.search, mode: 'insensitive' },
+                  name: { contains: query.search },
                 },
               },
               {
@@ -47,7 +47,6 @@ export class SalesService {
                   some: {
                     productName: {
                       contains: query.search,
-                      mode: 'insensitive',
                     },
                   },
                 },
@@ -80,8 +79,8 @@ export class SalesService {
     return sale;
   }
 
-  async create(organizationId: string, dto: CreateSaleDto) {
-    await this.validateRelations(organizationId, dto);
+  async create(organizationId: string, sellerId: string, dto: CreateSaleDto) {
+    await this.validateRelations(organizationId, sellerId, dto);
     const saleItems = await this.buildSaleItems(organizationId, dto.items);
     const subtotal = saleItems.reduce((sum, item) => sum + item.total, 0);
     const discountAmount = dto.discountAmount ?? 0;
@@ -96,7 +95,7 @@ export class SalesService {
           organizationId,
           gymId: dto.gymId,
           memberId: dto.memberId,
-          sellerId: dto.sellerId,
+          sellerId,
           customerName: dto.customerName,
           sellerName: dto.sellerName,
           type: dto.type,
@@ -106,7 +105,6 @@ export class SalesService {
           taxAmount,
           total,
           paymentMethod: dto.paymentMethod,
-          soldAt: dto.soldAt,
           notes: dto.notes,
           items: {
             create: saleItems.map((item) => ({
@@ -150,7 +148,7 @@ export class SalesService {
             amount: total,
             method: dto.paymentMethod,
             status: PaymentStatus.PAID,
-            paidAt: dto.soldAt ?? new Date(),
+            paidAt: new Date(),
             reference: sale.id,
             notes: dto.notes,
           },
@@ -230,8 +228,10 @@ export class SalesService {
       const product = item.productId
         ? products.find((entry) => entry.id === item.productId)
         : undefined;
-      const unitPrice = item.unitPrice ?? Number(product?.price ?? 0);
-      const productName = item.productName ?? product?.name;
+      const unitPrice = product
+        ? Number(product.price)
+        : item.unitPrice ?? 0;
+      const productName = product?.name ?? item.productName;
       if (!productName) {
         throw new BadRequestException('Sale item productName is required');
       }
@@ -245,7 +245,7 @@ export class SalesService {
       return {
         productId: product?.id,
         productName,
-        sku: item.sku ?? product?.sku,
+        sku: product?.sku ?? item.sku,
         quantity: item.quantity,
         unitPrice,
         unitCost: product ? Number(product.cost) : undefined,
@@ -255,8 +255,17 @@ export class SalesService {
     });
   }
 
-  private async validateRelations(organizationId: string, dto: CreateSaleDto) {
-    const checks: Promise<unknown>[] = [];
+  private async validateRelations(
+    organizationId: string,
+    sellerId: string,
+    dto: CreateSaleDto,
+  ) {
+    const checks: Promise<unknown>[] = [
+      this.prisma.user.findFirst({
+        where: { id: sellerId, organizationId },
+        select: { id: true },
+      }),
+    ];
 
     if (dto.gymId) {
       checks.push(
@@ -274,15 +283,6 @@ export class SalesService {
         }),
       );
     }
-    if (dto.sellerId) {
-      checks.push(
-        this.prisma.user.findFirst({
-          where: { id: dto.sellerId, organizationId },
-          select: { id: true },
-        }),
-      );
-    }
-
     const results = await Promise.all(checks);
     if (results.some((result) => !result)) {
       throw new NotFoundException('Related sale entity not found');

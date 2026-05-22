@@ -1,54 +1,72 @@
 import { CalendarDays, Download, RefreshCw } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { PageHeader } from "../components/layout/PageHeader";
 import { ExportReportModal } from "../components/reports/ExportReportModal";
-import { ReportsTabs, type ReportsTabLabel } from "../components/reports/ReportsTabs";
-import { CheckinsReport } from "../components/reports/tabs/CheckinsReport";
-import { ClassesReport } from "../components/reports/tabs/ClassesReport";
-import { ClientsReport } from "../components/reports/tabs/ClientsReport";
-import { EmployeesReport } from "../components/reports/tabs/EmployeesReport";
-import { FinancialReport } from "../components/reports/tabs/FinancialReport";
+import { ReportTabContent } from "../components/reports/ReportTabContent";
+import { ReportsTabs, reportsTabs, type ReportsTabLabel } from "../components/reports/ReportsTabs";
 import { OverviewReport } from "../components/reports/tabs/OverviewReport";
-import { PlansReport } from "../components/reports/tabs/PlansReport";
-import { ProductsReport } from "../components/reports/tabs/ProductsReport";
-import { SalesReport } from "../components/reports/tabs/SalesReport";
-import { WorkoutsReport } from "../components/reports/tabs/WorkoutsReport";
 import { Button } from "@noogym/ui";
 import { Select } from "@noogym/ui";
-import { comparePeriods, reportPeriods, reportUnits, reportsMock } from "../data/reportsMock";
+import { comparePeriods, reportPeriods, reportUnits, reportsMock, type ReportTabKey } from "../data/reportsMock";
+import { useReportsStore } from "../store/reportsStore";
+import { toastInfo } from "../store/toastStore";
 
 const tabSubtitles: Record<ReportsTabLabel, string> = {
-  "Visão geral": "Acompanhe indicadores e desempenho da academia.",
-  Financeiro: reportsMock.financial.subtitle,
-  Clientes: reportsMock.clients.subtitle,
-  "Check-ins": reportsMock.checkins.subtitle,
-  Planos: reportsMock.plans.subtitle,
-  Aulas: reportsMock.classes.subtitle,
-  Treinos: reportsMock.workouts.subtitle,
-  "Vendas (POS)": reportsMock.sales.subtitle,
-  Produtos: reportsMock.products.subtitle,
-  Funcionários: reportsMock.employees.subtitle
+  [reportsTabs[0]]: "Acompanhe indicadores e desempenho da academia.",
+  [reportsTabs[1]]: reportsMock.financial.subtitle,
+  [reportsTabs[2]]: reportsMock.clients.subtitle,
+  [reportsTabs[3]]: reportsMock.checkins.subtitle,
+  [reportsTabs[4]]: reportsMock.plans.subtitle,
+  [reportsTabs[5]]: reportsMock.classes.subtitle,
+  [reportsTabs[6]]: reportsMock.workouts.subtitle,
+  [reportsTabs[7]]: reportsMock.sales.subtitle,
+  [reportsTabs[8]]: reportsMock.products.subtitle,
+  [reportsTabs[9]]: reportsMock.employees.subtitle
+};
+
+const reportKeyByTab: Partial<Record<ReportsTabLabel, ReportTabKey>> = {
+  [reportsTabs[1]]: "financial",
+  [reportsTabs[2]]: "clients",
+  [reportsTabs[3]]: "checkins",
+  [reportsTabs[4]]: "plans",
+  [reportsTabs[5]]: "classes",
+  [reportsTabs[6]]: "workouts",
+  [reportsTabs[7]]: "sales",
+  [reportsTabs[8]]: "products",
+  [reportsTabs[9]]: "employees"
 };
 
 export default function Relatorios() {
-  const [tab, setTab] = useState<ReportsTabLabel>("Visão geral");
+  const [tab, setTab] = useState<ReportsTabLabel>(reportsTabs[0]);
   const [period, setPeriod] = useState(reportPeriods[0]);
   const [comparePeriod, setComparePeriod] = useState(comparePeriods[0]);
   const [unit, setUnit] = useState(reportUnits[0]);
   const [exportOpen, setExportOpen] = useState(false);
+  const overview = useReportsStore((state) => state.overview);
+  const configs = useReportsStore((state) => state.configs);
+  const isLoading = useReportsStore((state) => state.isLoading);
+  const loadAllReports = useReportsStore((state) => state.loadAllReports);
 
   const factor = useMemo(() => {
     const periodFactor = period === reportPeriods[1] ? 0.88 : period === reportPeriods[2] ? 1.12 : 1;
-    const compareFactor = comparePeriod === "Sem comparação" ? 0.94 : 1;
+    const compareFactor = comparePeriod === comparePeriods[1] ? 0.94 : 1;
     const unitFactor = unit === reportUnits[1] ? 0.82 : unit === reportUnits[2] ? 0.74 : 1;
     return periodFactor * compareFactor * unitFactor;
   }, [comparePeriod, period, unit]);
-  const showComparison = comparePeriod !== "Sem comparação";
+  const showComparison = comparePeriod !== comparePeriods[1];
+  const activeKey = reportKeyByTab[tab];
+  const activeConfig = activeKey ? configs[activeKey] ?? reportsMock[activeKey] : null;
+
+  useEffect(() => {
+    loadAllReports().catch((error) => {
+      toastInfo("Relatorios locais", error instanceof Error ? error.message : "Nao foi possivel carregar relatorios da API.");
+    });
+  }, [loadAllReports]);
 
   return (
     <div className="panel p-6">
       <PageHeader
-        title="Relatórios"
+        title="Relatorios"
         subtitle={tabSubtitles[tab]}
         actions={
           <>
@@ -66,21 +84,14 @@ export default function Relatorios() {
       />
       <div className="mb-2 flex items-center gap-2 text-xs text-zinc-500">
         <CalendarDays className="h-3.5 w-3.5" />
-        <span>Período ativo: {period}</span>
+        <span>Periodo ativo: {period}</span>
         <RefreshCw className="ml-3 h-3.5 w-3.5" />
-        <span>{comparePeriod === "Sem comparação" ? "Sem comparação ativa" : `Comparação: ${comparePeriod}`}</span>
+        <span>{comparePeriod === comparePeriods[1] ? "Sem comparacao ativa" : `Comparacao: ${comparePeriod}`}</span>
+        {isLoading ? <span className="ml-3 text-noogym-lime">Sincronizando API...</span> : null}
       </div>
       <ReportsTabs active={tab} onChange={setTab} />
-      {tab === "Visão geral" ? <OverviewReport /> : null}
-      {tab === "Financeiro" ? <FinancialReport factor={factor} showComparison={showComparison} /> : null}
-      {tab === "Clientes" ? <ClientsReport factor={factor} showComparison={showComparison} /> : null}
-      {tab === "Check-ins" ? <CheckinsReport factor={factor} showComparison={showComparison} /> : null}
-      {tab === "Planos" ? <PlansReport factor={factor} showComparison={showComparison} /> : null}
-      {tab === "Aulas" ? <ClassesReport factor={factor} showComparison={showComparison} /> : null}
-      {tab === "Treinos" ? <WorkoutsReport factor={factor} showComparison={showComparison} /> : null}
-      {tab === "Vendas (POS)" ? <SalesReport factor={factor} showComparison={showComparison} /> : null}
-      {tab === "Produtos" ? <ProductsReport factor={factor} showComparison={showComparison} /> : null}
-      {tab === "Funcionários" ? <EmployeesReport factor={factor} showComparison={showComparison} /> : null}
+      {tab === reportsTabs[0] ? <OverviewReport overview={overview} /> : null}
+      {activeConfig ? <ReportTabContent config={activeConfig} factor={factor} showComparison={showComparison} /> : null}
       <ExportReportModal open={exportOpen} activeReport={tab} period={period} unit={unit} onClose={() => setExportOpen(false)} />
     </div>
   );

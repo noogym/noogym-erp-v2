@@ -27,7 +27,7 @@ export class CheckinsService {
           }
         : {}),
       ...(query.search
-        ? { member: { name: { contains: query.search, mode: 'insensitive' } } }
+        ? { member: { name: { contains: query.search } } }
         : {}),
     };
     const [items, total] = await this.prisma.$transaction([
@@ -81,6 +81,17 @@ export class CheckinsService {
       throw new BadRequestException(
         'Member does not have a valid active subscription',
       );
+    }
+
+    if (dto.gymId) {
+      const gym = await this.prisma.gym.findFirst({
+        where: { id: dto.gymId, organizationId },
+        select: { id: true },
+      });
+
+      if (!gym) {
+        throw new NotFoundException('Gym not found');
+      }
     }
 
     return this.prisma.checkIn.create({

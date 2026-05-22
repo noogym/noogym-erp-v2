@@ -1,0 +1,264 @@
+name: Noogym ERP Security Check
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+  push:
+    branches:
+      - main
+      - develop
+  workflow_dispatch:
+    inputs:
+      run_zap:
+        description: "Run optional OWASP ZAP baseline against the web-admin Docker image"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  security-events: write
+
+concurrency:
+  group: security-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "20"
+  PNPM_VERSION: "9.0.0"
+  WEB_IMAGE: noogym-web-admin:security
+  WEB_DOCKERFILE: apps/web-admin/Dockerfile
+
+jobs:
+  dependency-audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: pnpm audit high and critical
+        run: pnpm audit --prod --audit-level high
+
+  semgrep:
+    name: Semgrep SAST
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Semgrep
+        run: python -m pip install --upgrade semgrep
+
+      - name: Run Semgrep
+        run: >
+          semgrep scan
+          --config p/default
+          --severity ERROR
+          --sarif
+          --output semgrep.sarif
+          --error
+          --metrics=off
+
+      - name: Upload Semgrep SARIF
+        if: ${{ always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: semgrep.sarif
+
+  snyk:
+    name: Snyk dependency scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    env:
+      SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Skip Snyk when token is not configured
+        if: ${{ env.SNYK_TOKEN == '' }}
+        run: echo "SNYK_TOKEN is not configured. Skipping Snyk scan."
+
+      - name: Run Snyk high and critical scan
+        if: ${{ env.SNYK_TOKEN != '' }}
+        run: >
+          pnpm dlx snyk@latest test
+          --all-projects
+          --severity-threshold=high
+          --sarif-file-output=snyk.sarif
+
+      - name: Upload Snyk SARIF
+        if: ${{ always() && env.SNYK_TOKEN != '' }}
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: snyk.sarif
+
+  build:
+    name: Build and test monorepo
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: API unit tests
+        run: pnpm --filter @noogym/noogym-erp-api test
+
+      - name: Build applications
+        run: pnpm build
+
+  docker-trivy:
+    name: Docker build and Trivy scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs:
+      - dependency-audit
+      - build
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build web-admin Docker image
+        run: docker build -f "${WEB_DOCKERFILE}" -t "${WEB_IMAGE}" .
+
+      - name: Run Trivy image scan
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.WEB_IMAGE }}
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          format: sarif
+          output: trivy-image.sarif
+
+      - name: Upload Trivy SARIF
+        if: ${{ always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-image.sarif
+
+  zap-baseline:
+    name: Optional OWASP ZAP baseline
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_zap == true }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build web-admin Docker image
+        run: docker build -f "${WEB_DOCKERFILE}" -t "${WEB_IMAGE}" .
+
+      - name: Create ZAP network
+        run: docker network create noogym-zap
+
+      - name: Start web-admin container
+        run: >
+          docker run
+          --detach
+          --rm
+          --network noogym-zap
+          --name noogym-web-admin-zap
+          -e NODE_ENV=production
+          "${WEB_IMAGE}"
+
+      - name: Wait for web-admin
+        run: |
+          for attempt in {1..30}; do
+            if docker run --rm --network noogym-zap curlimages/curl:8.10.1 -fsS http://noogym-web-admin-zap:3000 >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs noogym-web-admin-zap
+          exit 1
+
+      - name: Run ZAP baseline
+        run: >
+          docker run
+          --rm
+          --network noogym-zap
+          -v "${PWD}/zap-reports:/zap/wrk"
+          ghcr.io/zaproxy/zaproxy:stable
+          zap-baseline.py
+          -t http://noogym-web-admin-zap:3000
+          -r zap-report.html
+          -J zap-report.json
+          -w zap-report.md
+
+      - name: Upload ZAP reports
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-baseline-reports
+          path: zap-reports/
+          if-no-files-found: ignore
+
+      - name: Stop web-admin container
+        if: ${{ always() }}
+        run: docker rm -f noogym-web-admin-zap || true

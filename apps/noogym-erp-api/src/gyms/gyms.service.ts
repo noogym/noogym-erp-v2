@@ -21,9 +21,9 @@ export class GymsService {
       ...(query.search
         ? {
             OR: [
-              { name: { contains: query.search, mode: 'insensitive' } },
-              { slug: { contains: query.search, mode: 'insensitive' } },
-              { city: { contains: query.search, mode: 'insensitive' } },
+              { name: { contains: query.search } },
+              { slug: { contains: query.search } },
+              { city: { contains: query.search } },
             ],
           }
         : {}),

@@ -21,8 +21,8 @@ export class MessagesService {
       ...(query.search
         ? {
             OR: [
-              { title: { contains: query.search, mode: 'insensitive' } },
-              { content: { contains: query.search, mode: 'insensitive' } },
+              { title: { contains: query.search } },
+              { content: { contains: query.search } },
             ],
           }
         : {}),

@@ -72,7 +72,7 @@ export function Sidebar() {
             aria-label={isStatusPanelCollapsed ? "Expandir estado de conexao" : "Minimizar estado de conexao"}
             title={isStatusPanelCollapsed ? "Expandir" : "Minimizar"}
           >
-            {isStatusPanelCollapsed ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            {isStatusPanelCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
           </button>
         </div>
         {isStatusPanelCollapsed ? null : (

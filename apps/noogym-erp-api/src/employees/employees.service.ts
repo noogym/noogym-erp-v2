@@ -23,11 +23,11 @@ export class EmployeesService {
       ...(query.search
         ? {
             OR: [
-              { name: { contains: query.search, mode: 'insensitive' } },
-              { role: { contains: query.search, mode: 'insensitive' } },
-              { department: { contains: query.search, mode: 'insensitive' } },
-              { email: { contains: query.search, mode: 'insensitive' } },
-              { phone: { contains: query.search, mode: 'insensitive' } },
+              { name: { contains: query.search } },
+              { role: { contains: query.search } },
+              { department: { contains: query.search } },
+              { email: { contains: query.search } },
+              { phone: { contains: query.search } },
             ],
           }
         : {}),

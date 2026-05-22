@@ -48,7 +48,7 @@ export class SalesController {
     UserRole.SUPER_ADMIN,
   )
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateSaleDto) {
-    return this.salesService.create(user.organizationId, dto);
+    return this.salesService.create(user.organizationId, user.sub, dto);
   }
 
   @Patch(':id/cancel')

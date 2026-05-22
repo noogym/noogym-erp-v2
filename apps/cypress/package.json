@@ -1,0 +1,18 @@
+{
+  "name": "@noogym/cypress",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "open": "cypress open",
+    "install:binary": "cypress install",
+    "verify": "cypress verify",
+    "test": "cypress run",
+    "e2e": "cypress run",
+    "lint": "tsc --noEmit",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "cypress": "15.15.0",
+    "typescript": "^5.9.3"
+  }
+}

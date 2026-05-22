@@ -17,6 +17,9 @@ describe('CheckinsService', () => {
       subscription: {
         findFirst: jest.fn(),
       },
+      gym: {
+        findFirst: jest.fn(),
+      },
       checkIn: {
         create: jest.fn(),
       },
@@ -84,5 +87,20 @@ describe('CheckinsService', () => {
     await expect(service.create(organizationId, dto)).rejects.toBeInstanceOf(
       BadRequestException,
     );
+  });
+
+  it('throws when explicit gym does not belong to tenant', async () => {
+    const { prisma, service } = createService();
+    prisma.member.findFirst.mockResolvedValue({
+      id: 'member-1',
+      status: MemberStatus.ACTIVE,
+      gymId: 'gym-1',
+    });
+    prisma.subscription.findFirst.mockResolvedValue({ id: 'subscription-1' });
+    prisma.gym.findFirst.mockResolvedValue(null);
+
+    await expect(
+      service.create(organizationId, { ...dto, gymId: 'other-gym' }),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 });

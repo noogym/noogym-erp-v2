@@ -35,12 +35,12 @@ export class ClassesService {
       ...(query.search
         ? {
             OR: [
-              { name: { contains: query.search, mode: 'insensitive' } },
-              { category: { contains: query.search, mode: 'insensitive' } },
-              { description: { contains: query.search, mode: 'insensitive' } },
+              { name: { contains: query.search } },
+              { category: { contains: query.search } },
+              { description: { contains: query.search } },
               {
                 instructor: {
-                  name: { contains: query.search, mode: 'insensitive' },
+                  name: { contains: query.search },
                 },
               },
             ],

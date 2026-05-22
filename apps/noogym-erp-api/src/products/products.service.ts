@@ -24,10 +24,10 @@ export class ProductsService {
       ...(query.search
         ? {
             OR: [
-              { name: { contains: query.search, mode: 'insensitive' } },
-              { category: { contains: query.search, mode: 'insensitive' } },
-              { sku: { contains: query.search, mode: 'insensitive' } },
-              { barcode: { contains: query.search, mode: 'insensitive' } },
+              { name: { contains: query.search } },
+              { category: { contains: query.search } },
+              { sku: { contains: query.search } },
+              { barcode: { contains: query.search } },
             ],
           }
         : {}),
