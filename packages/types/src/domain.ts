@@ -4,6 +4,7 @@ export interface ClientRecord {
   phone: string;
   email: string;
   plan: string;
+  planId?: string;
   planTone?: string;
   status: string;
   lastCheckin?: string;
@@ -11,6 +12,7 @@ export interface ClientRecord {
   birthday?: string;
   avatar?: string;
   document?: string;
+  createdAt?: string;
 }
 
 export interface PlanRecord {
@@ -23,6 +25,7 @@ export interface PlanRecord {
   type: string;
   clients: number;
   status: string;
+  color?: string;
 }
 
 export interface ProductRecord {
@@ -45,6 +48,7 @@ export interface CheckinRecord {
   type: string;
   accessType: string;
   dateTime: string;
+  checkedAtIso?: string;
   observation?: string;
 }
 

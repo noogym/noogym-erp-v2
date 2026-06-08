@@ -58,6 +58,11 @@ export class CheckinsService {
   }
 
   async create(organizationId: string, dto: CreateCheckinDto) {
+    const checkedAt = dto.checkedAt ?? new Date();
+    const checkedAtDayStart = new Date(checkedAt);
+    checkedAtDayStart.setHours(0, 0, 0, 0);
+    const checkedAtDayEnd = new Date(checkedAtDayStart);
+    checkedAtDayEnd.setDate(checkedAtDayEnd.getDate() + 1);
     const member = await this.prisma.member.findFirst({
       where: { id: dto.memberId, organizationId },
     });
@@ -72,8 +77,11 @@ export class CheckinsService {
         organizationId,
         memberId: dto.memberId,
         status: SubscriptionStatus.ACTIVE,
-        startDate: { lte: new Date() },
-        endDate: { gte: new Date() },
+        endDate: { gte: checkedAt },
+        OR: [
+          { startDate: { lte: checkedAt } },
+          { startDate: { gte: checkedAtDayStart, lt: checkedAtDayEnd } },
+        ],
       },
     });
 
@@ -100,6 +108,7 @@ export class CheckinsService {
         memberId: dto.memberId,
         gymId: dto.gymId ?? member.gymId,
         method: dto.method,
+        checkedAt,
         notes: dto.notes,
       },
       include: { member: true, gym: true },

@@ -24,8 +24,25 @@ import { useSalesStore } from "../../store/salesStore";
 import { useWorkoutsStore } from "../../store/workoutsStore";
 import { toastInfo, toastSuccess } from "../../store/toastStore";
 import type { ClassRecord, EmployeeRecord, PlanRecord, ProductRecord, WorkoutRecord } from "@noogym/types";
+import type { PlanCategory, PlanCategoryInput } from "../../store/plansStore";
 
 const today = "Hoje, 10:30";
+
+const dateTimeInputValue = () => {
+  const now = new Date();
+  now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+  return now.toISOString().slice(0, 16);
+};
+
+const formatDateTimeLabel = (value: string) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return today;
+
+  const now = new Date();
+  const time = new Intl.DateTimeFormat("pt-AO", { hour: "2-digit", minute: "2-digit" }).format(date);
+  if (date.toDateString() === now.toDateString()) return `Hoje, ${time}`;
+  return new Intl.DateTimeFormat("pt-AO", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(date);
+};
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -142,37 +159,79 @@ export function NewCheckinModal({ open, onClose }: { open: boolean; onClose: () 
   const clients = useClientsStore((state) => state.clients);
   const addCheckin = useCheckinsStore((state) => state.addCheckin);
   const [tab, setTab] = useState("Buscar cliente");
-  const hasClient = Boolean(clients[0]);
-  const client = clients[0] ?? { id: "", name: "Nenhum cliente encontrado", avatar: "CL", document: "-", plan: "Sem plano" };
+  const [query, setQuery] = useState("");
+  const [selectedClientId, setSelectedClientId] = useState("");
+  const [dateTime, setDateTime] = useState(dateTimeInputValue);
+  const [checkinType, setCheckinType] = useState("Presencial");
+  const [observation, setObservation] = useState("");
+  const filteredClients = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+    if (!normalizedQuery) return clients.slice(0, 6);
+
+    return clients.filter((client) =>
+      `${client.name} ${client.id} ${client.phone} ${client.email} ${client.document ?? ""}`.toLowerCase().includes(normalizedQuery)
+    ).slice(0, 6);
+  }, [clients, query]);
+  const selectedClient = clients.find((client) => client.id === selectedClientId) ?? filteredClients[0];
+
+  useEffect(() => {
+    if (!open) return;
+    setTab("Buscar cliente");
+    setQuery("");
+    setSelectedClientId("");
+    setDateTime(dateTimeInputValue());
+    setCheckinType("Presencial");
+    setObservation("");
+  }, [open]);
+
   const confirm = () => {
-    if (!hasClient) {
+    if (!selectedClient) {
       toastInfo("Sem clientes", "Cadastre um cliente antes de realizar check-in.");
       return;
     }
-    addCheckin({ clientName: client.name, clientId: client.id, type: tab === "Check-in avulso" ? "Manual" : "Presencial", accessType: "Entrada", dateTime: today });
+    const parsedDate = new Date(dateTime);
+    if (!dateTime || Number.isNaN(parsedDate.getTime())) {
+      toastInfo("Data obrigatoria", "Selecione a data e hora do check-in.");
+      return;
+    }
+
+    addCheckin({
+      clientName: selectedClient.name,
+      clientId: selectedClient.id,
+      type: tab === "Check-in avulso" ? "Manual" : checkinType,
+      accessType: "Entrada",
+      dateTime: formatDateTimeLabel(dateTime),
+      checkedAtIso: parsedDate.toISOString(),
+      observation: observation.trim() || undefined
+    });
     toastSuccess("Check-in realizado", "Resumo do dia atualizado.");
     onClose();
   };
+
   return (
     <Modal open={open} title="Novo check-in" description="Selecione o cliente e registre o check-in na unidade." size="lg" onClose={onClose} footer={<><Button onClick={onClose}>Cancelar</Button><Button variant="primary" onClick={confirm}>Confirmar check-in</Button></>}>
       <Section title="1. Cliente">
         <div className="flex gap-6 border-b border-white/10 text-sm">
           {["Buscar cliente", "Check-in avulso"].map((item) => <button key={item} type="button" onClick={() => setTab(item)} className={`py-2 ${tab === item ? "border-b border-noogym-lime text-noogym-lime" : "text-zinc-400"}`}>{item}</button>)}
         </div>
-        <FormInput label="Busca por nome, CPF/BI ou código" placeholder="Digite o nome ou BI do cliente..." />
-        <div className="flex items-center gap-4 rounded-lg border border-white/10 bg-white/[0.03] p-4">
-          <Avatar label={client?.avatar ?? "CL"} className="h-14 w-14" />
-          <div className="flex-1"><p className="font-semibold">{client.name}</p><p className="text-sm text-zinc-400">BI: {client.document} • {client.plan}</p></div>
-          <Badge>Ativo</Badge>
+        <FormInput label="Busca por nome, CPF/BI ou codigo" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Digite o nome ou BI do cliente..." />
+        <div className="space-y-2">
+          {filteredClients.length ? filteredClients.map((client) => (
+            <button key={client.id} type="button" onClick={() => setSelectedClientId(client.id)} className={`flex w-full items-center gap-4 rounded-lg border p-4 text-left transition ${selectedClient?.id === client.id ? "border-noogym-lime bg-noogym-lime/10" : "border-white/10 bg-white/[0.03] hover:border-white/20"}`}>
+              <Avatar label={client.avatar ?? "CL"} className="h-14 w-14" />
+              <div className="min-w-0 flex-1"><p className="font-semibold">{client.name}</p><p className="truncate text-sm text-zinc-400">BI: {client.document ?? "-"} - {client.plan}</p></div>
+              <Badge>{client.status}</Badge>
+            </button>
+          )) : <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4 text-sm text-zinc-300">Nenhum cliente encontrado com estes dados.</div>}
         </div>
       </Section>
       <Section title="2. Detalhes do check-in">
         <div className="grid grid-cols-2 gap-3">
-          <FormInput label="Data e hora" defaultValue="08/05/2026 10:30" />
-          <FormSelect label="Tipo de check-in" options={["Presencial", "QR Code", "App", "Manual"]} />
+          <FormInput label="Data e hora" type="datetime-local" value={dateTime} onChange={(event) => setDateTime(event.target.value)} />
+          <FormSelect label="Tipo de check-in" value={checkinType} onChange={(event) => setCheckinType(event.target.value)} options={["Presencial", "QR Code", "App", "Manual"]} />
         </div>
-        <FormTextarea label="Observação opcional" placeholder="Adicione uma observação, se necessário..." />
-        <div className="rounded-md border border-white/10 bg-white/[0.03] p-3 text-sm text-zinc-300">Este check-in será contabilizado no plano do cliente conforme as regras de acesso da unidade.</div>
+        <FormTextarea label="Observacao opcional" value={observation} onChange={(event) => setObservation(event.target.value)} placeholder="Adicione uma observacao, se necessario..." />
+        <div className="rounded-md border border-white/10 bg-white/[0.03] p-3 text-sm text-zinc-300">Este check-in sera contabilizado no plano do cliente conforme as regras de acesso da unidade.</div>
       </Section>
     </Modal>
   );
@@ -193,12 +252,42 @@ export function MessageModal({ open, onClose }: { open: boolean; onClose: () => 
 
 export function NewClientModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const addClient = useClientsStore((state) => state.addClient);
+  const plans = usePlansStore((state) => state.plans);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+  const [birthDate, setBirthDate] = useState("");
+  const [document, setDocument] = useState("");
+  const [selectedPlanId, setSelectedPlanId] = useState("");
+  const activePlans = useMemo(() => plans.filter((plan) => plan.status !== "Inativo"), [plans]);
+  const selectedPlan = activePlans.find((plan) => plan.id === selectedPlanId);
+  const maxBirthDate = new Date().toISOString().slice(0, 10);
+
+  useEffect(() => {
+    if (!open) return;
+    setName("");
+    setEmail("");
+    setPhone("");
+    setBirthDate("");
+    setDocument("");
+    setSelectedPlanId("");
+  }, [open]);
+
+  const birthdayLabel = birthDate ? new Intl.DateTimeFormat("pt-AO", { day: "2-digit", month: "short" }).format(new Date(`${birthDate}T00:00:00`)).replace(".", "") : undefined;
+
   const save = () => {
     if (!name.trim() || !phone.trim()) { toastInfo("Campos obrigatórios", "Informe pelo menos nome e telefone."); return; }
-    addClient({ name, email: email || `${name.toLowerCase().replace(/\s+/g, ".")}@email.com`, phone });
+    if (!birthDate) { toastInfo("Campos obrigatórios", "Informe a data de nascimento."); return; }
+    addClient({
+      name,
+      email: email || `${name.toLowerCase().replace(/\s+/g, ".")}@email.com`,
+      phone,
+      plan: selectedPlan?.name ?? "Sem plano",
+      planId: selectedPlan?.id,
+      planTone: selectedPlan ? "lime" : "gray",
+      birthday: birthdayLabel,
+      document: document.trim() || undefined
+    });
     toastSuccess("Cliente criado com sucesso");
     onClose();
   };
@@ -206,21 +295,33 @@ export function NewClientModal({ open, onClose }: { open: boolean; onClose: () =
     <Modal open={open} title="Novo cliente" description="Preencha as informações para cadastrar um novo cliente." size="xl" onClose={onClose} footer={<><Button onClick={onClose}>Cancelar</Button><Button variant="primary" onClick={save}>Cadastrar cliente</Button></>}>
       <div className="space-y-5">
         <Section title="1. Dados pessoais">
-          <div className="grid grid-cols-[140px_1fr_180px] gap-3">
+          <div className="grid gap-3 lg:grid-cols-[140px_minmax(0,1fr)]">
             <div className="flex min-h-36 flex-col items-center justify-center rounded-lg border border-white/10 bg-white/[0.03] text-center text-sm text-zinc-400">Foto opcional<br />PNG, JPG até 5MB</div>
-            <FormInput label="Nome completo" requiredMark value={name} onChange={(event) => setName(event.target.value)} placeholder="Digite o nome completo" />
-            <FormInput label="Data de nascimento" requiredMark placeholder="DD/MM/AAAA" />
-            <FormInput label="E-mail" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="email@exemplo.com" />
-            <FormInput label="Telefone" requiredMark value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="+244 9XX XXX XXX" />
-            <FormInput label="Documento/BI" placeholder="000000000LA000" />
-            <FormSelect label="Sexo" options={["Selecione", "Feminino", "Masculino", "Outro"]} />
-            <FormSelect label="Estado civil" options={["Selecione", "Solteiro(a)", "Casado(a)", "Outro"]} />
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+              <FormInput className="xl:col-span-4" label="Nome completo" requiredMark value={name} onChange={(event) => setName(event.target.value)} placeholder="Digite o nome completo" />
+              <FormInput className="xl:col-span-2" label="Data de nascimento" requiredMark type="date" max={maxBirthDate} value={birthDate} onChange={(event) => setBirthDate(event.target.value)} />
+              <FormInput className="xl:col-span-3" label="E-mail" type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="email@exemplo.com" />
+              <FormInput className="xl:col-span-3" label="Telefone" requiredMark value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="+244 9XX XXX XXX" />
+              <FormInput className="xl:col-span-3" label="Documento/BI" value={document} onChange={(event) => setDocument(event.target.value)} placeholder="000000000LA000" />
+              <FormSelect className="xl:col-span-3" label="Sexo" options={["Selecione", "Feminino", "Masculino", "Outro"]} />
+              <FormSelect className="sm:col-span-2 xl:col-span-6" label="Estado civil" options={["Selecione", "Solteiro(a)", "Casado(a)", "Outro"]} />
+            </div>
           </div>
         </Section>
         <Section title="2. Endereço">
           <div className="grid grid-cols-3 gap-3"><FormInput label="Endereço" placeholder="Rua, número, bairro" /><FormInput label="Cidade" placeholder="Luanda" /><FormSelect label="Província" options={["Luanda", "Benguela", "Huíla", "Huambo", "Cabinda"]} /><FormSelect label="País" options={["Angola"]} /><FormInput label="Código postal" placeholder="0000-000" /></div>
         </Section>
-        <Section title="3. Informações adicionais">
+        <Section title="3. Vinculo com plano">
+          <div className="grid gap-3 md:grid-cols-[1fr_220px_180px]">
+            <FormSelect label="Plano existente" value={selectedPlanId} onChange={(event) => setSelectedPlanId(event.target.value)}>
+              <option value="">Sem plano</option>
+              {activePlans.map((plan) => <option key={plan.id} value={plan.id}>{plan.name}</option>)}
+            </FormSelect>
+            <FormInput label="Preco" value={selectedPlan?.price ?? "Sem cobranca"} readOnly />
+            <FormInput label="Duracao" value={selectedPlan?.duration ?? "-"} readOnly />
+          </div>
+        </Section>
+        <Section title="4. Informações adicionais">
           <div className="grid grid-cols-3 gap-3"><FormInput label="Profissão" /><FormSelect label="Como conheceu a academia?" options={["Indicação", "Redes sociais", "Publicidade", "Passou pela unidade"]} /><FormSelect label="Objetivo principal" options={["Hipertrofia", "Emagrecimento", "Saúde", "Condicionamento"]} /></div>
           <FormTextarea label="Observações" placeholder="Adicione observações sobre o cliente..." />
           <FormCheckbox label="Enviar boas-vindas por e-mail ou WhatsApp" defaultChecked />
@@ -305,6 +406,7 @@ export function ProductFormModal({ open, product, onClose }: { open: boolean; pr
 export function PlanFormModal({ open, plan, onClose }: { open: boolean; plan?: PlanRecord; onClose: () => void }) {
   const addPlan = usePlansStore((state) => state.addPlan);
   const updatePlan = usePlansStore((state) => state.updatePlan);
+  const categories = usePlansStore((state) => state.categories);
   const [name, setName] = useState("");
   const [category, setCategory] = useState("Musculação");
   const [type, setType] = useState("Recorrente");
@@ -319,7 +421,7 @@ export function PlanFormModal({ open, plan, onClose }: { open: boolean; plan?: P
   useEffect(() => {
     if (!open) return;
     setName(plan?.name ?? "");
-    setCategory(plan?.category ?? "Musculação");
+    setCategory(plan?.category ?? categories[0] ?? "Musculação");
     setType(plan?.type ?? "Recorrente");
     setDescription(plan?.description ?? "");
     setNormalPrice(moneyInputValue(plan?.price));
@@ -327,8 +429,8 @@ export function PlanFormModal({ open, plan, onClose }: { open: boolean; plan?: P
     setActive(plan?.status !== "Inativo");
     setShowInApp(true);
     setAutoRenew(true);
-    setColor("#B6FF00");
-  }, [open, plan]);
+    setColor(plan?.color ?? "#B6FF00");
+  }, [categories, open, plan]);
 
   const save = () => {
     const parsedPrice = parseNumericInput(normalPrice);
@@ -348,7 +450,8 @@ export function PlanFormModal({ open, plan, onClose }: { open: boolean; plan?: P
       price: formatPlanPrice(parsedPrice, duration),
       duration,
       type,
-      status: active ? "Ativo" : "Inativo"
+      status: active ? "Ativo" : "Inativo",
+      color
     };
 
     if (plan) updatePlan(plan.id, payload);
@@ -359,25 +462,60 @@ export function PlanFormModal({ open, plan, onClose }: { open: boolean; plan?: P
   return (
     <Modal open={open} title={plan ? "Editar plano" : "Novo plano"} description="Preencha as informações do plano." size="xl" onClose={onClose} footer={<><Button onClick={onClose}>Cancelar</Button><Button variant="primary" onClick={save}>{plan ? "Salvar alterações" : "Salvar plano"}</Button></>}>
       <div className="space-y-5">
-        <Section title="1. Informacoes basicas"><div className="grid grid-cols-3 gap-3"><FormInput label="Nome do plano" requiredMark value={name} onChange={(event) => setName(event.target.value)} /><FormSelect label="Categoria" requiredMark options={["Musculação", "Funcional", "Lutas", "Natação", "Cross Training"]} value={category} onChange={(event) => setCategory(event.target.value)} /><FormSelect label="Tipo de plano" requiredMark options={["Recorrente", "Avulso", "Pré-pago", "Corporativo"]} value={type} onChange={(event) => setType(event.target.value)} /></div><FormTextarea label="Descricao" value={description} onChange={(event) => setDescription(event.target.value)} /></Section>
+        <Section title="1. Informacoes basicas"><div className="grid grid-cols-3 gap-3"><FormInput label="Nome do plano" requiredMark value={name} onChange={(event) => setName(event.target.value)} /><FormSelect label="Categoria" requiredMark options={categories.length ? categories : ["Musculação"]} value={category} onChange={(event) => setCategory(event.target.value)} /><FormSelect label="Tipo de plano" requiredMark options={["Recorrente", "Avulso", "Pré-pago", "Corporativo"]} value={type} onChange={(event) => setType(event.target.value)} /></div><FormTextarea label="Descricao" value={description} onChange={(event) => setDescription(event.target.value)} /></Section>
         <Section title="2. Preco e duracao"><div className="grid grid-cols-4 gap-3"><FormInput label="Preco normal (Kz)" requiredMark type="number" min="0" value={normalPrice} onChange={(event) => setNormalPrice(event.target.value)} /><FormInput label="Preco promocional (Kz)" type="number" min="0" /><FormSelect label="Duracao" requiredMark options={["Mensal", "Trimestral", "Semestral", "Anual"]} value={duration} onChange={(event) => setDuration(event.target.value)} /><FormSelect label="Periodo de cobranca" requiredMark options={["Mensal", "Trimestral", "Anual"]} value={duration === "Semestral" ? "Mensal" : duration} onChange={(event) => setDuration(event.target.value)} /><FormInput label="Taxa de matricula (Kz)" defaultValue="0" /><FormSelect label="Dia do vencimento" options={["1", "5", "10", "15", "20", "30"]} /></div></Section>
         <Section title="3. Acesso e limitações"><div className="grid grid-cols-3 gap-3"><FormSelect label="Acesso à academia" options={["Livre", "Limitado", "Não incluso"]} /><FormSelect label="Acesso a aulas" options={["Todas", "Limitadas", "Não incluso"]} /><FormSelect label="Acesso a treinos" options={["Sim", "Não"]} /></div><div className="grid grid-cols-2 gap-3"><FormInput label="Dias por semana" defaultValue="Seg, Ter, Qua, Qui, Sex" /><FormSelect label="Horário de acesso" options={["Horário livre", "Manhã", "Tarde", "Noite"]} /></div><FormSwitch label="Permitir congelamento do plano" checked={true} onChange={() => undefined} /></Section>
         <Section title="4. Configuracoes adicionais"><div className="grid grid-cols-3 gap-3"><FormSwitch label="Plano ativo" checked={active} onChange={setActive} /><FormSwitch label="Exibir no app do aluno" checked={showInApp} onChange={setShowInApp} /><FormSwitch label="Permitir renovacao automatica" checked={autoRenew} onChange={setAutoRenew} /></div></Section>
-        <Section title="5. Imagem e cor do plano"><div className="grid grid-cols-[1fr_260px] gap-3"><FileUpload label="Clique para enviar ou arraste a imagem aqui" /><div><p className="mb-3 text-sm">Cor do plano</p><ColorPicker value={color} onChange={setColor} /></div></div></Section>
+        <Section title="5. Imagem e cor do plano"><div className="grid grid-cols-[1fr_260px] gap-3"><FileUpload label="Clique para enviar ou arraste a imagem aqui" /><div className="space-y-3"><div className="flex items-center justify-between gap-3 text-sm"><span>Cor do plano</span><span className="inline-flex items-center gap-2 text-zinc-300"><span className="h-3 w-3 rounded-full" style={{ backgroundColor: color }} />{color}</span></div><ColorPicker value={color} onChange={setColor} /></div></div></Section>
       </div>
     </Modal>
   );
 }
 
-export function CategoryModal({ open, title = "Nova categoria", onClose }: { open: boolean; title?: string; onClose: () => void }) {
+export function CategoryModal({ open, title = "Nova categoria", category, onClose, onSave }: { open: boolean; title?: string; category?: PlanCategory | null; onClose: () => void; onSave?: (category: PlanCategoryInput) => boolean }) {
+  const [name, setName] = useState("");
+  const [icon, setIcon] = useState("Musculação");
+  const [description, setDescription] = useState("");
+  const [active, setActive] = useState(true);
+  const [order, setOrder] = useState("1");
   const [color, setColor] = useState("#B6FF00");
-  const save = () => { toastSuccess("Categoria criada com sucesso"); onClose(); };
+
+  useEffect(() => {
+    if (!open) return;
+    setName(category?.name ?? "");
+    setIcon(category?.icon ?? "Musculação");
+    setDescription(category?.description ?? "");
+    setActive(category?.status !== "Inativo");
+    setOrder(String(category?.order ?? 1));
+    setColor(category?.color ?? "#B6FF00");
+  }, [category, open]);
+
+  const save = () => {
+    if (!name.trim()) {
+      toastInfo("Nome obrigatorio", "Informe o nome da categoria.");
+      return;
+    }
+    const created = onSave ? onSave({
+      name,
+      icon,
+      description: description.trim() || undefined,
+      color,
+      status: active ? "Ativo" : "Inativo",
+      order: Number(order) || 1
+    }) : true;
+    if (!created) {
+      toastInfo("Categoria ja existe", "Escolha outro nome para esta categoria.");
+      return;
+    }
+    toastSuccess(category ? "Categoria atualizada com sucesso" : "Categoria criada com sucesso");
+    onClose();
+  };
+
   return (
-    <Modal open={open} title={title} description="Crie uma nova categoria para organizar os registos." size="md" onClose={onClose} footer={<><Button onClick={onClose}>Cancelar</Button><Button variant="primary" onClick={save}>Criar categoria</Button></>}>
+    <Modal open={open} title={title} description="Crie uma nova categoria para organizar os registos." size="md" onClose={onClose} footer={<><Button onClick={onClose}>Cancelar</Button><Button variant="primary" onClick={save}>{category ? "Salvar categoria" : "Criar categoria"}</Button></>}>
       <div className="space-y-5">
-        <Section title="1. Informações da categoria"><div className="grid grid-cols-2 gap-3"><FormInput label="Nome da categoria" requiredMark placeholder="Ex: Musculação" /><FormSelect label="Ícone da categoria" requiredMark options={["Musculação", "Cardio", "Produto", "Aula", "Plano"]} /></div><FormTextarea label="Descrição" /></Section>
-        <Section title="2. Configurações"><div className="grid grid-cols-2 gap-3"><FormSwitch label="Status da categoria" checked={true} onChange={() => undefined} /><FormInput label="Ordem de exibição" type="number" defaultValue="1" /></div><p className="text-sm text-zinc-400">Cor da categoria</p><ColorPicker value={color} onChange={setColor} /></Section>
-        <Section title="3. Vincular planos existentes"><FormSelect label="Planos existentes" options={["Selecione os planos", "Plano Premium Mensal", "Plano Basic"]} /></Section>
+        <Section title="1. Informações da categoria"><div className="grid grid-cols-2 gap-3"><FormInput label="Nome da categoria" requiredMark placeholder="Ex: Musculação" value={name} onChange={(event) => setName(event.target.value)} /><FormSelect label="Ícone da categoria" requiredMark options={["Musculação", "Cardio", "Produto", "Aula", "Plano"]} value={icon} onChange={(event) => setIcon(event.target.value)} /></div><FormTextarea label="Descrição" value={description} onChange={(event) => setDescription(event.target.value)} /></Section>
+        <Section title="2. Configurações"><div className="grid grid-cols-2 gap-3"><FormSwitch label="Status da categoria" checked={active} onChange={setActive} /><FormInput label="Ordem de exibição" type="number" min="1" value={order} onChange={(event) => setOrder(event.target.value)} /></div><div className="space-y-3"><div className="flex items-center justify-between gap-3 text-sm text-zinc-400"><span>Cor da categoria</span><span className="inline-flex items-center gap-2 text-zinc-200"><span className="h-3 w-3 rounded-full" style={{ backgroundColor: color }} />{color}</span></div><ColorPicker value={color} onChange={setColor} /></div></Section>
       </div>
     </Modal>
   );

@@ -29,6 +29,9 @@ export const updateResource = <T>(resource: ResourceName, id: string, token: str
 export const deleteResource = <T>(resource: ResourceName, id: string, token: string) =>
   apiRequest<T>(`/${resource}/${id}`, { method: "DELETE", token });
 
+export const createSubscription = (token: string, body: { memberId: string; planId: string; startDate?: string; autoRenew?: boolean }) =>
+  apiRequest<Entity>("/subscriptions", { method: "POST", token, body });
+
 export const listFinanceRecords = async (token: string) => {
   const [payments, expenses] = await Promise.all([
     apiRequest<PaginatedResponse<Entity>>(apiPath("/payments", { limit: 100 }), { token }),
@@ -51,6 +54,7 @@ export const clientFromApi = (member: Entity): ClientRecord => {
   const subscription = first<Entity>(member.subscriptions);
   const plan = getEntity(subscription?.plan);
   const expires = asDate(subscription?.endDate);
+  const lastCheckin = first<Entity>(member.checkIns);
 
   return {
     id: asString(member.id),
@@ -58,13 +62,15 @@ export const clientFromApi = (member: Entity): ClientRecord => {
     phone: asString(member.phone, "+244 900 000 000"),
     email: asString(member.email, "cliente@email.com"),
     plan: asString(plan?.name, "Sem plano"),
+    planId: asString(subscription?.planId ?? plan?.id, undefined),
     planTone: member.status === "OVERDUE" ? "red" : "lime",
     status: statusLabel(member.status, { ACTIVE: "Ativo", INACTIVE: "Inativo", OVERDUE: "Em atraso", BLOCKED: "Bloqueado", CANCELLED: "Cancelado" }),
-    lastCheckin: "Sem check-in",
+    lastCheckin: lastCheckin ? relativeDate(asDate(lastCheckin.checkedAt)) : "Sem check-in",
     expires: formatDate(expires),
     birthday: formatBirthday(asDate(member.birthDate)),
     avatar: initials(asString(member.name, "CN")),
-    document: asString(member.documentNumber, "000000000LA000")
+    document: asString(member.documentNumber, "000000000LA000"),
+    createdAt: asString(member.createdAt, undefined)
   };
 };
 
@@ -85,7 +91,8 @@ export const planFromApi = (plan: Entity): PlanRecord => ({
   duration: durationLabel(Number(plan.durationDays ?? 30)),
   type: asBoolean(plan.isPopular) ? "Popular" : "Recorrente",
   clients: 0,
-  status: statusLabel(plan.status, { ACTIVE: "Ativo", INACTIVE: "Inativo" })
+  status: statusLabel(plan.status, { ACTIVE: "Ativo", INACTIVE: "Inativo" }),
+  color: "#B6FF00"
 });
 
 export const planToDto = (plan: Partial<PlanRecord>) => ({
@@ -127,13 +134,15 @@ export const productToDto = (product: Partial<ProductRecord>) => ({
 
 export const checkinFromApi = (checkin: Entity): CheckinRecord => {
   const member = getEntity(checkin.member);
+  const checkedAt = asDate(checkin.checkedAt);
   return {
     id: asString(checkin.id),
     clientName: asString(member?.name, "Cliente Noogym"),
     clientId: asString(checkin.memberId),
     type: methodLabel(checkin.method),
     accessType: "Entrada",
-    dateTime: relativeDate(asDate(checkin.checkedAt)),
+    dateTime: relativeDate(checkedAt),
+    checkedAtIso: checkedAt?.toISOString(),
     observation: asString(checkin.notes, undefined)
   };
 };
@@ -141,6 +150,7 @@ export const checkinFromApi = (checkin: Entity): CheckinRecord => {
 export const checkinToDto = (checkin: Partial<CheckinRecord>) => ({
   memberId: checkin.clientId ?? "",
   method: methodValue(checkin.type),
+  checkedAt: checkin.checkedAtIso,
   notes: checkin.observation
 });
 
