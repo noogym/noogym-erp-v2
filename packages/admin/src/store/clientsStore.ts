@@ -55,9 +55,21 @@ export const useClientsStore = create<ClientsState>((set, get) => ({
       lastCheckin: client.lastCheckin ?? "Sem check-in",
       expires: client.expires ?? "20/06/2024",
       birthday: client.birthday ?? "20 Mai",
+      birthDate: client.birthDate,
       avatar: client.avatar ?? (client.name ?? "NC").split(" ").map((part) => part[0]).join("").slice(0, 2),
       document: client.document ?? "000000000LA000",
-      createdAt: client.createdAt ?? new Date().toISOString()
+      createdAt: client.createdAt ?? new Date().toISOString(),
+      gender: client.gender,
+      maritalStatus: client.maritalStatus,
+      address: client.address,
+      city: client.city,
+      province: client.province,
+      country: client.country,
+      postalCode: client.postalCode,
+      profession: client.profession,
+      source: client.source,
+      goal: client.goal,
+      observations: client.observations
     };
     const clients = [created, ...get().clients];
     persist(clients);

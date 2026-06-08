@@ -19,6 +19,14 @@ export class CreatePlanDto {
   @IsString()
   description?: string;
 
+  @IsOptional()
+  @IsString()
+  category?: string;
+
+  @IsOptional()
+  @IsString()
+  color?: string;
+
   @Type(() => Number)
   @IsNumber()
   @Min(0)

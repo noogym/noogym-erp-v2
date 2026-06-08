@@ -4,6 +4,7 @@ import type {
   ClientRecord,
   EmployeeRecord,
   FinanceRecord,
+  PlanCategoryRecord,
   PlanRecord,
   ProductRecord,
   SaleRecord,
@@ -13,7 +14,7 @@ import { apiPath, apiRequest, type PaginatedResponse } from "./api";
 
 type Entity = Record<string, unknown>;
 
-export type ResourceName = "members" | "plans" | "products" | "checkins" | "sales" | "classes" | "employees" | "workouts";
+export type ResourceName = "members" | "plans" | "plan-categories" | "products" | "checkins" | "sales" | "classes" | "employees" | "workouts";
 
 export const listResource = async <T>(resource: ResourceName, token: string) => {
   const response = await apiRequest<PaginatedResponse<T>>(apiPath(`/${resource}`, { limit: 100 }), { token });
@@ -86,24 +87,45 @@ export const planFromApi = (plan: Entity): PlanRecord => ({
   id: asString(plan.id),
   name: asString(plan.name, "Plano"),
   description: asString(plan.description, ""),
-  category: asBoolean(plan.includesClasses) ? "Aulas" : "Musculacao",
+  category: asString(plan.category, asBoolean(plan.includesClasses) ? "Aulas" : "Musculacao"),
   price: `${formatNumber(plan.price)} Kz/${durationLabel(Number(plan.durationDays ?? 30)).toLowerCase()}`,
   duration: durationLabel(Number(plan.durationDays ?? 30)),
   type: asBoolean(plan.isPopular) ? "Popular" : "Recorrente",
   clients: 0,
   status: statusLabel(plan.status, { ACTIVE: "Ativo", INACTIVE: "Inativo" }),
-  color: "#B6FF00"
+  color: asString(plan.color, "#B6FF00")
 });
 
 export const planToDto = (plan: Partial<PlanRecord>) => ({
   name: plan.name ?? "Novo plano",
   description: plan.description,
+  category: plan.category,
+  color: plan.color,
   price: parseMoney(plan.price),
   durationDays: durationDays(plan.duration),
   status: plan.status === "Inativo" ? "INACTIVE" : "ACTIVE",
   includesClasses: true,
   includesWorkouts: plan.category?.toLowerCase().includes("muscula") ?? false,
   isPopular: plan.type === "Popular"
+});
+
+export const planCategoryFromApi = (category: Entity): PlanCategoryRecord => ({
+  id: asString(category.id, undefined),
+  name: asString(category.name, "Categoria"),
+  icon: asString(category.icon, asString(category.name, "Categoria")),
+  description: asString(category.description, undefined),
+  color: asString(category.color, "#B6FF00"),
+  status: statusLabel(category.status, { ACTIVE: "Ativo", INACTIVE: "Inativo" }) as "Ativo" | "Inativo",
+  order: asNumber(category.displayOrder, 1)
+});
+
+export const planCategoryToDto = (category: Partial<PlanCategoryRecord>) => ({
+  name: category.name ?? "Categoria",
+  icon: category.icon ?? category.name ?? "Categoria",
+  description: category.description,
+  color: category.color ?? "#B6FF00",
+  status: category.status === "Inativo" ? "INACTIVE" : "ACTIVE",
+  displayOrder: category.order ?? 1
 });
 
 export const productFromApi = (product: Entity): ProductRecord => ({

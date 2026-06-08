@@ -10,9 +10,21 @@ export interface ClientRecord {
   lastCheckin?: string;
   expires?: string;
   birthday?: string;
+  birthDate?: string;
   avatar?: string;
   document?: string;
   createdAt?: string;
+  gender?: string;
+  maritalStatus?: string;
+  address?: string;
+  city?: string;
+  province?: string;
+  country?: string;
+  postalCode?: string;
+  profession?: string;
+  source?: string;
+  goal?: string;
+  observations?: string;
 }
 
 export interface PlanRecord {
@@ -26,6 +38,17 @@ export interface PlanRecord {
   clients: number;
   status: string;
   color?: string;
+  accessDays?: string[];
+}
+
+export interface PlanCategoryRecord {
+  id?: string;
+  name: string;
+  icon: string;
+  description?: string;
+  color: string;
+  status: "Ativo" | "Inativo";
+  order: number;
 }
 
 export interface ProductRecord {

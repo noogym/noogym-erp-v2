@@ -23,10 +23,12 @@ import { useProductsStore } from "../../store/productsStore";
 import { useSalesStore } from "../../store/salesStore";
 import { useWorkoutsStore } from "../../store/workoutsStore";
 import { toastInfo, toastSuccess } from "../../store/toastStore";
-import type { ClassRecord, EmployeeRecord, PlanRecord, ProductRecord, WorkoutRecord } from "@noogym/types";
+import type { ClassRecord, ClientRecord, EmployeeRecord, PlanRecord, ProductRecord, WorkoutRecord } from "@noogym/types";
 import type { PlanCategory, PlanCategoryInput } from "../../store/plansStore";
 
 const today = "Hoje, 10:30";
+const planWeekDays = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sab", "Dom"];
+const defaultPlanWeekDays = ["Seg", "Ter", "Qua", "Qui", "Sex"];
 
 const dateTimeInputValue = () => {
   const now = new Date();
@@ -250,49 +252,91 @@ export function MessageModal({ open, onClose }: { open: boolean; onClose: () => 
   );
 }
 
-export function NewClientModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function NewClientModal({ open, client, onClose }: { open: boolean; client?: ClientRecord | null; onClose: () => void }) {
   const addClient = useClientsStore((state) => state.addClient);
+  const updateClient = useClientsStore((state) => state.updateClient);
   const plans = usePlansStore((state) => state.plans);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [birthDate, setBirthDate] = useState("");
   const [document, setDocument] = useState("");
+  const [gender, setGender] = useState("Selecione");
+  const [maritalStatus, setMaritalStatus] = useState("Selecione");
+  const [address, setAddress] = useState("");
+  const [city, setCity] = useState("");
+  const [province, setProvince] = useState("Luanda");
+  const [country, setCountry] = useState("Angola");
+  const [postalCode, setPostalCode] = useState("");
+  const [profession, setProfession] = useState("");
+  const [source, setSource] = useState("Indicação");
+  const [goal, setGoal] = useState("Hipertrofia");
+  const [observations, setObservations] = useState("");
+  const [status, setStatus] = useState("Ativo");
   const [selectedPlanId, setSelectedPlanId] = useState("");
   const activePlans = useMemo(() => plans.filter((plan) => plan.status !== "Inativo"), [plans]);
   const selectedPlan = activePlans.find((plan) => plan.id === selectedPlanId);
   const maxBirthDate = new Date().toISOString().slice(0, 10);
+  const isEditing = Boolean(client);
 
   useEffect(() => {
     if (!open) return;
-    setName("");
-    setEmail("");
-    setPhone("");
-    setBirthDate("");
-    setDocument("");
-    setSelectedPlanId("");
-  }, [open]);
+    setName(client?.name ?? "");
+    setEmail(client?.email ?? "");
+    setPhone(client?.phone ?? "");
+    setBirthDate(client?.birthDate ?? "");
+    setDocument(client?.document ?? "");
+    setGender(client?.gender ?? "Selecione");
+    setMaritalStatus(client?.maritalStatus ?? "Selecione");
+    setAddress(client?.address ?? "");
+    setCity(client?.city ?? "");
+    setProvince(client?.province ?? "Luanda");
+    setCountry(client?.country ?? "Angola");
+    setPostalCode(client?.postalCode ?? "");
+    setProfession(client?.profession ?? "");
+    setSource(client?.source ?? "Indicação");
+    setGoal(client?.goal ?? "Hipertrofia");
+    setObservations(client?.observations ?? "");
+    setStatus(client?.status ?? "Ativo");
+    setSelectedPlanId(client?.planId ?? activePlans.find((plan) => plan.name === client?.plan)?.id ?? "");
+  }, [activePlans, client, open]);
 
   const birthdayLabel = birthDate ? new Intl.DateTimeFormat("pt-AO", { day: "2-digit", month: "short" }).format(new Date(`${birthDate}T00:00:00`)).replace(".", "") : undefined;
 
   const save = () => {
     if (!name.trim() || !phone.trim()) { toastInfo("Campos obrigatórios", "Informe pelo menos nome e telefone."); return; }
     if (!birthDate) { toastInfo("Campos obrigatórios", "Informe a data de nascimento."); return; }
-    addClient({
-      name,
-      email: email || `${name.toLowerCase().replace(/\s+/g, ".")}@email.com`,
-      phone,
+    const payload: Partial<ClientRecord> = {
+      name: name.trim(),
+      email: email.trim() || `${name.toLowerCase().replace(/\s+/g, ".")}@email.com`,
+      phone: phone.trim(),
       plan: selectedPlan?.name ?? "Sem plano",
       planId: selectedPlan?.id,
       planTone: selectedPlan ? "lime" : "gray",
-      birthday: birthdayLabel,
-      document: document.trim() || undefined
-    });
-    toastSuccess("Cliente criado com sucesso");
+      status,
+      birthday: birthdayLabel ?? client?.birthday,
+      birthDate,
+      document: document.trim() || undefined,
+      gender,
+      maritalStatus,
+      address: address.trim(),
+      city: city.trim(),
+      province,
+      country,
+      postalCode: postalCode.trim(),
+      profession: profession.trim(),
+      source,
+      goal,
+      observations: observations.trim()
+    };
+
+    if (client) updateClient(client.id, payload);
+    else addClient(payload);
+    toastSuccess(client ? "Cliente atualizado com sucesso" : "Cliente criado com sucesso");
     onClose();
   };
   return (
-    <Modal open={open} title="Novo cliente" description="Preencha as informações para cadastrar um novo cliente." size="xl" onClose={onClose} footer={<><Button onClick={onClose}>Cancelar</Button><Button variant="primary" onClick={save}>Cadastrar cliente</Button></>}>
+    <Modal open={open} title={isEditing ? "Editar cliente" : "Novo cliente"} description={isEditing ? "Atualize as informações cadastrais do cliente." : "Preencha as informações para cadastrar um novo cliente."} size="xl" onClose={onClose} footer={<><Button onClick={onClose}>Cancelar</Button><Button variant="primary" onClick={save}>{isEditing ? "Salvar alterações" : "Cadastrar cliente"}</Button></>}>
       <div className="space-y-5">
         <Section title="1. Dados pessoais">
           <div className="grid gap-3 lg:grid-cols-[140px_minmax(0,1fr)]">
@@ -303,13 +347,14 @@ export function NewClientModal({ open, onClose }: { open: boolean; onClose: () =
               <FormInput className="xl:col-span-3" label="E-mail" type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="email@exemplo.com" />
               <FormInput className="xl:col-span-3" label="Telefone" requiredMark value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="+244 9XX XXX XXX" />
               <FormInput className="xl:col-span-3" label="Documento/BI" value={document} onChange={(event) => setDocument(event.target.value)} placeholder="000000000LA000" />
-              <FormSelect className="xl:col-span-3" label="Sexo" options={["Selecione", "Feminino", "Masculino", "Outro"]} />
-              <FormSelect className="sm:col-span-2 xl:col-span-6" label="Estado civil" options={["Selecione", "Solteiro(a)", "Casado(a)", "Outro"]} />
+              <FormSelect className="xl:col-span-3" label="Sexo" value={gender} onChange={(event) => setGender(event.target.value)} options={["Selecione", "Feminino", "Masculino", "Outro"]} />
+              <FormSelect className="xl:col-span-3" label="Estado civil" value={maritalStatus} onChange={(event) => setMaritalStatus(event.target.value)} options={["Selecione", "Solteiro(a)", "Casado(a)", "Outro"]} />
+              <FormSelect className="xl:col-span-3" label="Status" value={status} onChange={(event) => setStatus(event.target.value)} options={["Ativo", "Inativo", "Em atraso", "Bloqueado", "Cancelado"]} />
             </div>
           </div>
         </Section>
         <Section title="2. Endereço">
-          <div className="grid grid-cols-3 gap-3"><FormInput label="Endereço" placeholder="Rua, número, bairro" /><FormInput label="Cidade" placeholder="Luanda" /><FormSelect label="Província" options={["Luanda", "Benguela", "Huíla", "Huambo", "Cabinda"]} /><FormSelect label="País" options={["Angola"]} /><FormInput label="Código postal" placeholder="0000-000" /></div>
+          <div className="grid gap-3 md:grid-cols-3"><FormInput label="Endereço" value={address} onChange={(event) => setAddress(event.target.value)} placeholder="Rua, número, bairro" /><FormInput label="Cidade" value={city} onChange={(event) => setCity(event.target.value)} placeholder="Luanda" /><FormSelect label="Província" value={province} onChange={(event) => setProvince(event.target.value)} options={["Luanda", "Benguela", "Huíla", "Huambo", "Cabinda"]} /><FormSelect label="País" value={country} onChange={(event) => setCountry(event.target.value)} options={["Angola"]} /><FormInput label="Código postal" value={postalCode} onChange={(event) => setPostalCode(event.target.value)} placeholder="0000-000" /></div>
         </Section>
         <Section title="3. Vinculo com plano">
           <div className="grid gap-3 md:grid-cols-[1fr_220px_180px]">
@@ -322,9 +367,9 @@ export function NewClientModal({ open, onClose }: { open: boolean; onClose: () =
           </div>
         </Section>
         <Section title="4. Informações adicionais">
-          <div className="grid grid-cols-3 gap-3"><FormInput label="Profissão" /><FormSelect label="Como conheceu a academia?" options={["Indicação", "Redes sociais", "Publicidade", "Passou pela unidade"]} /><FormSelect label="Objetivo principal" options={["Hipertrofia", "Emagrecimento", "Saúde", "Condicionamento"]} /></div>
-          <FormTextarea label="Observações" placeholder="Adicione observações sobre o cliente..." />
-          <FormCheckbox label="Enviar boas-vindas por e-mail ou WhatsApp" defaultChecked />
+          <div className="grid gap-3 md:grid-cols-3"><FormInput label="Profissão" value={profession} onChange={(event) => setProfession(event.target.value)} /><FormSelect label="Como conheceu a academia?" value={source} onChange={(event) => setSource(event.target.value)} options={["Indicação", "Redes sociais", "Publicidade", "Passou pela unidade"]} /><FormSelect label="Objetivo principal" value={goal} onChange={(event) => setGoal(event.target.value)} options={["Hipertrofia", "Emagrecimento", "Saúde", "Condicionamento"]} /></div>
+          <FormTextarea label="Observações" value={observations} onChange={(event) => setObservations(event.target.value)} placeholder="Adicione observações sobre o cliente..." />
+          {!isEditing ? <FormCheckbox label="Enviar boas-vindas por e-mail ou WhatsApp" defaultChecked /> : null}
         </Section>
       </div>
     </Modal>
@@ -417,6 +462,7 @@ export function PlanFormModal({ open, plan, onClose }: { open: boolean; plan?: P
   const [showInApp, setShowInApp] = useState(true);
   const [autoRenew, setAutoRenew] = useState(true);
   const [color, setColor] = useState("#B6FF00");
+  const [accessDays, setAccessDays] = useState<string[]>(defaultPlanWeekDays);
 
   useEffect(() => {
     if (!open) return;
@@ -430,6 +476,7 @@ export function PlanFormModal({ open, plan, onClose }: { open: boolean; plan?: P
     setShowInApp(true);
     setAutoRenew(true);
     setColor(plan?.color ?? "#B6FF00");
+    setAccessDays(plan?.accessDays?.length ? plan.accessDays : defaultPlanWeekDays);
   }, [categories, open, plan]);
 
   const save = () => {
@@ -451,7 +498,8 @@ export function PlanFormModal({ open, plan, onClose }: { open: boolean; plan?: P
       duration,
       type,
       status: active ? "Ativo" : "Inativo",
-      color
+      color,
+      accessDays
     };
 
     if (plan) updatePlan(plan.id, payload);
@@ -464,7 +512,7 @@ export function PlanFormModal({ open, plan, onClose }: { open: boolean; plan?: P
       <div className="space-y-5">
         <Section title="1. Informacoes basicas"><div className="grid grid-cols-3 gap-3"><FormInput label="Nome do plano" requiredMark value={name} onChange={(event) => setName(event.target.value)} /><FormSelect label="Categoria" requiredMark options={categories.length ? categories : ["Musculação"]} value={category} onChange={(event) => setCategory(event.target.value)} /><FormSelect label="Tipo de plano" requiredMark options={["Recorrente", "Avulso", "Pré-pago", "Corporativo"]} value={type} onChange={(event) => setType(event.target.value)} /></div><FormTextarea label="Descricao" value={description} onChange={(event) => setDescription(event.target.value)} /></Section>
         <Section title="2. Preco e duracao"><div className="grid grid-cols-4 gap-3"><FormInput label="Preco normal (Kz)" requiredMark type="number" min="0" value={normalPrice} onChange={(event) => setNormalPrice(event.target.value)} /><FormInput label="Preco promocional (Kz)" type="number" min="0" /><FormSelect label="Duracao" requiredMark options={["Mensal", "Trimestral", "Semestral", "Anual"]} value={duration} onChange={(event) => setDuration(event.target.value)} /><FormSelect label="Periodo de cobranca" requiredMark options={["Mensal", "Trimestral", "Anual"]} value={duration === "Semestral" ? "Mensal" : duration} onChange={(event) => setDuration(event.target.value)} /><FormInput label="Taxa de matricula (Kz)" defaultValue="0" /><FormSelect label="Dia do vencimento" options={["1", "5", "10", "15", "20", "30"]} /></div></Section>
-        <Section title="3. Acesso e limitações"><div className="grid grid-cols-3 gap-3"><FormSelect label="Acesso à academia" options={["Livre", "Limitado", "Não incluso"]} /><FormSelect label="Acesso a aulas" options={["Todas", "Limitadas", "Não incluso"]} /><FormSelect label="Acesso a treinos" options={["Sim", "Não"]} /></div><div className="grid grid-cols-2 gap-3"><FormInput label="Dias por semana" defaultValue="Seg, Ter, Qua, Qui, Sex" /><FormSelect label="Horário de acesso" options={["Horário livre", "Manhã", "Tarde", "Noite"]} /></div><FormSwitch label="Permitir congelamento do plano" checked={true} onChange={() => undefined} /></Section>
+        <Section title="3. Acesso e limitações"><div className="grid grid-cols-3 gap-3"><FormSelect label="Acesso à academia" options={["Livre", "Limitado", "Não incluso"]} /><FormSelect label="Acesso a aulas" options={["Todas", "Limitadas", "Não incluso"]} /><FormSelect label="Acesso a treinos" options={["Sim", "Não"]} /></div><div className="grid gap-3 lg:grid-cols-[1fr_300px]"><div className="space-y-2"><div className="flex items-center justify-between gap-3"><span className="text-sm text-zinc-200">Dias por semana</span><span className="text-xs text-zinc-400">{accessDays.length ? accessDays.join(", ") : "Nenhum dia selecionado"}</span></div><div className="grid grid-cols-7 gap-2">{planWeekDays.map((day) => { const selected = accessDays.includes(day); return <button key={day} type="button" className={`h-10 rounded-md border text-sm font-medium transition ${selected ? "border-noogym-lime bg-noogym-lime text-black" : "border-white/10 bg-black/20 text-zinc-300 hover:border-noogym-lime/60"}`} onClick={() => setAccessDays((days) => selected ? days.filter((item) => item !== day) : [...days, day])}>{day}</button>; })}</div><div className="flex flex-wrap gap-2"><button type="button" className="rounded-md border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-zinc-200" onClick={() => setAccessDays(defaultPlanWeekDays)}>Dias úteis</button><button type="button" className="rounded-md border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-zinc-200" onClick={() => setAccessDays(planWeekDays)}>Todos os dias</button><button type="button" className="rounded-md border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-zinc-200" onClick={() => setAccessDays([])}>Limpar</button></div></div><FormSelect label="Horário de acesso" options={["Horário livre", "Manhã", "Tarde", "Noite"]} /></div><FormSwitch label="Permitir congelamento do plano" checked={true} onChange={() => undefined} /></Section>
         <Section title="4. Configuracoes adicionais"><div className="grid grid-cols-3 gap-3"><FormSwitch label="Plano ativo" checked={active} onChange={setActive} /><FormSwitch label="Exibir no app do aluno" checked={showInApp} onChange={setShowInApp} /><FormSwitch label="Permitir renovacao automatica" checked={autoRenew} onChange={setAutoRenew} /></div></Section>
         <Section title="5. Imagem e cor do plano"><div className="grid grid-cols-[1fr_260px] gap-3"><FileUpload label="Clique para enviar ou arraste a imagem aqui" /><div className="space-y-3"><div className="flex items-center justify-between gap-3 text-sm"><span>Cor do plano</span><span className="inline-flex items-center gap-2 text-zinc-300"><span className="h-3 w-3 rounded-full" style={{ backgroundColor: color }} />{color}</span></div><ColorPicker value={color} onChange={setColor} /></div></div></Section>
       </div>

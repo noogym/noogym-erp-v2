@@ -1,5 +1,5 @@
 import { Download, Gift, Mail, Plus, Upload, UsersRound } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { ClientRecord } from "@noogym/types";
 import { ConfirmModal } from "../components/modals/ConfirmModal";
 import { ExportModal } from "../components/modals/ExportModal";
@@ -12,7 +12,6 @@ import { Button } from "@noogym/ui";
 import { Card } from "@noogym/ui";
 import { DonutChart } from "../components/ui/Charts";
 import { DropdownMenu } from "@noogym/ui";
-import { FormInput } from "@noogym/ui";
 import { FormSelect } from "@noogym/ui";
 import { FormTextarea } from "@noogym/ui";
 import { Input } from "@noogym/ui";
@@ -24,7 +23,6 @@ import { Table } from "@noogym/ui";
 import { TableActions } from "../components/tables/TableActions";
 import { useCheckinsStore } from "../store/checkinsStore";
 import { useClientsStore } from "../store/clientsStore";
-import { usePlansStore } from "../store/plansStore";
 import { toastInfo, toastSuccess } from "../store/toastStore";
 
 const badgeTone = (tone?: string) => (["lime", "yellow", "purple", "blue", "orange", "red", "gray", "green"].includes(tone ?? "") ? tone as "lime" | "yellow" | "purple" | "blue" | "orange" | "red" | "gray" | "green" : "lime");
@@ -164,7 +162,6 @@ export default function Clientes() {
   const [importRows, setImportRows] = useState<Array<Partial<ClientRecord>>>([]);
   const clients = useClientsStore((state) => state.clients);
   const addClient = useClientsStore((state) => state.addClient);
-  const updateClient = useClientsStore((state) => state.updateClient);
   const deactivateClient = useClientsStore((state) => state.deactivateClient);
   const checkins = useCheckinsStore((state) => state.checkins);
   const lastCheckinsByClient = useMemo(() => {
@@ -307,7 +304,7 @@ export default function Clientes() {
       <ExportModal open={modal === "export"} title="Exportar clientes" dataOptions={["Dados pessoais", "Plano e contrato", "Informações financeiras", "Check-ins", "Avaliações físicas", "Observações"]} onClose={() => setModal(null)} onConfirm={exportClients} />
       {selectedClient ? <ClientMessageModal open={modal === "message"} client={selectedClient} onClose={closeModal} /> : <BulkClientMessageModal open={modal === "message"} clients={clientsWithCheckins} filteredClients={filtered} selectedClients={selectedClients} onClose={closeModal} />}
       <ClientDetailsModal open={modal === "view"} client={selectedClient} onClose={closeModal} />
-      <ClientEditModal open={modal === "edit"} client={selectedClient} onClose={closeModal} onSave={(id, data) => { updateClient(id, data); toastSuccess("Cliente atualizado com sucesso"); closeModal(); }} />
+      <NewClientModal open={modal === "edit"} client={selectedClient} onClose={closeModal} />
       <ClientHistoryModal open={modal === "history"} client={selectedClient} onClose={closeModal} />
       <ConfirmModal open={modal === "deactivate"} title="Desativar cliente" message={`Deseja desativar ${selectedClient?.name ?? "este cliente"}?`} confirmLabel="Desativar" danger onClose={closeModal} onConfirm={() => { if (selectedClient) deactivateClient(selectedClient.id); toastSuccess("Cliente desativado com sucesso"); closeModal(); }} details={selectedClient ? <div className="space-y-1 text-sm"><p>{selectedClient.name}</p><p className="text-zinc-400">{selectedClient.phone}</p><p className="text-zinc-400">{selectedClient.plan}</p></div> : null} />
     </div>
@@ -347,71 +344,6 @@ function ClientDetailsModal({ open, client, onClose }: { open: boolean; client: 
             </div>
           ))}
         </div>
-      </div>
-    </Modal>
-  );
-}
-
-function ClientEditModal({ open, client, onClose, onSave }: { open: boolean; client: ClientRecord | null; onClose: () => void; onSave: (id: string, data: Partial<ClientRecord>) => void }) {
-  const plans = usePlansStore((state) => state.plans);
-  const activePlans = useMemo(() => plans.filter((plan) => plan.status !== "Inativo"), [plans]);
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
-  const [document, setDocument] = useState("");
-  const [status, setStatus] = useState("Ativo");
-  const [selectedPlanId, setSelectedPlanId] = useState("");
-  const selectedPlan = activePlans.find((plan) => plan.id === selectedPlanId);
-
-  useEffect(() => {
-    if (!open || !client) return;
-    setName(client.name);
-    setEmail(client.email);
-    setPhone(client.phone);
-    setDocument(client.document ?? "");
-    setStatus(client.status);
-    setSelectedPlanId(client.planId ?? activePlans.find((plan) => plan.name === client.plan)?.id ?? "");
-  }, [activePlans, client, open]);
-
-  if (!client) return null;
-
-  const save = () => {
-    if (!name.trim() || !phone.trim()) {
-      toastInfo("Campos obrigatorios", "Informe pelo menos nome e telefone.");
-      return;
-    }
-
-    onSave(client.id, {
-      name: name.trim(),
-      email: email.trim(),
-      phone: phone.trim(),
-      document: document.trim(),
-      status,
-      plan: selectedPlan?.name ?? "Sem plano",
-      planId: selectedPlan?.id,
-      planTone: selectedPlan ? "lime" : "gray"
-    });
-  };
-
-  return (
-    <Modal open={open} title="Editar cliente" description={client.name} size="lg" onClose={onClose} footer={<><Button onClick={onClose}>Cancelar</Button><Button variant="primary" onClick={save}>Salvar alteracoes</Button></>}>
-      <div className="space-y-5">
-        <div className="grid gap-3 sm:grid-cols-2">
-          <FormInput label="Nome completo" requiredMark value={name} onChange={(event) => setName(event.target.value)} />
-          <FormInput label="Telefone" requiredMark value={phone} onChange={(event) => setPhone(event.target.value)} />
-          <FormInput label="E-mail" value={email} onChange={(event) => setEmail(event.target.value)} />
-          <FormInput label="Documento/BI" value={document} onChange={(event) => setDocument(event.target.value)} />
-          <FormSelect label="Status" value={status} onChange={(event) => setStatus(event.target.value)} options={["Ativo", "Inativo", "Em atraso", "Bloqueado", "Cancelado"]} />
-          <FormSelect label="Plano existente" value={selectedPlanId} onChange={(event) => setSelectedPlanId(event.target.value)}>
-            <option value="">Sem plano</option>
-            {activePlans.map((plan) => <option key={plan.id} value={plan.id}>{plan.name}</option>)}
-          </FormSelect>
-        </div>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <FormInput label="Preco do plano" value={selectedPlan?.price ?? "Sem cobranca"} readOnly />
-          <FormInput label="Duracao" value={selectedPlan?.duration ?? "-"} readOnly />
-        </div>
-        <FormTextarea label="Observacoes" placeholder="Notas internas sobre o cliente" />
       </div>
     </Modal>
   );

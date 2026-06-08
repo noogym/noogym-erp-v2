@@ -1,5 +1,5 @@
 import { Calendar, CheckCircle2, ClipboardCheck, CreditCard, Fingerprint, Keyboard, Plus, QrCode, ShoppingCart, UsersRound } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ManualCheckinModal, QrScannerModal } from "../components/modals/OperationalModals";
 import { Avatar } from "../components/ui/Avatar";
 import { Badge } from "@noogym/ui";
@@ -10,14 +10,16 @@ import { Input } from "@noogym/ui";
 import { MetricCard } from "@noogym/ui";
 import { Tabs } from "@noogym/ui";
 import { formatKz as money } from "@noogym/core";
-import { chart7, recentActivities } from "../data/mock";
 import { useAppStore } from "../store/appStore";
 import { useCheckinsStore } from "../store/checkinsStore";
 import { useClassesStore } from "../store/classesStore";
 import { useClientsStore } from "../store/clientsStore";
+import { useFinanceStore } from "../store/financeStore";
 import { usePlansStore } from "../store/plansStore";
 import { useProductsStore } from "../store/productsStore";
+import { useSalesStore } from "../store/salesStore";
 import { toastSuccess } from "../store/toastStore";
+import type { CheckinRecord } from "@noogym/types";
 
 const badgeTone = (tone?: string) => (["lime", "yellow", "purple", "blue", "orange", "red", "gray", "green"].includes(tone ?? "") ? tone as "lime" | "yellow" | "purple" | "blue" | "orange" | "red" | "gray" | "green" : "lime");
 
@@ -28,6 +30,34 @@ const quickServices = [
   { name: "Massagem desportiva", price: "15.000 Kz", detail: "Recuperação muscular" }
 ];
 
+const dayMs = 24 * 60 * 60 * 1000;
+const startOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
+const sameDay = (left: Date, right: Date) => startOfDay(left).getTime() === startOfDay(right).getTime();
+const isTodayText = (value?: string) => value?.toLowerCase().startsWith("hoje");
+const isYesterdayText = (value?: string) => value?.toLowerCase().startsWith("ontem");
+const relativeDate = (value?: string, iso?: string) => {
+  if (iso) {
+    const date = new Date(iso);
+    if (!Number.isNaN(date.getTime())) return date;
+  }
+  const today = startOfDay(new Date());
+  if (isTodayText(value)) return today;
+  if (isYesterdayText(value)) return new Date(today.getTime() - dayMs);
+  return undefined;
+};
+const checkinDate = (checkin: CheckinRecord) => relativeDate(checkin.dateTime, checkin.checkedAtIso);
+const timeMinutes = (value?: string) => {
+  const match = value?.match(/(\d{1,2}):(\d{2})/);
+  return match ? Number(match[1]) * 60 + Number(match[2]) : Number.MAX_SAFE_INTEGER;
+};
+const changeVs = (current: number, previous: number, label: string) => {
+  if (!previous && !current) return `= 0 ${label}`;
+  if (!previous) return `+ ${current} ${label}`;
+  const percent = Math.round(((current - previous) / previous) * 100);
+  return `${percent >= 0 ? "+" : ""} ${percent}% ${label}`;
+};
+const weekdayLabel = (date: Date) => new Intl.DateTimeFormat("pt-AO", { weekday: "short" }).format(date).replace(".", "");
+
 export default function Dashboard() {
   const [checkinTab, setCheckinTab] = useState("QR Code");
   const [tab, setTab] = useState("Planos");
@@ -36,14 +66,53 @@ export default function Dashboard() {
   const setRoute = useAppStore((state) => state.setRoute);
   const clients = useClientsStore((state) => state.clients);
   const classes = useClassesStore((state) => state.classes);
-  const todayCount = useCheckinsStore((state) => state.todayCount);
   const checkins = useCheckinsStore((state) => state.checkins);
   const plans = usePlansStore((state) => state.plans);
   const products = useProductsStore((state) => state.products);
-  const activities = [
-    ...checkins.slice(0, 3).map((checkin) => ({ title: "Check-in realizado", subject: checkin.clientName, time: checkin.dateTime, amount: "" })),
-    ...recentActivities
-  ].slice(0, 5);
+  const sales = useSalesStore((state) => state.sales);
+  const financeRecords = useFinanceStore((state) => state.records);
+  const today = startOfDay(new Date());
+  const yesterday = new Date(today.getTime() - dayMs);
+  const activeClients = useMemo(() => clients.filter((client) => client.status === "Ativo"), [clients]);
+  const todayCheckins = useMemo(() => checkins.filter((checkin) => {
+    const date = checkinDate(checkin);
+    return date ? sameDay(date, today) : isTodayText(checkin.dateTime);
+  }).length, [checkins, today]);
+  const yesterdayCheckins = useMemo(() => checkins.filter((checkin) => {
+    const date = checkinDate(checkin);
+    return date ? sameDay(date, yesterday) : isYesterdayText(checkin.dateTime);
+  }).length, [checkins, yesterday]);
+  const last7Days = useMemo(() => Array.from({ length: 7 }, (_, index) => new Date(today.getTime() - (6 - index) * dayMs)), [today]);
+  const checkinSeries = useMemo(() => last7Days.map((day) => checkins.filter((checkin) => {
+    const date = checkinDate(checkin);
+    return date ? sameDay(date, day) : false;
+  }).length), [checkins, last7Days]);
+  const checkinLabels = useMemo(() => last7Days.map((day, index) => index === 6 ? "Hoje" : weekdayLabel(day)), [last7Days]);
+  const todayRevenue = useMemo(() => {
+    const salesRevenue = sales.filter((sale) => isTodayText(sale.dateTime)).reduce((sum, sale) => sum + sale.total, 0);
+    const financeRevenue = financeRecords.filter((record) => record.kind === "Receita" && isTodayText(record.date)).reduce((sum, record) => sum + record.value, 0);
+    return salesRevenue + financeRevenue;
+  }, [financeRecords, sales]);
+  const yesterdayRevenue = useMemo(() => sales.filter((sale) => isYesterdayText(sale.dateTime)).reduce((sum, sale) => sum + sale.total, 0), [sales]);
+  const activePlans = useMemo(() => plans.filter((plan) => plan.status === "Ativo"), [plans]);
+  const todayClasses = useMemo(() => classes.filter((lesson) => isTodayText(lesson.time)), [classes]);
+  const nextClass = useMemo(() => todayClasses.slice().sort((a, b) => timeMinutes(a.time) - timeMinutes(b.time))[0], [todayClasses]);
+  const clientsWithPlan = useMemo(() => clients.filter((client) => client.plan && client.plan !== "Sem plano"), [clients]);
+  const planDistribution = useMemo(() => {
+    const counts = new Map<string, number>();
+    clientsWithPlan.forEach((client) => counts.set(client.plan, (counts.get(client.plan) ?? 0) + 1));
+    const total = Math.max(clientsWithPlan.length, 1);
+    const fallbackColors = ["#B6FF00", "#FACC15", "#F97316", "#A78BFA", "#38BDF8", "#2DD4BF"];
+    return Array.from(counts.entries()).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([label, count], index) => {
+      const plan = plans.find((item) => item.name === label);
+      return { label, value: Math.round((count / total) * 100), color: plan?.color ?? fallbackColors[index % fallbackColors.length] };
+    });
+  }, [clientsWithPlan, plans]);
+  const activities = useMemo(() => [
+    ...checkins.slice(0, 4).map((checkin) => ({ title: "Check-in realizado", subject: checkin.clientName, time: checkin.dateTime, amount: "" })),
+    ...sales.slice(0, 3).map((sale) => ({ title: "Venda registrada", subject: sale.customer ?? sale.type, time: sale.dateTime, amount: money(sale.total) }))
+  ].sort((a, b) => timeMinutes(b.time) - timeMinutes(a.time)).slice(0, 5), [checkins, sales]);
+  const dashboardDate = new Intl.DateTimeFormat("pt-AO", { day: "2-digit", month: "long", year: "numeric" }).format(new Date());
   const quickSaleItems = tab === "Produtos"
     ? products.slice(0, 5).map((product) => ({ name: product.name, price: money(product.price), detail: `${product.stock} un` }))
     : tab === "Serviços"
@@ -71,15 +140,15 @@ export default function Dashboard() {
       <div className="panel min-w-0 p-4 sm:p-5 lg:p-6">
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-2xl font-semibold sm:text-3xl">Dashboard</h1>
-          <Button className="shrink-0" icon={<Calendar className="h-4 w-4" />}>08 de Maio de 2026</Button>
+          <Button className="shrink-0" icon={<Calendar className="h-4 w-4" />}>{dashboardDate}</Button>
         </div>
 
         <div className="dashboard-metric-grid">
-          <MetricCard title="Check-ins hoje" value={String(todayCount)} change="+ 18% vs ontem" icon={<ClipboardCheck className="h-5 w-5" />} />
-          <MetricCard title="Clientes ativos" value="1.248" change="+ 12% vs mês passado" icon={<UsersRound className="h-5 w-5" />} tone="yellow" />
-          <MetricCard title="Receita hoje" value="245.000 Kz" change="+ 22% vs ontem" icon={<CreditCard className="h-5 w-5" />} tone="yellow" />
-          <MetricCard title="Planos ativos" value="982" change="+ 15% vs mês passado" icon={<CheckCircle2 className="h-5 w-5" />} tone="blue" />
-          <MetricCard title="Aulas hoje" value="8" change="Próxima: 17:00" icon={<Calendar className="h-5 w-5" />} tone="purple" />
+          <MetricCard title="Check-ins hoje" value={String(todayCheckins)} change={changeVs(todayCheckins, yesterdayCheckins, "vs ontem")} icon={<ClipboardCheck className="h-5 w-5" />} />
+          <MetricCard title="Clientes ativos" value={String(activeClients.length)} change={`${clients.length} clientes cadastrados`} icon={<UsersRound className="h-5 w-5" />} tone="yellow" />
+          <MetricCard title="Receita hoje" value={money(todayRevenue)} change={changeVs(todayRevenue, yesterdayRevenue, "vs ontem")} icon={<CreditCard className="h-5 w-5" />} tone="yellow" />
+          <MetricCard title="Planos ativos" value={String(activePlans.length)} change={`${plans.length} planos cadastrados`} icon={<CheckCircle2 className="h-5 w-5" />} tone="blue" />
+          <MetricCard title="Aulas hoje" value={String(todayClasses.length)} change={nextClass ? `Próxima: ${nextClass.time.replace("Hoje, ", "")}` : "Sem aulas hoje"} icon={<Calendar className="h-5 w-5" />} tone="purple" />
         </div>
 
         <div className="dashboard-chart-grid mt-4">
@@ -88,11 +157,11 @@ export default function Dashboard() {
               <h2 className="min-w-0 font-semibold">Check-ins nos últimos 7 dias</h2>
               <Button className="h-8 shrink-0 px-3">Últimos 7 dias</Button>
             </div>
-            <LineChart values={chart7} labels={["Qui", "Sex", "Sáb", "Dom", "Seg", "Ter", "Hoje"]} />
+            <LineChart values={checkinSeries} labels={checkinLabels} />
           </Card>
           <Card className="min-h-[280px] p-4">
             <h2 className="mb-4 font-semibold">Distribuição de planos</h2>
-            <DonutChart center="982" items={[{ label: "Musculação", value: 45, color: "#B6FF00" }, { label: "Premium", value: 30, color: "#FACC15" }, { label: "Funcional", value: 15, color: "#F97316" }, { label: "Aulas", value: 10, color: "#A78BFA" }]} />
+            <DonutChart center={String(clientsWithPlan.length)} items={planDistribution} />
           </Card>
         </div>
 
@@ -113,7 +182,7 @@ export default function Dashboard() {
           <Card className="p-4">
             <div className="mb-3 flex items-center justify-between"><h2 className="font-semibold">Clientes ativos</h2><button className="text-xs text-noogym-lime" onClick={() => setRoute("clientes")}>Ver todos</button></div>
             <div className="space-y-3">
-              {clients.slice(0, 5).map((client, index) => (
+              {activeClients.slice(0, 5).map((client, index) => (
                 <div key={client.id} className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 border-b border-white/[0.07] pb-3 last:border-0 sm:grid-cols-[auto_minmax(0,1fr)_auto_auto_auto]">
                   <Avatar label={client.avatar ?? "CL"} />
                   <p className="min-w-0 truncate text-sm">{client.name}</p>

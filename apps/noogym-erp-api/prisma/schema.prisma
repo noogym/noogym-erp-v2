@@ -208,6 +208,7 @@ model Organization {
   employees      Employee[]
   gymClasses     GymClass[]
   stockMovements StockMovement[]
+  planCategories PlanCategory[]
 }
 
 model Gym {
@@ -306,6 +307,8 @@ model Plan {
   organizationId   String
   name             String
   description      String?
+  category         String         @default("Geral")
+  color            String?
   price            Decimal        @db.Decimal(12, 2)
   durationDays     Int
   status           PlanStatus     @default(ACTIVE)
@@ -317,6 +320,23 @@ model Plan {
   updatedAt        DateTime       @updatedAt
   organization     Organization   @relation(fields: [organizationId], references: [id])
   subscriptions    Subscription[]
+}
+
+model PlanCategory {
+  id             String       @id @default(uuid())
+  organizationId String
+  name           String
+  icon           String?
+  description    String?
+  color          String       @default("#B6FF00")
+  status         PlanStatus   @default(ACTIVE)
+  displayOrder   Int          @default(1)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  @@unique([organizationId, name])
+  @@index([organizationId, status])
 }
 
 model Subscription {
