@@ -8,6 +8,7 @@ import type {
   PlanRecord,
   ProductRecord,
   SaleRecord,
+  SaleItemRecord,
   WorkoutRecord
 } from "@noogym/types";
 import { apiPath, apiRequest, type PaginatedResponse } from "./api";
@@ -138,7 +139,10 @@ export const productFromApi = (product: Entity): ProductRecord => ({
   emoji: asString(product.label, "PRD"),
   sku: asString(product.sku, undefined),
   barcode: asString(product.barcode, undefined),
-  status: statusLabel(product.status, { ACTIVE: "Ativo", INACTIVE: "Inativo", ARCHIVED: "Arquivado" })
+  status: statusLabel(product.status, { ACTIVE: "Ativo", INACTIVE: "Inativo", ARCHIVED: "Arquivado" }),
+  description: asString(product.description, undefined),
+  unit: asString(product.unit, "Unidade"),
+  minStock: asNumber(product.minStock, 10)
 });
 
 export const productToDto = (product: Partial<ProductRecord>) => ({
@@ -149,7 +153,9 @@ export const productToDto = (product: Partial<ProductRecord>) => ({
   price: product.price ?? 0,
   cost: product.cost ?? 0,
   stock: product.stock ?? 0,
-  minStock: 0,
+  minStock: product.minStock ?? 0,
+  description: product.description,
+  unit: product.unit ?? "Unidade",
   label: product.emoji ?? "PRD",
   status: product.status === "Inativo" ? "INACTIVE" : "ACTIVE"
 });
@@ -179,30 +185,53 @@ export const checkinToDto = (checkin: Partial<CheckinRecord>) => ({
 export const saleFromApi = (sale: Entity): SaleRecord => ({
   id: asString(sale.id),
   total: asNumber(sale.total),
+  subtotal: asNumber(sale.subtotal),
+  discountAmount: asNumber(sale.discountAmount),
+  taxAmount: asNumber(sale.taxAmount),
   customer: asString(sale.customerName, undefined) || asString(getEntity(sale.member)?.name, undefined),
+  memberId: asString(sale.memberId, undefined),
   seller: asString(sale.sellerName, "Admin"),
   type: saleTypeLabel(sale.type),
+  status: statusLabel(sale.status, { DRAFT: "Orcamento", COMPLETED: "Concluida", CANCELLED: "Cancelada", REFUNDED: "Reembolsada" }),
   paymentMethod: paymentMethodLabel(sale.paymentMethod),
-  dateTime: relativeDate(asDate(sale.soldAt))
+  dateTime: relativeDate(asDate(sale.soldAt)),
+  soldAtIso: asDate(sale.soldAt)?.toISOString(),
+  notes: asString(sale.notes, undefined),
+  items: rows(sale.items).map(saleItemFromApi)
 });
 
-export const saleToDto = (sale: Partial<SaleRecord>, items: ProductRecord[] = []) => ({
+export const saleToDto = (sale: Partial<SaleRecord>, items: SaleItemRecord[] = []) => ({
+  memberId: sale.memberId,
   customerName: sale.customer,
   sellerName: sale.seller ?? "Admin",
-  type: "NORMAL",
-  status: "COMPLETED",
+  type: saleTypeValue(sale.type),
+  status: sale.type === "Orcamento" || sale.type === "Orçamento" ? "DRAFT" : "COMPLETED",
   paymentMethod: paymentMethodValue(sale.paymentMethod),
-  soldAt: new Date().toISOString(),
+  discountAmount: sale.discountAmount ?? 0,
+  taxAmount: sale.taxAmount ?? 0,
+  soldAt: sale.soldAtIso ?? new Date().toISOString(),
+  notes: sale.notes,
   items: items.length
     ? items.map((item) => ({
-        productId: item.id,
+        productId: item.productId,
         productName: item.name,
         sku: item.sku,
-        quantity: Math.max(1, Number((item as ProductRecord & { qty?: number }).qty ?? 1)),
-        unitPrice: item.price
+        quantity: Math.max(1, Number(item.quantity ?? 1)),
+        unitPrice: item.unitPrice
       }))
     : [{ productName: "Venda POS", quantity: 1, unitPrice: sale.total ?? 0 }]
 });
+
+function saleItemFromApi(item: Entity): SaleItemRecord {
+  return {
+    id: asString(item.id),
+    productId: asString(item.productId, undefined),
+    name: asString(item.productName, "Item POS"),
+    sku: asString(item.sku, undefined),
+    quantity: asNumber(item.quantity, 1),
+    unitPrice: asNumber(item.unitPrice)
+  };
+}
 
 export const classFromApi = (lesson: Entity): ClassRecord => ({
   id: asString(lesson.id),
@@ -215,17 +244,29 @@ export const classFromApi = (lesson: Entity): ClassRecord => ({
   seats: asNumber(lesson.capacity),
   participants: asNumber(lesson.participants),
   status: statusLabel(lesson.status, { SCHEDULED: "Agendada", IN_PROGRESS: "Em andamento", COMPLETED: "Encerrada", CANCELLED: "Cancelada" }),
-  description: asString(lesson.description, undefined)
+  description: asString(lesson.description, undefined),
+  equipment: asString(lesson.equipment, undefined),
+  allowWaitlist: lesson.allowWaitlist === true,
+  requiresCheckIn: lesson.requiresCheckIn === true,
+  color: asString(lesson.color, undefined),
+  startAtIso: asDate(lesson.startAt)?.toISOString(),
+  endAtIso: asDate(lesson.endAt)?.toISOString()
 });
 
 export const classToDto = (lesson: Partial<ClassRecord>) => ({
   name: lesson.name ?? "Nova aula",
   category: lesson.category ?? "Cardio",
   description: lesson.description,
+  equipment: lesson.equipment,
+  startAt: lesson.startAtIso,
+  endAt: lesson.endAtIso,
   durationMinutes: parseDuration(lesson.duration),
   capacity: lesson.seats ?? 25,
   participants: lesson.participants ?? 0,
-  status: lesson.status === "Encerrada" ? "COMPLETED" : lesson.status === "Cancelada" ? "CANCELLED" : lesson.status === "Em andamento" ? "IN_PROGRESS" : "SCHEDULED"
+  status: lesson.status === "Encerrada" ? "COMPLETED" : lesson.status === "Cancelada" ? "CANCELLED" : lesson.status === "Em andamento" ? "IN_PROGRESS" : "SCHEDULED",
+  allowWaitlist: lesson.allowWaitlist ?? true,
+  requiresCheckIn: lesson.requiresCheckIn ?? false,
+  color: lesson.color
 });
 
 export const employeeFromApi = (employee: Entity): EmployeeRecord => ({
@@ -235,15 +276,32 @@ export const employeeFromApi = (employee: Entity): EmployeeRecord => ({
   email: asString(employee.email, "funcionario@noogym.com"),
   phone: asString(employee.phone, "+244 900 000 000"),
   status: statusLabel(employee.status, { ACTIVE: "Ativo", INACTIVE: "Inativo", ON_LEAVE: "Licenca", TERMINATED: "Desligado" }),
-  salary: `${formatNumber(employee.salary)} Kz`
+  salary: `${formatNumber(employee.salary)} Kz`,
+  userId: asString(employee.userId ?? getEntity(employee.user)?.id, undefined),
+  gymId: asString(employee.gymId ?? getEntity(employee.gym)?.id, undefined),
+  hireDate: asString(employee.hireDate, undefined),
+  department: asString(employee.department, undefined),
+  contractType: asString(employee.contractType, undefined),
+  supervisor: asString(employee.supervisor, undefined),
+  shift: asString(employee.shift, undefined),
+  accountEmail: asString(getEntity(employee.user)?.email, asString(employee.email, undefined)),
+  accountStatus: statusLabel(getEntity(employee.user)?.status, { ACTIVE: "Conta vinculada", INVITED: "Convite pendente", SUSPENDED: "Suspensa", INACTIVE: "Inativa" }),
+  accessStatus: statusLabel(getEntity(employee.user)?.status, { ACTIVE: "Liberado", INVITED: "Convite pendente", SUSPENDED: "Bloqueado", INACTIVE: "Bloqueado" }),
+  lastAccess: relativeDate(asDate(employee.lastLoginAt)),
+  notes: asString(employee.notes, undefined)
 });
 
 export const employeeToDto = (employee: Partial<EmployeeRecord>) => ({
   name: employee.name ?? "Novo funcionario",
+  userId: isUuidLike(employee.userId) ? employee.userId : undefined,
+  gymId: isUuidLike(employee.gymId) ? employee.gymId : undefined,
   role: employee.role ?? "Recepcionista",
   email: cleanEmail(employee.email),
   phone: employee.phone,
   salary: parseMoney(employee.salary),
+  department: employee.department,
+  hireDate: employee.hireDate,
+  notes: employee.notes,
   status: employee.status === "Inativo" ? "INACTIVE" : "ACTIVE"
 });
 
@@ -251,18 +309,42 @@ export const workoutFromApi = (workout: Entity): WorkoutRecord => ({
   id: asString(workout.id),
   name: asString(workout.name, "Treino"),
   client: asString(getEntity(first<Entity>(workout.assignments)?.member)?.name, "Sem cliente"),
+  clientId: asString(getEntity(first<Entity>(workout.assignments)?.member)?.id, undefined),
   goal: asString(workout.goal, "Condicionamento"),
   author: asString(getEntity(workout.createdBy)?.name, "Admin"),
   updated: relativeDate(asDate(workout.updatedAt)),
   status: statusLabel(workout.status, { ACTIVE: "Ativo", PAUSED: "Pausado", DRAFT: "Rascunho", ARCHIVED: "Arquivado" }),
-  exercises: Array.isArray(workout.exercises) ? workout.exercises.length : 0
+  exercises: Array.isArray(workout.exercises) ? workout.exercises.length : 0,
+  level: statusLabel(workout.level, { BEGINNER: "Iniciante", INTERMEDIATE: "Intermediario", ADVANCED: "Avancado" }),
+  duration: `${asNumber(workout.durationMinutes, 60)} min`,
+  notes: asString(workout.description, ""),
+  blocks: Array.isArray(workout.exercises) ? [{
+    id: "api-block",
+    name: "Exercicios",
+    exercises: workout.exercises.map((item, index) => {
+      const exercise = getEntity((item as Entity).exercise);
+      return {
+        id: asString((item as Entity).id, `api-exercise-${index}`),
+        name: asString(exercise?.name, `Exercicio ${index + 1}`),
+        group: asString(getEntity(exercise?.muscleGroup)?.name, "Geral"),
+        equipment: asString(exercise?.equipment, "Livre"),
+        sets: asNumber((item as Entity).sets, 3),
+        reps: asString((item as Entity).reps, "10"),
+        load: asString((item as Entity).load, ""),
+        rest: `${asNumber((item as Entity).restSeconds, 60)}s`,
+        notes: asString((item as Entity).notes, "")
+      };
+    })
+  }] : undefined
 });
 
 export const workoutToDto = (workout: Partial<WorkoutRecord>) => ({
   name: workout.name ?? "Novo treino",
+  description: workout.notes,
   goal: workout.goal,
-  status: workout.status === "Ativo" ? "ACTIVE" : workout.status === "Rascunho" ? "DRAFT" : "PAUSED",
-  durationMinutes: parseDuration(workout.updated) || 60
+  level: workout.level === "Avancado" ? "ADVANCED" : workout.level === "Iniciante" ? "BEGINNER" : "INTERMEDIATE",
+  status: workout.status === "Ativo" ? "ACTIVE" : workout.status === "Rascunho" ? "DRAFT" : workout.status === "Arquivado" ? "ARCHIVED" : "PAUSED",
+  durationMinutes: parseDuration(workout.duration) || 60
 });
 
 function paymentToFinanceRecord(payment: Entity): FinanceRecord {
@@ -312,6 +394,10 @@ function financeRecordToExpenseDto(record: Partial<FinanceRecord>) {
   };
 }
 
+function isUuidLike(value?: string) {
+  return Boolean(value && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value));
+}
+
 function asString(value: unknown, fallback = ""): string {
   return typeof value === "string" && value.trim() ? value : fallback;
 }
@@ -333,6 +419,10 @@ function asDate(value: unknown) {
 
 function first<T extends Entity>(value: unknown): T | undefined {
   return Array.isArray(value) ? getEntity(value[0]) as T | undefined : undefined;
+}
+
+function rows(value: unknown): Entity[] {
+  return Array.isArray(value) ? value.filter((item): item is Entity => Boolean(getEntity(item))) : [];
 }
 
 function getEntity(value: unknown) {
@@ -413,6 +503,14 @@ function methodValue(value: unknown) {
 function saleTypeLabel(value: unknown) {
   const labels: Record<string, string> = { NORMAL: "Venda normal", QUOTE: "Orcamento", SUBSCRIPTION: "Plano", SERVICE: "Servico" };
   return labels[String(value)] ?? "Venda normal";
+}
+
+function saleTypeValue(value: unknown) {
+  const text = String(value ?? "").toLowerCase();
+  if (text.includes("orc")) return "QUOTE";
+  if (text.includes("plano")) return "SUBSCRIPTION";
+  if (text.includes("serv")) return "SERVICE";
+  return "NORMAL";
 }
 
 function paymentMethodLabel(value: unknown) {

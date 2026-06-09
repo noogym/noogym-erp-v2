@@ -86,6 +86,7 @@ export class SalesService {
     const discountAmount = dto.discountAmount ?? 0;
     const taxAmount = dto.taxAmount ?? 0;
     const total = subtotal - discountAmount + taxAmount;
+    const soldAt = dto.soldAt ?? new Date();
     if (total < 0)
       throw new BadRequestException('Sale total cannot be negative');
 
@@ -105,6 +106,7 @@ export class SalesService {
           taxAmount,
           total,
           paymentMethod: dto.paymentMethod,
+          soldAt,
           notes: dto.notes,
           items: {
             create: saleItems.map((item) => ({
@@ -148,7 +150,7 @@ export class SalesService {
             amount: total,
             method: dto.paymentMethod,
             status: PaymentStatus.PAID,
-            paidAt: new Date(),
+            paidAt: soldAt,
             reference: sale.id,
             notes: dto.notes,
           },

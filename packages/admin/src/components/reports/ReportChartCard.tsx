@@ -80,8 +80,8 @@ function LineVisual({ series, factor, showComparison }: { series: ReportSeries; 
         {series.labels.map((label) => <span key={label} className="min-w-0 truncate px-0.5">{label}</span>)}
       </div>
       <div className="mt-3 flex flex-wrap justify-center gap-x-6 gap-y-2 text-xs text-zinc-400">
-        <span className="inline-flex items-center gap-2"><span className="h-0.5 w-8 bg-noogym-lime" />01/05 - 15/05/2024</span>
-        {series.compare ? <span className="inline-flex items-center gap-2"><span className="h-0 w-8 border-t border-dashed border-zinc-500" />16/04 - 30/04/2024</span> : null}
+        <span className="inline-flex items-center gap-2"><span className="h-0.5 w-8 bg-noogym-lime" />Periodo ativo</span>
+        {series.compare ? <span className="inline-flex items-center gap-2"><span className="h-0 w-8 border-t border-dashed border-zinc-500" />Comparacao</span> : null}
       </div>
     </div>
   );
