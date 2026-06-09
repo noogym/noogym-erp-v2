@@ -1,5 +1,4 @@
 import { Activity, AlertTriangle } from "lucide-react";
-import { cashFlowMock, financeDays, financeWeekdays } from "../../../data/financeMock";
 import { DonutChart, GroupedBarChart, LineChart } from "../FinanceCharts";
 import { FinanceCardLink, FinanceChartCard } from "../FinanceChartCard";
 import { FinanceKpiCard } from "../FinanceKpiCard";
@@ -7,79 +6,70 @@ import { FinanceCell, FinanceTable } from "../FinanceTable";
 import { FinancePanelSection, FinanceRightPanel, SummaryRow } from "../FinanceRightPanel";
 import type { FinanceTabProps, FinanceTabView } from "../types";
 
-export function CashFlowTab({ openAction }: FinanceTabProps): FinanceTabView {
-  const net = cashFlowMock.weekdayEntries.map((value, index) => value - cashFlowMock.weekdayExits[index]);
+export function CashFlowTab({ openAction, data }: FinanceTabProps): FinanceTabView {
+  const net = data.cashFlow.weekdayEntries.map((value, index) => value - data.cashFlow.weekdayExits[index]);
 
   return {
-    subtitle: "Acompanhe o fluxo de caixa do seu negócio.",
+    subtitle: "Acompanhe entradas, saidas e saldo acumulado.",
     main: (
       <div className="space-y-4">
         <div className="finance-kpi-grid">
-          {cashFlowMock.kpis.map((kpi) => (
-            <FinanceKpiCard key={kpi.title} {...kpi} icon={<Activity className="h-5 w-5" />} />
-          ))}
+          {data.cashFlow.kpis.map((kpi) => <FinanceKpiCard key={kpi.title} {...kpi} icon={<Activity className="h-5 w-5" />} />)}
         </div>
         <div className="finance-grid-wide">
-          <FinanceChartCard title="Evolução do fluxo de caixa" action={<button className="rounded-md border border-white/10 px-3 py-2 text-xs">Diário</button>}>
-            <LineChart series={cashFlowMock.evolution} labels={financeDays} />
+          <FinanceChartCard title="Evolucao do fluxo de caixa" action={<button className="rounded-md border border-white/10 px-3 py-2 text-xs">Periodo</button>}>
+            <LineChart series={data.cashFlow.evolution} labels={data.labels} />
           </FinanceChartCard>
-          <FinanceChartCard title="Entradas e saídas por dia da semana" action={<button className="rounded-md border border-white/10 px-3 py-2 text-xs">Total</button>}>
+          <FinanceChartCard title="Entradas e saidas por dia da semana" action={<button className="rounded-md border border-white/10 px-3 py-2 text-xs">Total</button>}>
             <GroupedBarChart
-              labels={financeWeekdays}
+              labels={data.weekdays}
               groups={[
-                { name: "Entradas", values: cashFlowMock.weekdayEntries, color: "#B6FF00" },
-                { name: "Saídas", values: cashFlowMock.weekdayExits, color: "#FF2D20" },
-                { name: "Fluxo líquido", values: net, color: "#2F91FF" }
+                { name: "Entradas", values: data.cashFlow.weekdayEntries, color: "#B6FF00" },
+                { name: "Saidas", values: data.cashFlow.weekdayExits, color: "#FF2D20" },
+                { name: "Fluxo liquido", values: net, color: "#2F91FF" }
               ]}
             />
           </FinanceChartCard>
         </div>
         <div className="finance-grid-table">
-          <FinanceChartCard title="Fluxo de caixa diário">
-            <FinanceTable columns={["Data", "Entradas", "Saídas", "Fluxo líquido", "Saldo acumulado"]}>
-              {cashFlowMock.dailyRows.map((row) => (
+          <FinanceChartCard title="Fluxo de caixa diario">
+            <FinanceTable columns={["Data", "Entradas", "Saidas", "Fluxo liquido", "Saldo acumulado"]}>
+              {data.cashFlow.dailyRows.map((row) => (
                 <tr key={row[0]} className="table-row">
-                  {row.map((cell, index) => <FinanceCell key={`${row[0]}-${index}`} tone={index === 3 ? "lime" : undefined}>{cell}</FinanceCell>)}
+                  {row.map((cell, index) => <FinanceCell key={`${row[0]}-${index}`} tone={index === 3 ? (String(cell).startsWith("-") ? "red" : "lime") : undefined}>{cell}</FinanceCell>)}
                 </tr>
               ))}
             </FinanceTable>
-            <FinanceCardLink onClick={() => openAction({ title: "Fluxo de caixa completo", rows: cashFlowMock.dailyRows })}>Ver fluxo de caixa completo</FinanceCardLink>
+            <FinanceCardLink onClick={() => openAction({ title: "Fluxo de caixa completo", rows: data.cashFlow.dailyRows })}>Ver fluxo de caixa completo</FinanceCardLink>
           </FinanceChartCard>
           <FinanceChartCard title="Entradas por origem">
-            <DonutChart items={cashFlowMock.origins} center="533.050 Kz" />
-            <FinanceCardLink onClick={() => openAction({ title: "Entradas por origem", rows: cashFlowMock.origins.map((item) => [item.label, item.amount ?? ""]) })}>Ver todas as origens</FinanceCardLink>
+            <DonutChart items={data.cashFlow.origins} center={money(data.totals.received)} />
+            <FinanceCardLink onClick={() => openAction({ title: "Entradas por origem", rows: data.cashFlow.origins.map((item) => [item.label, item.amount ?? ""]) })}>Ver todas as origens</FinanceCardLink>
           </FinanceChartCard>
-          <FinanceChartCard title="Saídas por categoria">
-            <DonutChart items={cashFlowMock.exits} center="328.100 Kz" />
-            <FinanceCardLink onClick={() => openAction({ title: "Saídas por categoria", rows: cashFlowMock.exits.map((item) => [item.label, item.amount ?? ""]) })}>Ver todas as categorias</FinanceCardLink>
+          <FinanceChartCard title="Saidas por categoria">
+            <DonutChart items={data.cashFlow.exits} center={money(data.totals.expenses)} />
+            <FinanceCardLink onClick={() => openAction({ title: "Saidas por categoria", rows: data.cashFlow.exits.map((item) => [item.label, item.amount ?? ""]) })}>Ver todas as categorias</FinanceCardLink>
           </FinanceChartCard>
         </div>
       </div>
     ),
     side: (
       <FinanceRightPanel>
-        <FinancePanelSection title="Resumo do período">
-          <SummaryRow label="Saldo inicial (01/05/2024)" value="158.950 Kz" />
-          <SummaryRow label="Entradas totais" value="533.050 Kz" tone="lime" />
-          <SummaryRow label="Saídas totais" value="328.100 Kz" tone="red" />
-          <SummaryRow label="Saldo atual" value="203.950 Kz" tone="lime" />
-          <SummaryRow label="Fluxo líquido" value="+204.950 Kz" tone="lime" />
+        <FinancePanelSection title="Resumo do periodo">
+          <SummaryRow label="Saldo inicial" value={money(data.cashFlow.initialBalance)} />
+          <SummaryRow label="Entradas totais" value={money(data.totals.received)} tone="lime" />
+          <SummaryRow label="Saidas totais" value={money(data.totals.paidExpenses)} tone="red" />
+          <SummaryRow label="Saldo atual" value={money(data.cashFlow.currentBalance)} tone="lime" />
+          <SummaryRow label="Fluxo liquido" value={money(data.totals.net)} tone={data.totals.net >= 0 ? "lime" : "red"} />
         </FinancePanelSection>
-        <FinancePanelSection title="Saldo diário">
-          <SummaryRow label="Maior saldo" value="203.950 Kz" tone="lime" />
-          <SummaryRow label="Menor saldo" value="88.400 Kz" tone="red" />
-          <SummaryRow label="Saldo médio diário" value="144.680 Kz" />
-        </FinancePanelSection>
-        <FinancePanelSection title="Projeção de caixa">
-          <SummaryRow label="Próximos 7 dias" value="198.300 Kz" />
-          <SummaryRow label="Próximos 15 dias" value="195.450 Kz" />
-          <SummaryRow label="Próximos 30 dias" value="187.600 Kz" />
-          <button className="text-sm text-noogym-lime" onClick={() => openAction({ title: "Projeção completa de caixa", rows: [["7 dias", "198.300 Kz"], ["15 dias", "195.450 Kz"], ["30 dias", "187.600 Kz"]] })}>Ver projeção completa →</button>
+        <FinancePanelSection title="Projecao de caixa">
+          <SummaryRow label="Proximos 7 dias" value={money(data.cashFlow.currentBalance + data.totals.receivable - data.totals.pendingExpenses)} />
+          <SummaryRow label="A receber" value={money(data.totals.receivable)} tone="yellow" />
+          <SummaryRow label="A pagar" value={money(data.totals.pendingExpenses)} tone="red" />
+          <button className="text-sm text-noogym-lime" onClick={() => openAction({ title: "Projecao completa de caixa", rows: [["Saldo atual", money(data.cashFlow.currentBalance)], ["A receber", money(data.totals.receivable)], ["A pagar", money(data.totals.pendingExpenses)]] })}>Ver projecao completa</button>
         </FinancePanelSection>
         <FinancePanelSection title="Alertas de fluxo">
-          <Alert title="Fluxo negativo previsto para 2 dias" onClick={() => openAction({ title: "Projeção de fluxo negativo", rows: [["Dias previstos", "2"], ["Janela", "próximos 15 dias"]] })} />
-          <Alert title="Saldo abaixo de 100.000 Kz previsto" tone="yellow" onClick={() => openAction({ title: "Detalhes de saldo mínimo", rows: [["Data prevista", "01/06/2024"], ["Saldo", "98.700 Kz"]] })} />
-          <SummaryRow label="Ótimo! Fluxo positivo no período" value="OK" tone="blue" />
+          <Alert title={data.totals.net < 0 ? "Fluxo negativo no periodo" : "Fluxo positivo no periodo"} tone={data.totals.net < 0 ? "red" : "yellow"} onClick={() => openAction({ title: "Detalhes do fluxo", rows: [["Fluxo liquido", money(data.totals.net)]] })} />
         </FinancePanelSection>
       </FinanceRightPanel>
     )
@@ -94,8 +84,12 @@ function Alert({ title, onClick, tone = "red" }: { title: string; onClick: () =>
       </span>
       <span>
         <span className="block text-sm text-zinc-100">{title}</span>
-        <span className="mt-1 block text-xs text-noogym-lime">Ver detalhes →</span>
+        <span className="mt-1 block text-xs text-noogym-lime">Ver detalhes</span>
       </span>
     </button>
   );
+}
+
+function money(value: number) {
+  return `${Math.round(value).toLocaleString("pt-AO")} Kz`;
 }

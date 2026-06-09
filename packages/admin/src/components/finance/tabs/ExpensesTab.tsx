@@ -1,5 +1,4 @@
 import { AlertTriangle, Briefcase, CalendarCheck } from "lucide-react";
-import { expensesMock, financeDays, financeWeekdays } from "../../../data/financeMock";
 import { BarChart, DonutChart, LineChart } from "../FinanceCharts";
 import { FinanceCardLink, FinanceChartCard } from "../FinanceChartCard";
 import { FinanceKpiCard } from "../FinanceKpiCard";
@@ -7,43 +6,41 @@ import { FinanceCell, FinanceTable } from "../FinanceTable";
 import { FinancePanelSection, FinanceRightPanel, ProgressRow, SummaryRow } from "../FinanceRightPanel";
 import type { FinanceTabProps, FinanceTabView } from "../types";
 
-export function ExpensesTab({ openAction, records = [] }: FinanceTabProps): FinanceTabView {
+export function ExpensesTab({ openAction, records = [], data }: FinanceTabProps): FinanceTabView {
   const localExpenses = records.filter((record) => record.kind === "Despesa");
 
   return {
-    subtitle: "Acompanhe o fluxo financeiro do seu negócio.",
+    subtitle: "Acompanhe saidas, categorias de custo e despesas pendentes.",
     main: (
       <div className="space-y-4">
         <div className="finance-kpi-grid">
-          {expensesMock.kpis.map((kpi) => (
-            <FinanceKpiCard key={kpi.title} {...kpi} icon={<Briefcase className="h-5 w-5" />} />
-          ))}
+          {data.expenses.kpis.map((kpi) => <FinanceKpiCard key={kpi.title} {...kpi} icon={<Briefcase className="h-5 w-5" />} />)}
         </div>
         <div className="finance-grid-wide">
-          <FinanceChartCard title="Evolução das despesas" action={<SmallSelect label="Diário" />}>
-            <LineChart series={expensesMock.evolution} labels={financeDays} />
+          <FinanceChartCard title="Evolucao das despesas" action={<SmallSelect label="Periodo" />}>
+            <LineChart series={data.expenses.evolution} labels={data.labels} />
           </FinanceChartCard>
           <FinanceChartCard title="Despesas por dia da semana" action={<SmallSelect label="Total" />}>
-            <BarChart values={expensesMock.weekday} labels={financeWeekdays} color="#FF2D20" />
+            <BarChart values={data.expenses.weekday} labels={data.weekdays} color="#FF2D20" />
           </FinanceChartCard>
         </div>
         <div className="finance-grid-3">
           <FinanceChartCard title="Despesas por categoria">
-            <DonutChart items={expensesMock.byCategory} center="62.300 Kz" />
-            <FinanceCardLink onClick={() => openAction({ title: "Categorias de despesas", rows: expensesMock.byCategory.map((item) => [item.label, item.amount ?? ""]) })}>Ver todas as categorias</FinanceCardLink>
+            <DonutChart items={data.expenses.byCategory} center={money(data.totals.expenses)} />
+            <FinanceCardLink onClick={() => openAction({ title: "Categorias de despesas", rows: data.expenses.byCategory.map((item) => [item.label, item.amount ?? ""]) })}>Ver todas as categorias</FinanceCardLink>
           </FinanceChartCard>
-          <FinanceChartCard title="Despesas por tipo">
-            <DonutChart items={expensesMock.byType} center="62.300 Kz" />
-            <FinanceCardLink onClick={() => openAction({ title: "Despesas por tipo", rows: expensesMock.byType.map((item) => [item.label, item.amount ?? ""]) })}>Ver todas as despesas</FinanceCardLink>
+          <FinanceChartCard title="Despesas por status">
+            <DonutChart items={data.expenses.byType} center={money(data.totals.expenses)} />
+            <FinanceCardLink onClick={() => openAction({ title: "Despesas por status", rows: data.expenses.byType.map((item) => [item.label, item.amount ?? ""]) })}>Ver todas as despesas</FinanceCardLink>
           </FinanceChartCard>
-          <FinanceChartCard title="Detalhamento das despesas" action={<button className="text-xs text-noogym-lime" onClick={() => openAction({ title: "Detalhamento das despesas", rows: expensesMock.detailRows })}>Ver todos</button>}>
-            <FinanceTable columns={["Categoria", "Despesa", "%", "Variação"]}>
-              {expensesMock.detailRows.map(([category, value, percent, variation]) => (
+          <FinanceChartCard title="Detalhamento das despesas" action={<button className="text-xs text-noogym-lime" onClick={() => openAction({ title: "Detalhamento das despesas", rows: data.expenses.detailRows })}>Ver todos</button>}>
+            <FinanceTable columns={["Categoria", "Despesa", "%", "Estado"]}>
+              {data.expenses.detailRows.map(([category, value, percent, status]) => (
                 <tr key={category} className="table-row">
                   <FinanceCell>{category}</FinanceCell>
-                  <FinanceCell>{value}</FinanceCell>
+                  <FinanceCell tone="red">{value}</FinanceCell>
                   <FinanceCell>{percent}</FinanceCell>
-                  <FinanceCell tone={variation.startsWith("-") ? "lime" : variation === "0%" ? "muted" : "red"}>{variation}</FinanceCell>
+                  <FinanceCell>{status}</FinanceCell>
                 </tr>
               ))}
             </FinanceTable>
@@ -55,7 +52,7 @@ export function ExpensesTab({ openAction, records = [] }: FinanceTabProps): Fina
               {localExpenses.map((record) => (
                 <tr key={record.id} className="table-row">
                   <FinanceCell>{record.category}</FinanceCell>
-                  <FinanceCell tone="red">{record.value.toLocaleString("pt-AO")} Kz</FinanceCell>
+                  <FinanceCell tone="red">{money(record.value)}</FinanceCell>
                   <FinanceCell>{record.date}</FinanceCell>
                   <FinanceCell>{record.status}</FinanceCell>
                   <FinanceCell>{record.note ?? "-"}</FinanceCell>
@@ -68,21 +65,19 @@ export function ExpensesTab({ openAction, records = [] }: FinanceTabProps): Fina
     ),
     side: (
       <FinanceRightPanel>
-        <FinancePanelSection title="Resumo do período">
-          <SummaryRow label="Orçamento do período" value="80.000 Kz" />
-          <SummaryRow label="Despesas totais" value="62.300 Kz" tone="red" />
-          <ProgressRow label="% do orçamento utilizado" value="77,9%" percent={78} />
-          <SummaryRow label="Economia" value="17.700 Kz" tone="lime" />
+        <FinancePanelSection title="Resumo do periodo">
+          <SummaryRow label="Despesas totais" value={money(data.totals.expenses)} tone="red" />
+          <SummaryRow label="Despesas pagas" value={money(data.totals.paidExpenses)} tone="red" />
+          <SummaryRow label="Despesas pendentes" value={money(data.totals.pendingExpenses)} tone="yellow" />
+          <ProgressRow label="% da receita usado" value={`${percent(data.totals.expenses, data.totals.revenue)}%`} percent={Math.min(100, percent(data.totals.expenses, data.totals.revenue))} />
         </FinancePanelSection>
         <FinancePanelSection title="Maiores despesas">
-          {expensesMock.biggest.map(([label, value, percent]) => (
-            <ProgressRow key={label} label={String(label)} value={String(value)} percent={Number(percent)} tone="red" />
-          ))}
-          <button className="text-sm text-noogym-lime" onClick={() => openAction({ title: "Todas as despesas", rows: expensesMock.biggest.map(([label, value]) => [String(label), String(value)]) })}>Ver todas as despesas →</button>
+          {data.expenses.biggest.map(([label, value, percent]) => <ProgressRow key={label} label={label} value={value} percent={percent} tone="red" />)}
+          <button className="text-sm text-noogym-lime" onClick={() => openAction({ title: "Todas as despesas", rows: data.expenses.biggest.map(([label, value]) => [label, value]) })}>Ver todas as despesas</button>
         </FinancePanelSection>
         <FinancePanelSection title="Alertas de despesas">
-          <Alert label="Despesas acima do esperado" value="+9% vs período anterior" onClick={() => openAction({ title: "Comparação de despesas", rows: [["Período atual", "62.300 Kz"], ["Variação", "+9%"]] })} />
-          <Alert label="Categoria Manutenção" value="acima de 80% do orçamento" tone="yellow" onClick={() => openAction({ title: "Detalhes de manutenção", rows: [["Gasto", "5.800 Kz"], ["Orçamento usado", "82%"]] })} />
+          <Alert label="Despesas pendentes" value={money(data.totals.pendingExpenses)} onClick={() => openAction({ title: "Despesas pendentes", rows: [["Total", money(data.totals.pendingExpenses)]] })} />
+          <Alert label="Maior categoria" value={data.expenses.biggest[0]?.[0] ?? "-"} tone="yellow" onClick={() => openAction({ title: "Maior categoria de despesa", rows: data.expenses.biggest.map(([label, value]) => [label, value]) })} />
         </FinancePanelSection>
       </FinanceRightPanel>
     )
@@ -102,8 +97,16 @@ function Alert({ label, value, onClick, tone = "red" }: { label: string; value: 
       <div>
         <p className="text-sm text-zinc-100">{label}</p>
         <p className="text-xs text-zinc-400">{value}</p>
-        <button className="mt-2 text-xs text-noogym-lime" onClick={onClick}>Ver detalhes →</button>
+        <button className="mt-2 text-xs text-noogym-lime" onClick={onClick}>Ver detalhes</button>
       </div>
     </div>
   );
+}
+
+function money(value: number) {
+  return `${Math.round(value).toLocaleString("pt-AO")} Kz`;
+}
+
+function percent(value: number, total: number) {
+  return total > 0 ? Math.round((value / total) * 100) : 0;
 }

@@ -1,0 +1,229 @@
+import { create } from "zustand";
+
+export interface PaymentMethodSetting {
+  id: string;
+  name: string;
+  enabled: boolean;
+  settlementDays: number;
+  feePercent: number;
+}
+
+export interface OperationalSettings {
+  preferences: {
+    sounds: boolean;
+    confirmations: boolean;
+    autoUpdates: boolean;
+  };
+  finance: {
+    currency: string;
+    taxName: string;
+    taxRate: number;
+    receiptPrefix: string;
+    invoiceSeries: string;
+    receiptFooter: string;
+    paymentMethods: PaymentMethodSetting[];
+  };
+  contracts: {
+    graceDays: number;
+    renewalNoticeDays: number;
+    autoRenew: boolean;
+    allowFreeze: boolean;
+    maxFreezeDays: number;
+    blockOnOverdue: boolean;
+    defaultContractModel: string;
+  };
+  checkin: {
+    manual: boolean;
+    qrCode: boolean;
+    biometric: boolean;
+    turnstile: boolean;
+    allowGuestCheckin: boolean;
+    blockExpiredPlan: boolean;
+    dailyLimit: number;
+    toleranceMinutes: number;
+    accessStart: string;
+    accessEnd: string;
+  };
+  notifications: {
+    whatsapp: boolean;
+    email: boolean;
+    sms: boolean;
+    dueReminderDays: number;
+    birthdayMessage: boolean;
+    paymentReceipt: boolean;
+    checkinAlert: boolean;
+  };
+  integrations: {
+    whatsappBusiness: boolean;
+    paymentGateway: string;
+    googleCalendar: boolean;
+    turnstileProvider: string;
+    publicApi: boolean;
+    webhookUrl: string;
+  };
+  backup: {
+    localBackup: boolean;
+    cloudBackup: boolean;
+    retentionDays: number;
+    autoBackupTime: string;
+    exportFormat: string;
+    lastBackupAt: string;
+  };
+}
+
+interface OperationalSettingsState {
+  settings: OperationalSettings;
+  updateSection: <Key extends keyof OperationalSettings>(section: Key, data: Partial<OperationalSettings[Key]>) => void;
+  updatePaymentMethod: (id: string, data: Partial<PaymentMethodSetting>) => void;
+  runBackup: () => void;
+  resetOperationalSettings: () => void;
+}
+
+const storageKey = "noogym:operational-settings";
+
+const defaultSettings: OperationalSettings = {
+  preferences: {
+    sounds: true,
+    confirmations: true,
+    autoUpdates: false
+  },
+  finance: {
+    currency: "AOA",
+    taxName: "IVA",
+    taxRate: 0,
+    receiptPrefix: "NG",
+    invoiceSeries: "2026",
+    receiptFooter: "Obrigado pela preferencia.",
+    paymentMethods: [
+      { id: "cash", name: "Dinheiro", enabled: true, settlementDays: 0, feePercent: 0 },
+      { id: "debit", name: "Cartao de debito", enabled: true, settlementDays: 1, feePercent: 1.5 },
+      { id: "credit", name: "Cartao de credito", enabled: true, settlementDays: 2, feePercent: 2.5 },
+      { id: "transfer", name: "Transferencia", enabled: true, settlementDays: 0, feePercent: 0 },
+      { id: "reference", name: "PIX/Referencia", enabled: true, settlementDays: 0, feePercent: 0 }
+    ]
+  },
+  contracts: {
+    graceDays: 3,
+    renewalNoticeDays: 5,
+    autoRenew: true,
+    allowFreeze: true,
+    maxFreezeDays: 15,
+    blockOnOverdue: true,
+    defaultContractModel: "Contrato padrao mensal"
+  },
+  checkin: {
+    manual: true,
+    qrCode: true,
+    biometric: false,
+    turnstile: false,
+    allowGuestCheckin: false,
+    blockExpiredPlan: true,
+    dailyLimit: 1,
+    toleranceMinutes: 10,
+    accessStart: "05:30",
+    accessEnd: "22:00"
+  },
+  notifications: {
+    whatsapp: true,
+    email: true,
+    sms: false,
+    dueReminderDays: 3,
+    birthdayMessage: true,
+    paymentReceipt: true,
+    checkinAlert: false
+  },
+  integrations: {
+    whatsappBusiness: false,
+    paymentGateway: "Nenhum",
+    googleCalendar: false,
+    turnstileProvider: "Nenhum",
+    publicApi: false,
+    webhookUrl: ""
+  },
+  backup: {
+    localBackup: true,
+    cloudBackup: false,
+    retentionDays: 90,
+    autoBackupTime: "23:30",
+    exportFormat: "JSON",
+    lastBackupAt: "Hoje, 10:30"
+  }
+};
+
+const mergeSettings = (stored: unknown): OperationalSettings => {
+  if (!stored || typeof stored !== "object") return defaultSettings;
+  const partial = stored as Partial<OperationalSettings>;
+
+  return {
+    preferences: { ...defaultSettings.preferences, ...partial.preferences },
+    finance: {
+      ...defaultSettings.finance,
+      ...partial.finance,
+      paymentMethods: partial.finance?.paymentMethods?.length ? partial.finance.paymentMethods : defaultSettings.finance.paymentMethods
+    },
+    contracts: { ...defaultSettings.contracts, ...partial.contracts },
+    checkin: { ...defaultSettings.checkin, ...partial.checkin },
+    notifications: { ...defaultSettings.notifications, ...partial.notifications },
+    integrations: { ...defaultSettings.integrations, ...partial.integrations },
+    backup: { ...defaultSettings.backup, ...partial.backup }
+  };
+};
+
+const loadSettings = () => {
+  if (typeof window === "undefined") return defaultSettings;
+
+  try {
+    return mergeSettings(JSON.parse(localStorage.getItem(storageKey) ?? "null"));
+  } catch {
+    return defaultSettings;
+  }
+};
+
+const persistSettings = (settings: OperationalSettings) => {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(storageKey, JSON.stringify(settings));
+};
+
+export const useOperationalSettingsStore = create<OperationalSettingsState>((set) => ({
+  settings: loadSettings(),
+  updateSection: (section, data) =>
+    set((state) => {
+      const settings = {
+        ...state.settings,
+        [section]: {
+          ...state.settings[section],
+          ...data
+        }
+      };
+      persistSettings(settings);
+      return { settings };
+    }),
+  updatePaymentMethod: (id, data) =>
+    set((state) => {
+      const settings = {
+        ...state.settings,
+        finance: {
+          ...state.settings.finance,
+          paymentMethods: state.settings.finance.paymentMethods.map((method) => method.id === id ? { ...method, ...data } : method)
+        }
+      };
+      persistSettings(settings);
+      return { settings };
+    }),
+  runBackup: () =>
+    set((state) => {
+      const settings = {
+        ...state.settings,
+        backup: {
+          ...state.settings.backup,
+          lastBackupAt: "Agora"
+        }
+      };
+      persistSettings(settings);
+      return { settings };
+    }),
+  resetOperationalSettings: () => {
+    persistSettings(defaultSettings);
+    set({ settings: defaultSettings });
+  }
+}));

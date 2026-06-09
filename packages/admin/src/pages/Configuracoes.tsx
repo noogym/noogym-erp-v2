@@ -1,273 +1,767 @@
-import { Bell, Building2, CreditCard, Database, Globe2, KeyRound, Link2, QrCode, ShieldCheck, Users } from "lucide-react";
-import { useEffect, useState } from "react";
-import { PageHeader } from "../components/layout/PageHeader";
+import {
+  Bell,
+  Building2,
+  CalendarClock,
+  CheckCircle2,
+  CreditCard,
+  Database,
+  Download,
+  FileText,
+  Globe2,
+  KeyRound,
+  Link2,
+  QrCode,
+  RefreshCw,
+  Save,
+  ShieldCheck,
+  UploadCloud,
+  Users,
+  Wifi
+} from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Badge, Button, Card, FormInput, FormSelect, FormSwitch, FormTextarea, Tabs } from "@noogym/ui";
 import { NoogymLogo } from "../components/brand/NoogymLogo";
-import { Badge, Button, Card, FormInput, FormSelect, FormSwitch, FormTextarea, Modal, Tabs } from "@noogym/ui";
+import { PageHeader } from "../components/layout/PageHeader";
 import { useAppStore } from "../store/appStore";
+import { useOperationalSettingsStore, type OperationalSettings } from "../store/operationalSettingsStore";
 import { useSettingsStore } from "../store/settingsStore";
 import { toastInfo, toastSuccess } from "../store/toastStore";
 import type { GymSettings, OrganizationSettings } from "../lib/settingsApi";
 
-function Toggle({ on = true, onClick }: { on?: boolean; onClick?: () => void }) {
-  return (
-    <button type="button" onClick={onClick} className={`relative inline-flex h-6 w-12 items-center rounded-full transition ${on ? "bg-noogym-lime" : "bg-zinc-700"}`}>
-      <span className={`h-5 w-5 rounded-full bg-white transition ${on ? "translate-x-6" : "translate-x-1"}`} />
-    </button>
-  );
-}
+const configTabs = [
+  "Geral",
+  "Academia",
+  "Financeiro",
+  "Planos e contratos",
+  "Check-in",
+  "Notificacoes",
+  "Usuarios e permissoes",
+  "Integracoes",
+  "Backup"
+];
 
-const configTabs = ["Geral", "Academia", "Financeiro", "Planos e contratos", "Check-in", "Notificacoes", "Usuarios e permissoes", "Integracoes", "Backup"];
-const icons = [Building2, Globe2, CreditCard, ShieldCheck, QrCode, Bell, Users, Link2, Database];
+type ConfigTab = (typeof configTabs)[number];
 
-const details: Record<string, string[]> = {
-  Geral: ["Informacoes da academia", "Moeda: Kwanza (Kz)", "Configuracoes regionais: Angola / Luanda", "Backup e limpeza de dados", "Impostos e taxas"],
-  Academia: ["Nome da academia", "NIF", "Endereco", "Telefones", "E-mail", "Logo", "Horarios de funcionamento"],
-  Financeiro: ["Moeda", "Metodos de pagamento", "Taxas", "Recibos", "Faturacao"],
-  "Planos e contratos": ["Regras de vencimento", "Congelamento", "Renovacao automatica", "Modelos de contrato"],
-  "Check-in": ["Tipos de acesso", "QR Code", "Biometria", "Catracas", "Limites de acesso", "Tolerancia"],
-  Notificacoes: ["WhatsApp", "E-mail", "SMS", "Lembretes automaticos"],
-  "Usuarios e permissoes": ["Administradores", "Funcoes", "Permissoes"],
-  Integracoes: ["Pagamentos", "WhatsApp Business", "Google Calendar", "Catracas", "API"],
-  Backup: ["Backup local", "Backup em nuvem", "Retencao", "Exportacao de dados", "Restaurar backup"]
-};
-
-type SettingsScope = "organization" | "gym";
+const saveToast = () => toastSuccess("Configuracoes salvas", "As alteracoes foram guardadas neste equipamento.");
 
 export default function Configuracoes() {
-  const [tab, setTab] = useState("Geral");
-  const [modal, setModal] = useState<{ title: string; scope: SettingsScope } | null>(null);
+  const [tab, setTab] = useState<ConfigTab>("Geral");
   const onlineOnly = useAppStore((state) => state.onlineOnly);
-  const theme = useAppStore((state) => state.theme);
-  const setTheme = useAppStore((state) => state.setTheme);
+  const syncNow = useAppStore((state) => state.syncNow);
+  const syncState = useAppStore((state) => state.syncState);
   const organization = useSettingsStore((state) => state.organization);
   const gyms = useSettingsStore((state) => state.gyms);
   const users = useSettingsStore((state) => state.users);
   const isLoading = useSettingsStore((state) => state.isLoading);
   const loadOnline = useSettingsStore((state) => state.loadOnline);
-  const darkMode = theme === "dark";
-  const Icon = icons[configTabs.indexOf(tab)] ?? KeyRound;
   const primaryGym = gyms[0];
-  const configDescription = onlineOnly ? "Configuracao sincronizada com a API do servidor." : "Configuracao local-first preparada para sincronizacao posterior.";
 
   useEffect(() => {
-    if (!onlineOnly) return;
-    loadOnline().catch((error) => toastInfo("Configuracoes locais", error instanceof Error ? error.message : "Nao foi possivel carregar configuracoes da API."));
-  }, [loadOnline, onlineOnly]);
+    loadOnline().catch((error) => {
+      toastInfo("Configuracoes locais", error instanceof Error ? error.message : "Nao foi possivel carregar configuracoes da API.");
+    });
+  }, [loadOnline]);
 
-  const openSettings = (item: string) => {
-    const scope: SettingsScope = tab === "Academia" || item === "Endereco" || item === "Horarios de funcionamento" ? "gym" : "organization";
-    setModal({ title: `${tab}: ${item}`, scope });
-  };
+  const counters = useMemo(() => [
+    { label: "Unidades", value: String(gyms.length || organization?._count?.gyms || 1), hint: primaryGym?.name ?? "Unidade principal", icon: Building2 },
+    { label: "Usuarios", value: String(users.length || organization?._count?.users || 0), hint: "Acessos administrativos", icon: Users },
+    { label: "Clientes", value: String(organization?._count?.members ?? 0), hint: onlineOnly ? "Sincronizado com API" : "Modo local-first", icon: ShieldCheck },
+    { label: "Estado", value: onlineOnly ? "Online" : "Local", hint: isLoading ? "A carregar dados" : "Pronto para operar", icon: Wifi }
+  ], [gyms.length, isLoading, onlineOnly, organization?._count?.gyms, organization?._count?.members, organization?._count?.users, primaryGym?.name, users.length]);
 
   return (
-    <div className="page-grid">
+    <div className="space-y-4">
       <div className="panel p-6">
-        <PageHeader
-          title="Configuracoes"
-          subtitle={isLoading ? "Sincronizando configuracoes com a API..." : "Gerencie as configuracoes do sistema e da sua academia."}
-        />
-        <Tabs tabs={configTabs} active={tab} onChange={setTab} />
-        <div className="mt-5 grid grid-cols-2 gap-4">
-          {details[tab].map((item, index) => (
-            <Card key={item} className="p-5">
-              <div className="flex gap-4">
-                <span className="icon-tile text-noogym-lime">
-                  <Icon className="h-5 w-5" />
-                </span>
-                <div className="flex-1">
-                  <h2 className="font-semibold">{item}</h2>
-                  <p className="mt-3 text-sm text-zinc-400">{settingHint(item, organization, primaryGym, configDescription)}</p>
-                  {index % 2 === 0 ? (
-                    <div className="mt-4 flex items-center justify-between text-sm">
-                      <span>Ativo</span>
-                      <Toggle />
-                    </div>
-                  ) : null}
-                  <Button className="mt-5 min-w-32" onClick={() => openSettings(item)}>
-                    Editar
-                  </Button>
-                </div>
-              </div>
-            </Card>
-          ))}
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <PageHeader
+            title="Configuracoes"
+            subtitle={isLoading ? "Sincronizando configuracoes com a API..." : "Administre regras, unidade, acessos e operacao do sistema."}
+          />
+          <div className="flex flex-wrap gap-2">
+            <Button icon={<RefreshCw className={`h-4 w-4 ${syncState === "syncing" ? "animate-spin" : ""}`} />} onClick={() => syncNow()}>
+              Sincronizar
+            </Button>
+            <Button variant="primary" icon={<Save className="h-4 w-4" />} onClick={saveToast}>
+              Guardar estado
+            </Button>
+          </div>
+        </div>
+        <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          {counters.map((item) => <StatusCard key={item.label} {...item} />)}
         </div>
       </div>
-      <aside className="space-y-3">
-        <Card className="p-6">
-          <h2 className="font-semibold">Informacoes da empresa</h2>
-          <div className="mt-8 flex items-center gap-6">
-            <div className="flex h-32 w-32 items-center justify-center rounded-full border border-white/10 bg-white/[0.06] p-5">
-              <NoogymLogo variant="mark" className="h-full w-full" />
-            </div>
-            <Button onClick={() => setModal({ title: "Academia: Logo", scope: "organization" })}>Alterar logo</Button>
-          </div>
-          <h3 className="mt-6 text-xl font-semibold">{organization?.name ?? "Noogym Fitness Center"}</h3>
-          <div className="mt-4 space-y-3 text-sm text-zinc-300">
-            <p>{primaryGym?.name ?? "Unidade Central"}</p>
-            <p>Slug: {organization?.slug ?? "noogym"}</p>
-            <p>{primaryGym?.address ?? "Avenida 21 de Janeiro, Luanda, Angola"}</p>
-            <p>{organization?.phone ?? primaryGym?.phone ?? "+244 923 777 888"}</p>
-            <p>{organization?.email ?? primaryGym?.email ?? "contato@noogym.com"}</p>
-          </div>
-        </Card>
-        <Card className="p-6">
-          <h2 className="mb-5 font-semibold">Preferencias do sistema</h2>
-          <div className="mb-5 flex items-center justify-between">
-            <div>
-              <p>Tema escuro</p>
-              <p className="text-sm text-zinc-400">{darkMode ? "Manter tema escuro" : "Usar tema claro"}</p>
-            </div>
-            <Toggle on={darkMode} onClick={() => setTheme(darkMode ? "light" : "dark")} />
-          </div>
-          {["Sons do sistema", "Confirmacao de acoes", "Atualizacoes automaticas"].map((item) => (
-            <div key={item} className="mb-5 flex items-center justify-between">
-              <p>{item}</p>
-              <Toggle on={item !== "Atualizacoes automaticas"} />
-            </div>
-          ))}
-          <Button className="w-full" onClick={() => setModal({ title: "Restaurar padroes", scope: "organization" })}>
-            Restaurar padroes
-          </Button>
-        </Card>
-        <Card className="p-5">
-          <h2 className="mb-3 font-semibold">{onlineOnly ? "Estado online" : "Estado local-first"}</h2>
-          <Badge>{onlineOnly ? "Online" : "Local-First"}</Badge>
-          <p className="mt-3 text-sm text-zinc-400">
-            {onlineOnly
-              ? `API ativa. ${organization?._count?.members ?? 0} clientes, ${organization?._count?.plans ?? 0} planos e ${users.length || organization?._count?.users || 0} usuarios.`
-              : "Dados operacionais persistem localmente e ficam prontos para sincronizacao posterior."}
-          </p>
-        </Card>
-      </aside>
-      <SettingsEditorModal open={Boolean(modal)} title={modal?.title ?? "Configuracoes"} scope={modal?.scope ?? "organization"} organization={organization} gym={primaryGym} onClose={() => setModal(null)} />
+
+      <div className="panel p-6">
+        <Tabs tabs={configTabs} active={tab} onChange={(next) => setTab(next as ConfigTab)} />
+        <div className="mt-5">
+          {tab === "Geral" ? <GeneralTab organization={organization} primaryGym={primaryGym} /> : null}
+          {tab === "Academia" ? <GymTab organization={organization} gyms={gyms} primaryGym={primaryGym} /> : null}
+          {tab === "Financeiro" ? <FinanceTab /> : null}
+          {tab === "Planos e contratos" ? <ContractsTab /> : null}
+          {tab === "Check-in" ? <CheckinTab /> : null}
+          {tab === "Notificacoes" ? <NotificationsTab /> : null}
+          {tab === "Usuarios e permissoes" ? <UsersTab users={users} /> : null}
+          {tab === "Integracoes" ? <IntegrationsTab /> : null}
+          {tab === "Backup" ? <BackupTab /> : null}
+        </div>
+      </div>
     </div>
   );
 }
 
-function settingHint(item: string, organization: OrganizationSettings | null, gym: GymSettings | undefined, fallback: string) {
-  if (item.includes("Moeda")) return `Moeda atual: ${organization?.currency ?? "AOA"}.`;
-  if (item.includes("regionais")) return `Fuso horario: ${organization?.timezone ?? "Africa/Luanda"}.`;
-  if (item === "Nome da academia" || item === "Informacoes da academia") return organization?.name ?? fallback;
-  if (item === "Endereco") return gym?.address ?? fallback;
-  if (item === "Telefones") return organization?.phone ?? gym?.phone ?? fallback;
-  if (item === "E-mail") return organization?.email ?? gym?.email ?? fallback;
-  return fallback;
+function StatusCard({ label, value, hint, icon: Icon }: { label: string; value: string; hint: string; icon: typeof Building2 }) {
+  return (
+    <Card className="p-4">
+      <div className="flex items-start gap-3">
+        <span className="icon-tile text-noogym-lime">
+          <Icon className="h-5 w-5" />
+        </span>
+        <div className="min-w-0">
+          <p className="text-xs text-zinc-400">{label}</p>
+          <p className="mt-1 text-2xl font-semibold">{value}</p>
+          <p className="mt-2 truncate text-xs text-noogym-lime">{hint}</p>
+        </div>
+      </div>
+    </Card>
+  );
 }
 
-function SettingsEditorModal({
-  open,
-  title,
-  scope,
-  organization,
-  gym,
-  onClose
-}: {
-  open: boolean;
-  title: string;
-  scope: SettingsScope;
-  organization: OrganizationSettings | null;
-  gym?: GymSettings;
-  onClose: () => void;
-}) {
+function SectionTitle({ icon: Icon, title, description }: { icon: typeof Building2; title: string; description: string }) {
+  return (
+    <div className="mb-4 flex items-start gap-3">
+      <span className="icon-tile text-noogym-lime">
+        <Icon className="h-5 w-5" />
+      </span>
+      <div>
+        <h2 className="font-semibold">{title}</h2>
+        <p className="mt-1 text-sm text-zinc-400">{description}</p>
+      </div>
+    </div>
+  );
+}
+
+function GeneralTab({ organization, primaryGym }: { organization: OrganizationSettings | null; primaryGym?: GymSettings }) {
+  const theme = useAppStore((state) => state.theme);
+  const setTheme = useAppStore((state) => state.setTheme);
+  const settings = useOperationalSettingsStore((state) => state.settings);
+  const updateSection = useOperationalSettingsStore((state) => state.updateSection);
+  const resetOperationalSettings = useOperationalSettingsStore((state) => state.resetOperationalSettings);
   const saveOrganization = useSettingsStore((state) => state.saveOrganization);
-  const savePrimaryGym = useSettingsStore((state) => state.savePrimaryGym);
   const isLoading = useSettingsStore((state) => state.isLoading);
-  const [name, setName] = useState("");
-  const [slug, setSlug] = useState("");
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
-  const [website, setWebsite] = useState("");
-  const [address, setAddress] = useState("");
-  const [city, setCity] = useState("");
-  const [province, setProvince] = useState("");
-  const [country, setCountry] = useState("Angola");
-  const [currency, setCurrency] = useState("AOA");
-  const [timezone, setTimezone] = useState("Africa/Luanda");
-  const [logoUrl, setLogoUrl] = useState("");
-  const [isActive, setIsActive] = useState(true);
+  const [form, setForm] = useState(() => organizationForm(organization));
 
   useEffect(() => {
-    if (!open) return;
-    if (scope === "gym") {
-      setName(gym?.name ?? organization?.name ?? "Unidade Central");
-      setSlug(gym?.slug ?? "unidade-central");
-      setEmail(gym?.email ?? organization?.email ?? "");
-      setPhone(gym?.phone ?? organization?.phone ?? "");
-      setAddress(gym?.address ?? "");
-      setCity(gym?.city ?? "Luanda");
-      setProvince(gym?.province ?? "Luanda");
-      setCountry(gym?.country ?? "Angola");
-      setLogoUrl(gym?.logoUrl ?? "");
-      setIsActive(gym?.isActive ?? true);
-      return;
-    }
-
-    setName(organization?.name ?? "Noogym Fitness Center");
-    setSlug(organization?.slug ?? "noogym");
-    setEmail(organization?.email ?? "");
-    setPhone(organization?.phone ?? "");
-    setWebsite(organization?.website ?? "");
-    setCountry(organization?.country ?? "Angola");
-    setCurrency(organization?.currency ?? "AOA");
-    setTimezone(organization?.timezone ?? "Africa/Luanda");
-    setLogoUrl(organization?.logoUrl ?? "");
-  }, [gym, open, organization, scope]);
+    setForm(organizationForm(organization));
+  }, [organization]);
 
   const save = () => {
-    if (!name.trim()) {
-      toastInfo("Nome obrigatorio", "Informe o nome antes de salvar.");
+    if (!form.name.trim()) {
+      toastInfo("Nome obrigatorio", "Informe o nome da organizacao.");
       return;
     }
 
-    const action = scope === "gym"
-      ? savePrimaryGym({ name, slug, email: optional(email), phone: optional(phone), address: optional(address), city: optional(city), province: optional(province), country, logoUrl: optional(logoUrl), isActive })
-      : saveOrganization({ name, slug, email: optional(email), phone: optional(phone), website: optional(website), country, currency, timezone, logoUrl: optional(logoUrl) });
-
-    action
-      .then(() => {
-        toastSuccess("Configuracoes salvas com sucesso");
-        onClose();
-      })
+    saveOrganization({
+      name: form.name,
+      slug: form.slug,
+      email: optional(form.email),
+      phone: optional(form.phone),
+      website: optional(form.website),
+      country: form.country,
+      currency: form.currency,
+      timezone: form.timezone,
+      logoUrl: optional(form.logoUrl)
+    })
+      .then(() => toastSuccess("Organizacao atualizada", "Os dados gerais foram guardados."))
       .catch((error) => toastInfo("Nao foi possivel salvar", error instanceof Error ? error.message : "Verifique a API e tente novamente."));
   };
 
   return (
-    <Modal
-      open={open}
-      title={title}
-      description={scope === "gym" ? "Atualize os dados da unidade principal na API." : "Atualize os dados da organizacao na API."}
-      size="lg"
-      onClose={onClose}
-      footer={<><Button onClick={onClose}>Cancelar</Button><Button variant="primary" disabled={isLoading} onClick={save}>{isLoading ? "Salvando..." : "Salvar configuracoes"}</Button></>}
-    >
-      <div className="grid grid-cols-2 gap-3">
-        <FormInput label={scope === "gym" ? "Nome da unidade" : "Nome da academia"} requiredMark value={name} onChange={(event) => setName(event.target.value)} />
-        <FormInput label="Slug" requiredMark value={slug} onChange={(event) => setSlug(event.target.value)} />
-        <FormInput label="E-mail" type="email" value={email} onChange={(event) => setEmail(event.target.value)} />
-        <FormInput label="Telefone" value={phone} onChange={(event) => setPhone(event.target.value)} />
-        {scope === "gym" ? (
-          <>
-            <FormInput className="col-span-2" label="Endereco" value={address} onChange={(event) => setAddress(event.target.value)} />
-            <FormInput label="Cidade" value={city} onChange={(event) => setCity(event.target.value)} />
-            <FormInput label="Provincia" value={province} onChange={(event) => setProvince(event.target.value)} />
-            <FormSelect label="Pais" value={country} onChange={(event) => setCountry(event.target.value)} options={["Angola"]} />
-            <FormSwitch label="Unidade ativa" checked={isActive} onChange={setIsActive} />
-          </>
-        ) : (
-          <>
-            <FormInput label="Website" value={website} onChange={(event) => setWebsite(event.target.value)} />
-            <FormSelect label="Pais" value={country} onChange={(event) => setCountry(event.target.value)} options={["Angola"]} />
-            <FormSelect label="Moeda" value={currency} onChange={(event) => setCurrency(event.target.value)} options={["AOA", "USD", "EUR"]} />
-            <FormSelect label="Fuso horario" value={timezone} onChange={(event) => setTimezone(event.target.value)} options={["Africa/Luanda", "UTC"]} />
-          </>
-        )}
-        <FormInput className="col-span-2" label="URL do logotipo" value={logoUrl} onChange={(event) => setLogoUrl(event.target.value)} />
-        <FormTextarea className="col-span-2" label="Observacoes internas" defaultValue="Configuracoes sincronizadas com a API Noogym ERP." />
+    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="space-y-4">
+        <Card className="p-5">
+          <SectionTitle icon={Building2} title="Identidade da organizacao" description="Dados principais usados em recibos, relatorios, contratos e cabecalhos do sistema." />
+          <div className="grid gap-3 md:grid-cols-2">
+            <FormInput label="Nome da organizacao" requiredMark value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
+            <FormInput label="Slug" requiredMark value={form.slug} onChange={(event) => setForm({ ...form, slug: event.target.value })} />
+            <FormInput label="E-mail" type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} />
+            <FormInput label="Telefone" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} />
+            <FormInput label="Website" value={form.website} onChange={(event) => setForm({ ...form, website: event.target.value })} />
+            <FormInput label="URL do logotipo" value={form.logoUrl} onChange={(event) => setForm({ ...form, logoUrl: event.target.value })} />
+            <FormSelect label="Pais" value={form.country} onChange={(event) => setForm({ ...form, country: event.target.value })} options={["Angola"]} />
+            <FormSelect label="Fuso horario" value={form.timezone} onChange={(event) => setForm({ ...form, timezone: event.target.value })} options={["Africa/Luanda", "UTC"]} />
+          </div>
+          <div className="mt-4 flex justify-end">
+            <Button variant="primary" disabled={isLoading} icon={<Save className="h-4 w-4" />} onClick={save}>
+              {isLoading ? "Salvando..." : "Salvar dados gerais"}
+            </Button>
+          </div>
+        </Card>
+
+        <Card className="p-5">
+          <SectionTitle icon={Globe2} title="Preferencias do sistema" description="Controles locais que afetam a experiencia da equipa neste terminal." />
+          <div className="grid gap-3 md:grid-cols-2">
+            <FormSwitch label="Tema escuro" description="Mantem o painel no visual operacional escuro." checked={theme === "dark"} onChange={(checked) => setTheme(checked ? "dark" : "light")} />
+            <FormSwitch label="Sons do sistema" checked={settings.preferences.sounds} onChange={(sounds) => updateSection("preferences", { sounds })} />
+            <FormSwitch label="Confirmacao de acoes" checked={settings.preferences.confirmations} onChange={(confirmations) => updateSection("preferences", { confirmations })} />
+            <FormSwitch label="Atualizacoes automaticas" checked={settings.preferences.autoUpdates} onChange={(autoUpdates) => updateSection("preferences", { autoUpdates })} />
+          </div>
+          <div className="mt-4 flex justify-end">
+            <Button onClick={() => { resetOperationalSettings(); toastSuccess("Padroes restaurados"); }}>
+              Restaurar padroes operacionais
+            </Button>
+          </div>
+        </Card>
       </div>
-    </Modal>
+
+      <Card className="p-5">
+        <SectionTitle icon={ShieldCheck} title="Resumo da empresa" description="Identificacao rapida da organizacao ativa." />
+        <div className="flex items-center gap-5">
+          <div className="flex h-28 w-28 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.06] p-5">
+            <NoogymLogo variant="mark" className="h-full w-full" />
+          </div>
+          <div className="min-w-0">
+            <h3 className="truncate text-xl font-semibold">{organization?.name ?? "Noogym Fitness Center"}</h3>
+            <p className="mt-1 text-sm text-zinc-400">{primaryGym?.name ?? "Unidade Central"}</p>
+            <span className="mt-3 inline-flex">
+              <Badge>{organization?.currency ?? "AOA"}</Badge>
+            </span>
+          </div>
+        </div>
+        <div className="mt-5 space-y-3 text-sm text-zinc-300">
+          <InfoLine label="Slug" value={organization?.slug ?? "noogym"} />
+          <InfoLine label="Endereco" value={primaryGym?.address ?? "Avenida 21 de Janeiro, Luanda"} />
+          <InfoLine label="Telefone" value={organization?.phone ?? primaryGym?.phone ?? "+244 923 777 888"} />
+          <InfoLine label="E-mail" value={organization?.email ?? primaryGym?.email ?? "contato@noogym.com"} />
+        </div>
+      </Card>
+    </div>
   );
+}
+
+function GymTab({ organization, gyms, primaryGym }: { organization: OrganizationSettings | null; gyms: GymSettings[]; primaryGym?: GymSettings }) {
+  const savePrimaryGym = useSettingsStore((state) => state.savePrimaryGym);
+  const isLoading = useSettingsStore((state) => state.isLoading);
+  const [form, setForm] = useState(() => gymForm(organization, primaryGym));
+  const [weekStart, setWeekStart] = useState("06:00");
+  const [weekEnd, setWeekEnd] = useState("22:00");
+  const [saturdayStart, setSaturdayStart] = useState("07:00");
+  const [saturdayEnd, setSaturdayEnd] = useState("18:00");
+
+  useEffect(() => {
+    setForm(gymForm(organization, primaryGym));
+  }, [organization, primaryGym]);
+
+  const save = () => {
+    if (!form.name.trim()) {
+      toastInfo("Nome obrigatorio", "Informe o nome da unidade.");
+      return;
+    }
+
+    savePrimaryGym({
+      name: form.name,
+      slug: form.slug,
+      email: optional(form.email),
+      phone: optional(form.phone),
+      address: optional(form.address),
+      city: optional(form.city),
+      province: optional(form.province),
+      country: form.country,
+      logoUrl: optional(form.logoUrl),
+      isActive: form.isActive
+    })
+      .then(() => toastSuccess("Unidade atualizada", "Os dados da academia foram guardados."))
+      .catch((error) => toastInfo("Nao foi possivel salvar", error instanceof Error ? error.message : "Verifique a API e tente novamente."));
+  };
+
+  return (
+    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
+      <div className="space-y-4">
+        <Card className="p-5">
+          <SectionTitle icon={Building2} title="Unidade principal" description="Dados operacionais da academia que aparecem em relatorios, check-in e recibos." />
+          <div className="grid gap-3 md:grid-cols-2">
+            <FormInput label="Nome da unidade" requiredMark value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
+            <FormInput label="Slug da unidade" requiredMark value={form.slug} onChange={(event) => setForm({ ...form, slug: event.target.value })} />
+            <FormInput className="md:col-span-2" label="Endereco" value={form.address} onChange={(event) => setForm({ ...form, address: event.target.value })} />
+            <FormInput label="Cidade" value={form.city} onChange={(event) => setForm({ ...form, city: event.target.value })} />
+            <FormInput label="Provincia" value={form.province} onChange={(event) => setForm({ ...form, province: event.target.value })} />
+            <FormInput label="Telefone" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} />
+            <FormInput label="E-mail" type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} />
+            <FormSwitch label="Unidade ativa" checked={form.isActive} onChange={(isActive) => setForm({ ...form, isActive })} />
+          </div>
+          <div className="mt-4 flex justify-end">
+            <Button variant="primary" disabled={isLoading} icon={<Save className="h-4 w-4" />} onClick={save}>
+              {isLoading ? "Salvando..." : "Salvar unidade"}
+            </Button>
+          </div>
+        </Card>
+
+        <Card className="p-5">
+          <SectionTitle icon={CalendarClock} title="Horarios de funcionamento" description="Referencia operacional para aulas, check-in e atendimento." />
+          <div className="grid gap-3 md:grid-cols-4">
+            <FormInput label="Seg-Sex abre" type="time" value={weekStart} onChange={(event) => setWeekStart(event.target.value)} />
+            <FormInput label="Seg-Sex fecha" type="time" value={weekEnd} onChange={(event) => setWeekEnd(event.target.value)} />
+            <FormInput label="Sabado abre" type="time" value={saturdayStart} onChange={(event) => setSaturdayStart(event.target.value)} />
+            <FormInput label="Sabado fecha" type="time" value={saturdayEnd} onChange={(event) => setSaturdayEnd(event.target.value)} />
+          </div>
+          <div className="mt-4 flex justify-end">
+            <Button onClick={saveToast}>Guardar horarios</Button>
+          </div>
+        </Card>
+      </div>
+
+      <Card className="p-5">
+        <SectionTitle icon={Globe2} title="Unidades cadastradas" description="Lista das academias vinculadas a organizacao." />
+        <div className="space-y-3">
+          {(gyms.length ? gyms : [primaryGym ?? mockGym(organization)]).filter(Boolean).map((gym) => (
+            <div key={gym.id} className="rounded-md border border-white/10 bg-white/[0.03] p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-semibold">{gym.name}</p>
+                  <p className="mt-1 text-sm text-zinc-400">{gym.city ?? "Luanda"} - {gym.province ?? "Luanda"}</p>
+                </div>
+                <Badge>{gym.isActive === false ? "Inativa" : "Ativa"}</Badge>
+              </div>
+              <p className="mt-3 text-sm text-zinc-400">{gym.address ?? "Endereco nao informado"}</p>
+            </div>
+          ))}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function FinanceTab() {
+  const settings = useOperationalSettingsStore((state) => state.settings);
+  const updateSection = useOperationalSettingsStore((state) => state.updateSection);
+  const updatePaymentMethod = useOperationalSettingsStore((state) => state.updatePaymentMethod);
+  const finance = settings.finance;
+
+  return (
+    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
+      <Card className="p-5">
+        <SectionTitle icon={CreditCard} title="Regras financeiras" description="Parametros usados por vendas, recibos, cobrancas e relatorios financeiros." />
+        <div className="grid gap-3 md:grid-cols-3">
+          <FormSelect label="Moeda padrao" value={finance.currency} onChange={(event) => updateSection("finance", { currency: event.target.value })} options={["AOA", "USD", "EUR"]} />
+          <FormInput label="Imposto/taxa" value={finance.taxName} onChange={(event) => updateSection("finance", { taxName: event.target.value })} />
+          <FormInput label="Percentual da taxa" type="number" min="0" value={finance.taxRate} onChange={(event) => updateSection("finance", { taxRate: numberValue(event.target.value) })} />
+          <FormInput label="Prefixo do recibo" value={finance.receiptPrefix} onChange={(event) => updateSection("finance", { receiptPrefix: event.target.value })} />
+          <FormInput label="Serie fiscal" value={finance.invoiceSeries} onChange={(event) => updateSection("finance", { invoiceSeries: event.target.value })} />
+          <FormTextarea className="md:col-span-3" label="Rodape do recibo" value={finance.receiptFooter} onChange={(event) => updateSection("finance", { receiptFooter: event.target.value })} />
+        </div>
+        <div className="mt-4 flex justify-end">
+          <Button variant="primary" icon={<Save className="h-4 w-4" />} onClick={saveToast}>Salvar financeiro</Button>
+        </div>
+      </Card>
+
+      <Card className="p-5">
+        <SectionTitle icon={FileText} title="Resumo fiscal" description="Configuracao atual aplicada ao POS e financas." />
+        <div className="space-y-3 text-sm">
+          <InfoLine label="Moeda" value={finance.currency} />
+          <InfoLine label="Taxa" value={`${finance.taxName} ${finance.taxRate}%`} />
+          <InfoLine label="Recibos" value={`${finance.receiptPrefix}-${finance.invoiceSeries}`} />
+          <InfoLine label="Metodos ativos" value={String(finance.paymentMethods.filter((method) => method.enabled).length)} />
+        </div>
+      </Card>
+
+      <Card className="p-5 xl:col-span-2">
+        <SectionTitle icon={CreditCard} title="Metodos de pagamento" description="Ative metodos, informe prazo de liquidacao e custos para o caixa." />
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[760px] text-left text-sm">
+            <thead className="border-b border-white/10 text-xs text-zinc-400">
+              <tr>
+                <th className="py-3">Metodo</th>
+                <th className="py-3">Estado</th>
+                <th className="py-3">Liquidacao</th>
+                <th className="py-3">Taxa</th>
+                <th className="py-3 text-right">Acao</th>
+              </tr>
+            </thead>
+            <tbody>
+              {finance.paymentMethods.map((method) => (
+                <tr key={method.id} className="border-b border-white/10">
+                  <td className="py-3 font-medium">{method.name}</td>
+                  <td className="py-3"><Badge>{method.enabled ? "Ativo" : "Inativo"}</Badge></td>
+                  <td className="py-3">
+                    <input
+                      className="h-9 w-24 rounded-md border border-white/10 bg-black/20 px-3 text-white outline-none focus:border-noogym-lime/70"
+                      type="number"
+                      min="0"
+                      value={method.settlementDays}
+                      onChange={(event) => updatePaymentMethod(method.id, { settlementDays: numberValue(event.target.value) })}
+                    />
+                    <span className="ml-2 text-zinc-500">dias</span>
+                  </td>
+                  <td className="py-3">
+                    <input
+                      className="h-9 w-24 rounded-md border border-white/10 bg-black/20 px-3 text-white outline-none focus:border-noogym-lime/70"
+                      type="number"
+                      min="0"
+                      value={method.feePercent}
+                      onChange={(event) => updatePaymentMethod(method.id, { feePercent: numberValue(event.target.value) })}
+                    />
+                    <span className="ml-2 text-zinc-500">%</span>
+                  </td>
+                  <td className="py-3 text-right">
+                    <Button onClick={() => updatePaymentMethod(method.id, { enabled: !method.enabled })}>
+                      {method.enabled ? "Desativar" : "Ativar"}
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function ContractsTab() {
+  const contracts = useOperationalSettingsStore((state) => state.settings.contracts);
+  const updateSection = useOperationalSettingsStore((state) => state.updateSection);
+
+  return (
+    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
+      <Card className="p-5">
+        <SectionTitle icon={ShieldCheck} title="Regras de planos e contratos" description="Controla renovacao, vencimento, bloqueio e congelamento dos planos." />
+        <div className="grid gap-3 md:grid-cols-3">
+          <FormInput label="Dias de tolerancia" type="number" min="0" value={contracts.graceDays} onChange={(event) => updateSection("contracts", { graceDays: numberValue(event.target.value) })} />
+          <FormInput label="Avisar renovacao com" type="number" min="0" value={contracts.renewalNoticeDays} onChange={(event) => updateSection("contracts", { renewalNoticeDays: numberValue(event.target.value) })} />
+          <FormInput label="Maximo congelamento" type="number" min="0" value={contracts.maxFreezeDays} onChange={(event) => updateSection("contracts", { maxFreezeDays: numberValue(event.target.value) })} />
+          <FormSwitch label="Renovacao automatica" checked={contracts.autoRenew} onChange={(autoRenew) => updateSection("contracts", { autoRenew })} />
+          <FormSwitch label="Permitir congelamento" checked={contracts.allowFreeze} onChange={(allowFreeze) => updateSection("contracts", { allowFreeze })} />
+          <FormSwitch label="Bloquear plano vencido" checked={contracts.blockOnOverdue} onChange={(blockOnOverdue) => updateSection("contracts", { blockOnOverdue })} />
+          <FormTextarea className="md:col-span-3" label="Modelo padrao de contrato" value={contracts.defaultContractModel} onChange={(event) => updateSection("contracts", { defaultContractModel: event.target.value })} />
+        </div>
+        <div className="mt-4 flex justify-end">
+          <Button variant="primary" icon={<Save className="h-4 w-4" />} onClick={saveToast}>Salvar regras</Button>
+        </div>
+      </Card>
+      <Card className="p-5">
+        <SectionTitle icon={FileText} title="Impacto operacional" description="Como estas regras afetam o dia a dia." />
+        <div className="space-y-3 text-sm text-zinc-300">
+          <RuleLine active={contracts.blockOnOverdue} text="Planos vencidos bloqueiam check-in automaticamente." />
+          <RuleLine active={contracts.autoRenew} text="Renovacao automatica fica disponivel nos planos recorrentes." />
+          <RuleLine active={contracts.allowFreeze} text={`Congelamento permitido ate ${contracts.maxFreezeDays} dias.`} />
+          <RuleLine active text={`Cliente recebe aviso ${contracts.renewalNoticeDays} dias antes do vencimento.`} />
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function CheckinTab() {
+  const checkin = useOperationalSettingsStore((state) => state.settings.checkin);
+  const updateSection = useOperationalSettingsStore((state) => state.updateSection);
+  const accessMethods = [
+    { key: "manual", label: "Manual", description: "Recepcao registra entrada do cliente." },
+    { key: "qrCode", label: "QR Code", description: "Cliente usa codigo pelo app ou cartao." },
+    { key: "biometric", label: "Biometria", description: "Preparado para leitor biometrico." },
+    { key: "turnstile", label: "Catraca", description: "Controle por equipamento externo." }
+  ] as const;
+
+  return (
+    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
+      <Card className="p-5">
+        <SectionTitle icon={QrCode} title="Regras de acesso" description="Defina como o aluno entra na unidade e quando deve ser bloqueado." />
+        <div className="grid gap-3 md:grid-cols-2">
+          {accessMethods.map((method) => (
+            <FormSwitch
+              key={method.key}
+              label={method.label}
+              description={method.description}
+              checked={Boolean(checkin[method.key])}
+              onChange={(value) => updateSection("checkin", { [method.key]: value })}
+            />
+          ))}
+        </div>
+        <div className="mt-5 grid gap-3 md:grid-cols-4">
+          <FormInput label="Limite diario" type="number" min="1" value={checkin.dailyLimit} onChange={(event) => updateSection("checkin", { dailyLimit: numberValue(event.target.value, 1) })} />
+          <FormInput label="Tolerancia" type="number" min="0" value={checkin.toleranceMinutes} onChange={(event) => updateSection("checkin", { toleranceMinutes: numberValue(event.target.value) })} />
+          <FormInput label="Inicio acesso" type="time" value={checkin.accessStart} onChange={(event) => updateSection("checkin", { accessStart: event.target.value })} />
+          <FormInput label="Fim acesso" type="time" value={checkin.accessEnd} onChange={(event) => updateSection("checkin", { accessEnd: event.target.value })} />
+        </div>
+        <div className="mt-5 grid gap-3 md:grid-cols-2">
+          <FormSwitch label="Bloquear plano vencido" checked={checkin.blockExpiredPlan} onChange={(blockExpiredPlan) => updateSection("checkin", { blockExpiredPlan })} />
+          <FormSwitch label="Permitir check-in avulso" checked={checkin.allowGuestCheckin} onChange={(allowGuestCheckin) => updateSection("checkin", { allowGuestCheckin })} />
+        </div>
+        <div className="mt-4 flex justify-end">
+          <Button variant="primary" icon={<Save className="h-4 w-4" />} onClick={saveToast}>Salvar check-in</Button>
+        </div>
+      </Card>
+
+      <Card className="p-5">
+        <SectionTitle icon={CheckCircle2} title="Politica atual" description="Resumo aplicado na recepcao." />
+        <div className="space-y-3 text-sm">
+          <InfoLine label="Janela" value={`${checkin.accessStart} - ${checkin.accessEnd}`} />
+          <InfoLine label="Limite diario" value={`${checkin.dailyLimit} entrada(s)`} />
+          <InfoLine label="Tolerancia" value={`${checkin.toleranceMinutes} min`} />
+          <InfoLine label="Plano vencido" value={checkin.blockExpiredPlan ? "Bloqueia acesso" : "Permite acesso"} />
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function NotificationsTab() {
+  const notifications = useOperationalSettingsStore((state) => state.settings.notifications);
+  const updateSection = useOperationalSettingsStore((state) => state.updateSection);
+
+  return (
+    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
+      <Card className="p-5">
+        <SectionTitle icon={Bell} title="Canais e automacoes" description="Escolha como o Noogym comunica eventos importantes aos clientes." />
+        <div className="grid gap-3 md:grid-cols-3">
+          <FormSwitch label="WhatsApp" checked={notifications.whatsapp} onChange={(whatsapp) => updateSection("notifications", { whatsapp })} />
+          <FormSwitch label="E-mail" checked={notifications.email} onChange={(email) => updateSection("notifications", { email })} />
+          <FormSwitch label="SMS" checked={notifications.sms} onChange={(sms) => updateSection("notifications", { sms })} />
+        </div>
+        <div className="mt-5 grid gap-3 md:grid-cols-2">
+          <FormInput label="Lembrete de vencimento" type="number" min="0" value={notifications.dueReminderDays} onChange={(event) => updateSection("notifications", { dueReminderDays: numberValue(event.target.value) })} />
+          <FormSwitch label="Mensagem de aniversario" checked={notifications.birthdayMessage} onChange={(birthdayMessage) => updateSection("notifications", { birthdayMessage })} />
+          <FormSwitch label="Enviar recibo de pagamento" checked={notifications.paymentReceipt} onChange={(paymentReceipt) => updateSection("notifications", { paymentReceipt })} />
+          <FormSwitch label="Alerta de check-in" checked={notifications.checkinAlert} onChange={(checkinAlert) => updateSection("notifications", { checkinAlert })} />
+        </div>
+        <div className="mt-4 flex justify-end">
+          <Button variant="primary" icon={<Save className="h-4 w-4" />} onClick={saveToast}>Salvar notificacoes</Button>
+        </div>
+      </Card>
+
+      <Card className="p-5">
+        <SectionTitle icon={Bell} title="Templates ativos" description="Mensagens automaticas preparadas para envio." />
+        <div className="space-y-3">
+          <TemplateLine title="Plano a vencer" enabled days={notifications.dueReminderDays} />
+          <TemplateLine title="Aniversario" enabled={notifications.birthdayMessage} />
+          <TemplateLine title="Recibo de pagamento" enabled={notifications.paymentReceipt} />
+          <TemplateLine title="Check-in realizado" enabled={notifications.checkinAlert} />
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function UsersTab({ users }: { users: Array<{ id: string; name: string; email: string; role: string; status: string }> }) {
+  const [query, setQuery] = useState("");
+  const filteredUsers = users.filter((user) => `${user.name} ${user.email} ${user.role}`.toLowerCase().includes(query.toLowerCase()));
+
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card className="p-5">
+          <SectionTitle icon={Users} title="Usuarios" description="Contas com acesso ao sistema." />
+          <p className="text-3xl font-semibold">{users.length}</p>
+          <p className="mt-2 text-sm text-noogym-lime">Sincronizado com a API</p>
+        </Card>
+        <Card className="p-5">
+          <SectionTitle icon={KeyRound} title="Permissoes" description="Geridas no modulo Funcionarios." />
+          <p className="text-3xl font-semibold">12</p>
+          <p className="mt-2 text-sm text-noogym-lime">Modulos controlaveis</p>
+        </Card>
+        <Card className="p-5">
+          <SectionTitle icon={ShieldCheck} title="Seguranca" description="Bloqueio e convite ficam no cadastro do funcionario." />
+          <p className="text-3xl font-semibold">{users.filter((user) => user.status === "Ativo").length}</p>
+          <p className="mt-2 text-sm text-noogym-lime">Usuarios ativos</p>
+        </Card>
+      </div>
+
+      <Card className="p-5">
+        <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+          <SectionTitle icon={Users} title="Lista de usuarios" description="Pesquise administradores, funcionarios e perfis de acesso." />
+          <FormInput className="w-full md:w-80" label="Buscar usuario" value={query} onChange={(event) => setQuery(event.target.value)} />
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[720px] text-left text-sm">
+            <thead className="border-b border-white/10 text-xs text-zinc-400">
+              <tr>
+                <th className="py-3">Usuario</th>
+                <th className="py-3">E-mail</th>
+                <th className="py-3">Funcao</th>
+                <th className="py-3">Estado</th>
+                <th className="py-3 text-right">Acao</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(filteredUsers.length ? filteredUsers : fallbackUsers()).map((user) => (
+                <tr key={user.id} className="border-b border-white/10">
+                  <td className="py-3 font-medium">{user.name}</td>
+                  <td className="py-3 text-zinc-300">{user.email}</td>
+                  <td className="py-3">{user.role}</td>
+                  <td className="py-3"><Badge>{user.status}</Badge></td>
+                  <td className="py-3 text-right"><Button onClick={() => toastInfo("Permissoes", "Use o menu Funcionarios para editar funcoes e convites.")}>Gerir</Button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function IntegrationsTab() {
+  const integrations = useOperationalSettingsStore((state) => state.settings.integrations);
+  const updateSection = useOperationalSettingsStore((state) => state.updateSection);
+
+  return (
+    <div className="grid gap-4 xl:grid-cols-2">
+      <Card className="p-5">
+        <SectionTitle icon={Link2} title="Integracoes externas" description="Configure conectores usados por pagamentos, agenda, catracas e automacoes." />
+        <div className="grid gap-3 md:grid-cols-2">
+          <FormSwitch label="WhatsApp Business" checked={integrations.whatsappBusiness} onChange={(whatsappBusiness) => updateSection("integrations", { whatsappBusiness })} />
+          <FormSwitch label="Google Calendar" checked={integrations.googleCalendar} onChange={(googleCalendar) => updateSection("integrations", { googleCalendar })} />
+          <FormSwitch label="API publica" checked={integrations.publicApi} onChange={(publicApi) => updateSection("integrations", { publicApi })} />
+          <FormSelect label="Gateway de pagamento" value={integrations.paymentGateway} onChange={(event) => updateSection("integrations", { paymentGateway: event.target.value })} options={["Nenhum", "Multicaixa Express", "EMIS", "Stripe", "Outro"]} />
+          <FormSelect label="Fornecedor de catraca" value={integrations.turnstileProvider} onChange={(event) => updateSection("integrations", { turnstileProvider: event.target.value })} options={["Nenhum", "Henry", "Topdata", "ZKTeco", "Outro"]} />
+          <FormInput label="Webhook URL" value={integrations.webhookUrl} onChange={(event) => updateSection("integrations", { webhookUrl: event.target.value })} />
+        </div>
+        <div className="mt-4 flex justify-end">
+          <Button variant="primary" icon={<Save className="h-4 w-4" />} onClick={saveToast}>Salvar integracoes</Button>
+        </div>
+      </Card>
+
+      <Card className="p-5">
+        <SectionTitle icon={Wifi} title="Estado dos conectores" description="Visao rapida do que esta ativo." />
+        <div className="space-y-3">
+          <IntegrationLine title="WhatsApp Business" active={integrations.whatsappBusiness} />
+          <IntegrationLine title={`Pagamentos: ${integrations.paymentGateway}`} active={integrations.paymentGateway !== "Nenhum"} />
+          <IntegrationLine title="Google Calendar" active={integrations.googleCalendar} />
+          <IntegrationLine title={`Catraca: ${integrations.turnstileProvider}`} active={integrations.turnstileProvider !== "Nenhum"} />
+          <IntegrationLine title="API publica" active={integrations.publicApi} />
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function BackupTab() {
+  const backup = useOperationalSettingsStore((state) => state.settings.backup);
+  const updateSection = useOperationalSettingsStore((state) => state.updateSection);
+  const runBackup = useOperationalSettingsStore((state) => state.runBackup);
+
+  return (
+    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
+      <Card className="p-5">
+        <SectionTitle icon={Database} title="Backup e retencao" description="Controle exportacao de dados, retencao e rotina de copia." />
+        <div className="grid gap-3 md:grid-cols-2">
+          <FormSwitch label="Backup local" checked={backup.localBackup} onChange={(localBackup) => updateSection("backup", { localBackup })} />
+          <FormSwitch label="Backup em nuvem" checked={backup.cloudBackup} onChange={(cloudBackup) => updateSection("backup", { cloudBackup })} />
+          <FormInput label="Retencao em dias" type="number" min="1" value={backup.retentionDays} onChange={(event) => updateSection("backup", { retentionDays: numberValue(event.target.value, 1) })} />
+          <FormInput label="Horario automatico" type="time" value={backup.autoBackupTime} onChange={(event) => updateSection("backup", { autoBackupTime: event.target.value })} />
+          <FormSelect label="Formato de exportacao" value={backup.exportFormat} onChange={(event) => updateSection("backup", { exportFormat: event.target.value })} options={["JSON", "CSV", "XLSX"]} />
+        </div>
+        <div className="mt-4 flex flex-wrap justify-end gap-2">
+          <Button icon={<Download className="h-4 w-4" />} onClick={() => toastSuccess("Exportacao preparada", `Formato selecionado: ${backup.exportFormat}.`)}>Exportar dados</Button>
+          <Button icon={<UploadCloud className="h-4 w-4" />} onClick={() => toastInfo("Restaurar backup", "Selecao de ficheiro sera ligada ao modulo de backup da API.")}>Restaurar</Button>
+          <Button variant="primary" icon={<Database className="h-4 w-4" />} onClick={() => { runBackup(); toastSuccess("Backup executado", "O estado do ultimo backup foi atualizado."); }}>Executar backup</Button>
+        </div>
+      </Card>
+
+      <Card className="p-5">
+        <SectionTitle icon={Database} title="Estado do backup" description="Situacao atual de seguranca dos dados." />
+        <div className="space-y-3 text-sm">
+          <InfoLine label="Ultimo backup" value={backup.lastBackupAt} />
+          <InfoLine label="Retencao" value={`${backup.retentionDays} dias`} />
+          <InfoLine label="Local" value={backup.localBackup ? "Ativo" : "Inativo"} />
+          <InfoLine label="Nuvem" value={backup.cloudBackup ? "Ativo" : "Inativo"} />
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function InfoLine({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-start justify-between gap-4 border-b border-white/10 pb-2 last:border-b-0">
+      <span className="text-zinc-400">{label}</span>
+      <span className="max-w-[65%] text-right font-medium text-zinc-100">{value || "-"}</span>
+    </div>
+  );
+}
+
+function RuleLine({ active, text }: { active: boolean; text: string }) {
+  return (
+    <div className="flex gap-3 rounded-md border border-white/10 bg-white/[0.03] p-3">
+      <span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${active ? "bg-noogym-lime" : "bg-zinc-600"}`} />
+      <span>{text}</span>
+    </div>
+  );
+}
+
+function TemplateLine({ title, enabled, days }: { title: string; enabled: boolean; days?: number }) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-md border border-white/10 bg-white/[0.03] p-3 text-sm">
+      <div>
+        <p className="font-medium">{title}</p>
+        <p className="mt-1 text-xs text-zinc-400">{typeof days === "number" ? `${days} dias antes` : "Envio automatico"}</p>
+      </div>
+      <Badge>{enabled ? "Ativo" : "Inativo"}</Badge>
+    </div>
+  );
+}
+
+function IntegrationLine({ title, active }: { title: string; active: boolean }) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-md border border-white/10 bg-white/[0.03] p-3 text-sm">
+      <span>{title}</span>
+      <Badge>{active ? "Ligado" : "Desligado"}</Badge>
+    </div>
+  );
+}
+
+function organizationForm(organization: OrganizationSettings | null) {
+  return {
+    name: organization?.name ?? "Noogym Fitness Center",
+    slug: organization?.slug ?? "noogym",
+    email: organization?.email ?? "",
+    phone: organization?.phone ?? "",
+    website: organization?.website ?? "",
+    country: organization?.country ?? "Angola",
+    currency: organization?.currency ?? "AOA",
+    timezone: organization?.timezone ?? "Africa/Luanda",
+    logoUrl: organization?.logoUrl ?? ""
+  };
+}
+
+function gymForm(organization: OrganizationSettings | null, gym?: GymSettings) {
+  return {
+    name: gym?.name ?? organization?.name ?? "Unidade Central",
+    slug: gym?.slug ?? "unidade-central",
+    email: gym?.email ?? organization?.email ?? "",
+    phone: gym?.phone ?? organization?.phone ?? "",
+    address: gym?.address ?? "",
+    city: gym?.city ?? "Luanda",
+    province: gym?.province ?? "Luanda",
+    country: gym?.country ?? "Angola",
+    logoUrl: gym?.logoUrl ?? "",
+    isActive: gym?.isActive ?? true
+  };
+}
+
+function mockGym(organization: OrganizationSettings | null): GymSettings {
+  return {
+    id: "local-gym",
+    name: organization?.name ?? "Noogym Fitness Center",
+    slug: "unidade-central",
+    city: "Luanda",
+    province: "Luanda",
+    country: "Angola",
+    isActive: true
+  };
+}
+
+function fallbackUsers() {
+  return [
+    { id: "local-admin", name: "Admin", email: "admin@noogym.local", role: "Proprietario", status: "Ativo" }
+  ];
+}
+
+function numberValue(value: string, fallback = 0) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
 }
 
 function optional(value: string) {
   return value.trim() || undefined;
 }
+
+export type { OperationalSettings };

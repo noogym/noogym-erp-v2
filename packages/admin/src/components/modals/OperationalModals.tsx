@@ -1509,8 +1509,10 @@ export function FinanceEntryModal({ open, kind, onClose }: { open: boolean; kind
   const addRevenue = useFinanceStore((state) => state.addRevenue);
   const addExpense = useFinanceStore((state) => state.addExpense);
   const financeCategories = useFinanceStore((state) => state.categories);
+  const accounts = useFinanceStore((state) => state.accounts);
   const categories = useMemo(() => financeCategories.filter((category) => category.kind === kind).map((category) => category.name), [financeCategories, kind]);
   const [category, setCategory] = useState("");
+  const [accountId, setAccountId] = useState("");
   const [value, setValue] = useState("");
   const [status, setStatus] = useState("");
   const [methodOrSupplier, setMethodOrSupplier] = useState("");
@@ -1520,6 +1522,7 @@ export function FinanceEntryModal({ open, kind, onClose }: { open: boolean; kind
   useEffect(() => {
     if (!open) return;
     setCategory(categories[0] ?? "");
+    setAccountId(accounts.find((account) => account.isDefault)?.id ?? accounts[0]?.id ?? "");
     setValue("");
     setStatus(kind === "Receita" ? "Recebido" : "Pendente");
     setMethodOrSupplier(kind === "Receita" ? "Dinheiro" : "Fornecedor local");
@@ -1537,13 +1540,24 @@ export function FinanceEntryModal({ open, kind, onClose }: { open: boolean; kind
       toastInfo("Valor invalido", "Informe um valor maior que zero.");
       return;
     }
+    const account = accounts.find((item) => item.id === accountId);
+    if (!account) {
+      toastInfo("Conta obrigatoria", "Selecione uma conta para movimentar o financeiro.");
+      return;
+    }
 
     const record = {
       category,
       value: parsedValue,
       date: date || "Hoje",
       status,
-      note: note.trim() || methodOrSupplier
+      note: note.trim() || methodOrSupplier,
+      accountId: account.id,
+      accountName: account.name,
+      method: kind === "Receita" ? methodOrSupplier : status === "Pago" ? "Transferencia" : "A pagar",
+      supplier: kind === "Despesa" ? methodOrSupplier : undefined,
+      dueDate: status === "Pendente" ? date : undefined,
+      paidAt: status === "Recebido" || status === "Pago" ? date : undefined
     };
 
     kind === "Receita" ? addRevenue(record) : addExpense(record);
@@ -1555,6 +1569,7 @@ export function FinanceEntryModal({ open, kind, onClose }: { open: boolean; kind
       <div className="grid gap-3 sm:grid-cols-2">
         <FormSelect label="Categoria" requiredMark options={categories.length ? categories : ["Sem categorias"]} value={category} onChange={(event) => setCategory(event.target.value)} />
         <FormInput label="Valor (Kz)" requiredMark type="number" min="1" value={value} onChange={(event) => setValue(event.target.value)} placeholder="Ex: 25000" />
+        <FormSelect label="Conta" requiredMark options={accounts.map((account) => account.name)} value={accounts.find((account) => account.id === accountId)?.name ?? ""} onChange={(event) => setAccountId(accounts.find((account) => account.name === event.target.value)?.id ?? "")} />
         <FormSelect label={kind === "Receita" ? "Metodo de pagamento" : "Fornecedor"} options={kind === "Receita" ? ["Dinheiro", "Cartao", "Transferencia"] : ["Fornecedor local", "Equipe", "Prestador"]} value={methodOrSupplier} onChange={(event) => setMethodOrSupplier(event.target.value)} />
         <FormInput label="Data" type="date" value={date} onChange={(event) => setDate(event.target.value)} />
         <FormSelect label="Status" options={kind === "Receita" ? ["Recebido", "Pendente"] : ["Pendente", "Pago"]} value={status} onChange={(event) => setStatus(event.target.value)} />
@@ -1567,13 +1582,18 @@ export function FinanceEntryModal({ open, kind, onClose }: { open: boolean; kind
 
 export function FinanceCategoryModal({ open, kind, onClose }: { open: boolean; kind: "Receita" | "Despesa"; onClose: () => void }) {
   const addCategory = useFinanceStore((state) => state.addCategory);
+  const updateCategory = useFinanceStore((state) => state.updateCategory);
+  const removeCategory = useFinanceStore((state) => state.removeCategory);
+  const categories = useFinanceStore((state) => state.categories).filter((category) => category.kind === kind);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [editingId, setEditingId] = useState("");
 
   useEffect(() => {
     if (!open) return;
     setName("");
     setDescription("");
+    setEditingId("");
   }, [open]);
 
   const save = () => {
@@ -1582,21 +1602,42 @@ export function FinanceCategoryModal({ open, kind, onClose }: { open: boolean; k
       return;
     }
 
-    const created = addCategory({ kind, name, description: description.trim() || undefined });
-    if (!created) {
+    const saved = editingId
+      ? updateCategory(editingId, { kind, name, description: description.trim() || undefined })
+      : addCategory({ kind, name, description: description.trim() || undefined });
+    if (!saved) {
       toastInfo("Categoria ja existe", "Escolha outro nome para esta categoria.");
       return;
     }
 
-    toastSuccess("Categoria criada com sucesso");
-    onClose();
+    toastSuccess(editingId ? "Categoria atualizada com sucesso" : "Categoria criada com sucesso");
+    setName("");
+    setDescription("");
+    setEditingId("");
   };
 
   return (
-    <Modal open={open} title={`Nova categoria de ${kind.toLowerCase()}`} description="Organize os lancamentos financeiros por categoria." size="md" onClose={onClose} footer={<><Button onClick={onClose}>Cancelar</Button><Button variant="primary" icon={<Tag className="h-4 w-4" />} onClick={save}>Criar categoria</Button></>}>
+    <Modal open={open} title={`Categorias de ${kind.toLowerCase()}`} description="Organize os lancamentos financeiros por categoria." size="md" onClose={onClose} footer={<><Button onClick={onClose}>Fechar</Button><Button variant="primary" icon={<Tag className="h-4 w-4" />} onClick={save}>{editingId ? "Salvar categoria" : "Criar categoria"}</Button></>}>
       <div className="space-y-3">
         <FormInput label="Nome da categoria" requiredMark value={name} onChange={(event) => setName(event.target.value)} placeholder={kind === "Despesa" ? "Ex: Limpeza" : "Ex: Eventos"} />
         <FormTextarea label="Descricao" value={description} onChange={(event) => setDescription(event.target.value)} />
+        <div className="rounded-lg border border-white/10">
+          {categories.map((category) => (
+            <div key={category.id} className="flex items-center justify-between gap-3 border-b border-white/10 px-3 py-2 text-sm last:border-b-0">
+              <div>
+                <p className="font-medium">{category.name}</p>
+                {category.description ? <p className="text-xs text-zinc-400">{category.description}</p> : null}
+              </div>
+              <div className="flex gap-2">
+                <Button className="h-8 px-3" onClick={() => { setEditingId(category.id); setName(category.name); setDescription(category.description ?? ""); }}>Editar</Button>
+                <Button className="h-8 px-3" onClick={() => {
+                  const removed = removeCategory(category.id);
+                  if (!removed) toastInfo("Categoria em uso", "Nao e possivel remover uma categoria com lancamentos.");
+                }}>Remover</Button>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     </Modal>
   );
@@ -1606,6 +1647,72 @@ export function BankAccountsModal({ open, onClose }: { open: boolean; onClose: (
   return (
     <Modal open={open} title="Contas bancárias" size="md" onClose={onClose} footer={<><Button onClick={onClose}>Cancelar</Button><Button variant="primary" onClick={() => { toastSuccess("Conta salva com sucesso"); onClose(); }}>Salvar conta</Button></>}>
       <div className="space-y-3"><FormInput label="Nome da conta" defaultValue="Conta BAI" /><FormInput label="Banco" defaultValue="BAI" /><FormInput label="IBAN" defaultValue="AO06 0040 0000 0000 0000 0000 0" /><FormInput label="Saldo inicial" defaultValue="53500" /></div>
+    </Modal>
+  );
+}
+
+export function FinanceAccountModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const addAccount = useFinanceStore((state) => state.addAccount);
+  const accounts = useFinanceStore((state) => state.accounts);
+  const [name, setName] = useState("");
+  const [bank, setBank] = useState("");
+  const [type, setType] = useState("Corrente");
+  const [openingBalance, setOpeningBalance] = useState("");
+  const [isDefault, setIsDefault] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setName("");
+    setBank("");
+    setType("Corrente");
+    setOpeningBalance("");
+    setIsDefault(!accounts.some((account) => account.isDefault));
+  }, [accounts, open]);
+
+  const save = () => {
+    const balance = parseNumericInput(openingBalance);
+    if (!name.trim()) {
+      toastInfo("Nome obrigatorio", "Informe o nome da conta.");
+      return;
+    }
+    addAccount({
+      name: name.trim(),
+      bank: bank.trim() || undefined,
+      type: type as "Caixa" | "Corrente" | "Poupanca" | "Carteira movel" | "Cartao" | "Outro",
+      openingBalance: balance,
+      balance,
+      isDefault,
+      status: "Ativa"
+    });
+    toastSuccess("Conta salva com sucesso");
+    onClose();
+  };
+
+  return (
+    <Modal open={open} title="Contas financeiras" size="md" onClose={onClose} footer={<><Button onClick={onClose}>Cancelar</Button><Button variant="primary" onClick={save}>Salvar conta</Button></>}>
+      <div className="space-y-3">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <FormInput label="Nome da conta" requiredMark value={name} onChange={(event) => setName(event.target.value)} placeholder="Ex: Conta BAI" />
+          <FormInput label="Banco/instituicao" value={bank} onChange={(event) => setBank(event.target.value)} placeholder="Ex: BAI, BFA, Interno" />
+          <FormSelect label="Tipo" options={["Caixa", "Corrente", "Poupanca", "Carteira movel", "Cartao", "Outro"]} value={type} onChange={(event) => setType(event.target.value)} />
+          <FormInput label="Saldo inicial" type="number" min="0" value={openingBalance} onChange={(event) => setOpeningBalance(event.target.value)} placeholder="0" />
+        </div>
+        <FormSwitch label="Conta principal" checked={isDefault} onChange={setIsDefault} />
+        <div className="rounded-lg border border-white/10">
+          {accounts.map((account) => (
+            <div key={account.id} className="flex items-center justify-between border-b border-white/10 px-3 py-2 text-sm last:border-b-0">
+              <div>
+                <p className="font-medium">{account.name}</p>
+                <p className="text-xs text-zinc-400">{account.bank ?? "-"} | {account.type}</p>
+              </div>
+              <div className="text-right">
+                <p className="font-medium text-noogym-lime">{account.balance.toLocaleString("pt-AO")} Kz</p>
+                {account.isDefault ? <p className="text-xs text-zinc-400">Principal</p> : null}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
     </Modal>
   );
 }
