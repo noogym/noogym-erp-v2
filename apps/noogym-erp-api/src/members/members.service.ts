@@ -38,7 +38,12 @@ export class MembersService {
         orderBy: { createdAt: 'desc' },
         include: {
           gym: true,
-          subscriptions: { orderBy: { createdAt: 'desc' }, take: 1 },
+          subscriptions: {
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+            include: { plan: true },
+          },
+          checkIns: { orderBy: { checkedAt: 'desc' }, take: 1 },
         },
       }),
       this.prisma.member.count({ where }),
@@ -74,6 +79,14 @@ export class MembersService {
         ...dto,
         organizationId,
       },
+      include: {
+        gym: true,
+        subscriptions: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          include: { plan: true },
+        },
+      },
     });
   }
 
@@ -84,6 +97,14 @@ export class MembersService {
     return this.prisma.member.update({
       where: { id },
       data: dto,
+      include: {
+        gym: true,
+        subscriptions: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          include: { plan: true },
+        },
+      },
     });
   }
 

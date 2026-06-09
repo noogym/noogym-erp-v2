@@ -1,4 +1,4 @@
-export function LineChart({ values, labels }: { values: number[]; labels?: string[] }) {
+export function LineChart({ values, labels, heightClassName = "h-40 sm:h-44" }: { values: number[]; labels?: string[]; heightClassName?: string }) {
   const max = Math.max(...values, 1);
   const points = values.map((value, index) => {
     const x = (index / Math.max(values.length - 1, 1)) * 100;
@@ -8,8 +8,8 @@ export function LineChart({ values, labels }: { values: number[]; labels?: strin
   const area = `0,100 ${points.join(" ")} 100,100`;
 
   return (
-    <div className="min-h-44 min-w-0">
-      <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="block h-40 w-full sm:h-44">
+    <div className="min-w-0">
+      <svg viewBox="0 0 100 100" preserveAspectRatio="none" className={`block w-full ${heightClassName}`}>
         {[20, 40, 60, 80].map((y) => (
           <line key={y} x1="0" x2="100" y1={y} y2={y} stroke="rgba(255,255,255,.07)" strokeWidth=".35" />
         ))}

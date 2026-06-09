@@ -1,8 +1,9 @@
 import { create } from "zustand";
-import { checkinFromApi, checkinToDto, createResource, listResource } from "../lib/domainApi";
+import { checkinFromApi, checkinToDto, createResource, createSubscription, listResource } from "../lib/domainApi";
 import { readLocal, uid, writeLocal } from "../lib/storage";
 import { useAppStore } from "./appStore";
 import { useAuthStore } from "./authStore";
+import { useClientsStore } from "./clientsStore";
 import type { CheckinRecord } from "@noogym/types";
 
 const initial: CheckinRecord[] = [
@@ -12,6 +13,21 @@ const initial: CheckinRecord[] = [
 ];
 
 const persist = (checkins: CheckinRecord[]) => writeLocal("noogym:checkins", checkins);
+const isMissingSubscriptionError = (error: unknown) =>
+  error instanceof Error && error.message.includes("valid active subscription");
+const isActiveSubscriptionError = (error: unknown) =>
+  error instanceof Error && error.message.includes("already has an active subscription");
+const syncClientLastCheckins = (checkins: CheckinRecord[]) => {
+  const latestByClient = new Map<string, string>();
+
+  checkins.forEach((checkin) => {
+    if (!latestByClient.has(checkin.clientId)) latestByClient.set(checkin.clientId, checkin.dateTime);
+  });
+
+  latestByClient.forEach((lastCheckin, clientId) => {
+    useClientsStore.getState().updateLastCheckin(clientId, lastCheckin);
+  });
+};
 
 export const useCheckinsStore = create<{
   checkins: CheckinRecord[];
@@ -27,6 +43,7 @@ export const useCheckinsStore = create<{
     const apiCheckins = await listResource<Record<string, unknown>>("checkins", token);
     const checkins = apiCheckins.map(checkinFromApi);
     persist(checkins);
+    syncClientLastCheckins(checkins);
     set({ checkins, todayCount: checkins.filter((checkin) => checkin.dateTime.startsWith("Hoje")).length });
   },
   addCheckin: (checkin) => set((state) => {
@@ -37,10 +54,12 @@ export const useCheckinsStore = create<{
       type: checkin.type ?? "Manual",
       accessType: checkin.accessType ?? "Entrada",
       dateTime: checkin.dateTime ?? "Hoje, 10:30",
+      checkedAtIso: checkin.checkedAtIso,
       observation: checkin.observation
     };
     const checkins = [record, ...state.checkins];
     persist(checkins);
+    useClientsStore.getState().updateLastCheckin(record.clientId, record.dateTime);
     useAppStore.getState().addPendingSync();
 
     const token = useAuthStore.getState().accessToken;
@@ -50,9 +69,42 @@ export const useCheckinsStore = create<{
           const synced = checkinFromApi(apiCheckin);
           const nextCheckins = get().checkins.map((item) => item.id === record.id ? synced : item);
           persist(nextCheckins);
+          useClientsStore.getState().updateLastCheckin(synced.clientId, synced.dateTime);
           set({ checkins: nextCheckins, todayCount: nextCheckins.filter((item) => item.dateTime.startsWith("Hoje")).length });
         })
-        .catch(console.error);
+        .catch(async (error) => {
+          const client = useClientsStore.getState().clients.find((item) => item.id === record.clientId);
+          if (!isMissingSubscriptionError(error) || !client?.planId) {
+            console.error(error);
+            return;
+          }
+
+          try {
+            await createSubscription(token, { memberId: record.clientId, planId: client.planId, startDate: record.checkedAtIso });
+            const apiCheckin = await createResource<Record<string, unknown>>("checkins", token, checkinToDto(record));
+            const synced = checkinFromApi(apiCheckin);
+            const nextCheckins = get().checkins.map((item) => item.id === record.id ? synced : item);
+            persist(nextCheckins);
+            useClientsStore.getState().updateLastCheckin(synced.clientId, synced.dateTime);
+            set({ checkins: nextCheckins, todayCount: nextCheckins.filter((item) => item.dateTime.startsWith("Hoje")).length });
+          } catch (retryError) {
+            if (!isActiveSubscriptionError(retryError)) {
+              console.error(retryError);
+              return;
+            }
+
+            try {
+              const apiCheckin = await createResource<Record<string, unknown>>("checkins", token, checkinToDto(record));
+              const synced = checkinFromApi(apiCheckin);
+              const nextCheckins = get().checkins.map((item) => item.id === record.id ? synced : item);
+              persist(nextCheckins);
+              useClientsStore.getState().updateLastCheckin(synced.clientId, synced.dateTime);
+              set({ checkins: nextCheckins, todayCount: nextCheckins.filter((item) => item.dateTime.startsWith("Hoje")).length });
+            } catch (finalError) {
+              console.error(finalError);
+            }
+          }
+        });
     }
 
     return { checkins, todayCount: state.todayCount + 1 };

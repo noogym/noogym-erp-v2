@@ -4,6 +4,7 @@ import { classFromApi, classToDto, createResource, listResource, updateResource 
 import { readLocal, uid, writeLocal } from "../lib/storage";
 import { useAppStore } from "./appStore";
 import { useAuthStore } from "./authStore";
+import { toastInfo } from "./toastStore";
 import type { ClassRecord } from "@noogym/types";
 
 const initial: ClassRecord[] = mockClasses.map((lesson) => ({ ...lesson, id: uid("CLS") }));
@@ -14,7 +15,11 @@ export const useClassesStore = create<{
   loadOnline: () => Promise<void>;
   addClass: (lesson: Partial<ClassRecord>) => void;
   updateClass: (id: string, lesson: Partial<ClassRecord>) => void;
+  duplicateClass: (id: string) => void;
+  cancelClass: (id: string) => void;
+  startClass: (id: string) => void;
   closeClass: (id: string) => void;
+  updateParticipants: (id: string, participants: number) => void;
 }>((set, get) => ({
   classes: readLocal("noogym:classes", initial),
   loadOnline: async () => {
@@ -26,7 +31,7 @@ export const useClassesStore = create<{
     set({ classes });
   },
   addClass: (lesson) => set((state) => {
-    const created: ClassRecord = { id: uid("CLS"), name: "Nova aula", room: "Sala 1", category: "Cardio", instructor: "Joao Silva", time: "Hoje, 10:00", duration: "55 min", seats: 25, participants: 0, status: "Agendada", ...lesson };
+    const created: ClassRecord = { name: "Nova aula", room: "Sala 1", category: "Cardio", instructor: "Joao Silva", time: "Hoje, 10:00", duration: "55 min", seats: 25, participants: 0, status: "Agendada", allowWaitlist: true, requiresCheckIn: false, color: "#B6FF00", ...lesson, id: uid("CLS") };
     const classes = [created, ...state.classes];
     persist(classes);
     useAppStore.getState().addPendingSync();
@@ -40,7 +45,7 @@ export const useClassesStore = create<{
           persist(nextClasses);
           set({ classes: nextClasses });
         })
-        .catch(console.error);
+        .catch(() => toastInfo("Aula salva localmente", "Nao foi possivel sincronizar com a API agora."));
     }
 
     return { classes };
@@ -60,10 +65,18 @@ export const useClassesStore = create<{
           persist(nextClasses);
           set({ classes: nextClasses });
         })
-        .catch(console.error);
+        .catch(() => toastInfo("Aula salva localmente", "Nao foi possivel sincronizar com a API agora."));
     }
 
     return { classes };
   }),
-  closeClass: (id) => get().updateClass(id, { status: "Encerrada" })
+  duplicateClass: (id) => {
+    const lesson = get().classes.find((item) => item.id === id);
+    if (!lesson) return;
+    get().addClass({ ...lesson, id: uid("CLS"), name: `${lesson.name} Copia`, participants: 0, status: "Agendada" });
+  },
+  cancelClass: (id) => get().updateClass(id, { status: "Cancelada" }),
+  startClass: (id) => get().updateClass(id, { status: "Em andamento" }),
+  closeClass: (id) => get().updateClass(id, { status: "Encerrada" }),
+  updateParticipants: (id, participants) => get().updateClass(id, { participants })
 }));

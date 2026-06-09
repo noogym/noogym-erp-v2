@@ -26,17 +26,17 @@ export function OverviewReport({ overview }: { overview?: ReportOverview | null 
       <div className="mt-4 rounded-lg border border-white/10 bg-white/[0.025] p-4">
         <h2 className="font-semibold">Visao geral</h2>
         <p className="mt-1 text-sm text-zinc-400">
-          {overview ? "Dados carregados da API para a organizacao autenticada." : "Aguardando dados da API; mostrando base local temporaria."}
+          Dados calculados a partir dos registros locais e atualizados pela sincronizacao quando a API esta online.
         </p>
       </div>
-      <div className="mt-4 grid grid-cols-5 gap-4">
+      <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <MetricCard title="Receita total" value={money(revenue)} change={`Lucro liquido: ${money(netProfit)}`} icon={<UsersRound className="h-5 w-5" />} />
         <MetricCard title="Clientes ativos" value={int(activeMembers)} change={`${percent(activeMembers, totalMembers)}% de ${int(totalMembers)} clientes`} icon={<UsersRound className="h-5 w-5" />} tone="yellow" />
         <MetricCard title="Check-ins hoje" value={int(checkinsToday)} change={`${int(weeklyFrequency)} na semana`} icon={<CalendarDays className="h-5 w-5" />} tone="blue" />
         <MetricCard title="Treinos ativos" value={int(overview?.activeWorkouts ?? 0)} change={`${int(overview?.activeSubscriptions ?? 0)} assinaturas ativas`} icon={<CalendarDays className="h-5 w-5" />} tone="purple" />
         <MetricCard title="Vendas POS" value={int(completedSales)} change={`${int(overview?.activeProducts ?? 0)} produtos ativos`} icon={<ShoppingBag className="h-5 w-5" />} tone="green" />
       </div>
-      <div className="mt-4 grid grid-cols-[1fr_.95fr] gap-4">
+      <div className="mt-4 grid gap-4 xl:grid-cols-[1fr_.95fr]">
         <Card className="p-4">
           <div className="mb-3 flex justify-between">
             <h2 className="font-semibold">Receita ao longo do tempo</h2>
@@ -54,7 +54,7 @@ export function OverviewReport({ overview }: { overview?: ReportOverview | null 
           <BarChart values={[0.14, 0.16, 0.18, 0.17, 0.21, 0.09, 0.05].map((ratio) => Math.round(weeklyFrequency * ratio))} labels={["Seg", "Ter", "Qua", "Qui", "Sex", "Sab", "Dom"]} />
         </Card>
       </div>
-      <div className="mt-4 grid grid-cols-[1fr_.7fr_.85fr] gap-4">
+      <div className="mt-4 grid gap-4 lg:grid-cols-2 2xl:grid-cols-[1fr_.7fr_.85fr]">
         <Card className="p-4">
           <div className="mb-3 flex justify-between">
             <h2 className="font-semibold">Clientes ativos ao longo do tempo</h2>

@@ -3,16 +3,19 @@ import { FormCheckbox } from "@noogym/ui";
 import { FormInput } from "@noogym/ui";
 import { FormSelect } from "@noogym/ui";
 import { Modal } from "@noogym/ui";
+import { useState } from "react";
 
 interface ExportModalProps {
   open: boolean;
   title: string;
   dataOptions: string[];
   onClose: () => void;
-  onConfirm: () => void;
+  onConfirm: (format: string) => void;
 }
 
 export function ExportModal({ open, title, dataOptions, onClose, onConfirm }: ExportModalProps) {
+  const [format, setFormat] = useState("CSV");
+
   return (
     <Modal
       open={open}
@@ -20,13 +23,13 @@ export function ExportModal({ open, title, dataOptions, onClose, onConfirm }: Ex
       description="Selecione as opções para exportação."
       size="lg"
       onClose={onClose}
-      footer={<><Button onClick={onClose}>Cancelar</Button><Button variant="primary" onClick={onConfirm}>Exportar</Button></>}
+      footer={<><Button onClick={onClose}>Cancelar</Button><Button variant="primary" onClick={() => onConfirm(format)}>Exportar</Button></>}
     >
       <h3 className="mb-3 text-sm font-semibold text-noogym-lime">1. Formato do arquivo</h3>
       <div className="grid grid-cols-4 gap-3">
-        {["CSV", "Excel XLSX", "PDF", "JSON"].map((format, index) => (
-          <button key={format} type="button" className={`rounded-lg border p-4 text-center ${index === 0 ? "border-noogym-lime bg-noogym-lime/10" : "border-white/10 bg-white/[0.03]"}`}>
-            <span className="block font-semibold">{format}</span>
+        {["CSV", "Excel XLSX", "PDF", "JSON"].map((item) => (
+          <button key={item} type="button" className={`rounded-lg border p-4 text-center ${format === item ? "border-noogym-lime bg-noogym-lime/10" : "border-white/10 bg-white/[0.03]"}`} onClick={() => setFormat(item)}>
+            <span className="block font-semibold">{item}</span>
             <span className="mt-2 block text-xs text-zinc-400">Arquivo para análise e arquivo local.</span>
           </button>
         ))}

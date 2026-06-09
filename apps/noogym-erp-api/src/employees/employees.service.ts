@@ -59,21 +59,29 @@ export class EmployeesService {
   async create(organizationId: string, dto: CreateEmployeeDto) {
     await this.validateRelations(organizationId, dto);
 
-    return this.prisma.employee.create({
-      data: { ...dto, organizationId },
-      include: this.employeeInclude(),
-    });
+    try {
+      return await this.prisma.employee.create({
+        data: { ...dto, organizationId },
+        include: this.employeeInclude(),
+      });
+    } catch (error) {
+      this.handlePrismaWriteError(error);
+    }
   }
 
   async update(organizationId: string, id: string, dto: UpdateEmployeeDto) {
     await this.ensureExists(organizationId, id);
     await this.validateRelations(organizationId, dto, id);
 
-    return this.prisma.employee.update({
-      where: { id },
-      data: dto,
-      include: this.employeeInclude(),
-    });
+    try {
+      return await this.prisma.employee.update({
+        where: { id },
+        data: dto,
+        include: this.employeeInclude(),
+      });
+    } catch (error) {
+      this.handlePrismaWriteError(error);
+    }
   }
 
   async remove(organizationId: string, id: string) {
@@ -124,6 +132,24 @@ export class EmployeesService {
       select: { id: true },
     });
     if (!exists) throw new NotFoundException('Employee not found');
+  }
+
+  private handlePrismaWriteError(error: unknown): never {
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      if (error.code === 'P2002') {
+        throw new BadRequestException(
+          'Employee user link already exists or violates a unique rule',
+        );
+      }
+      if (error.code === 'P2003') {
+        throw new BadRequestException('Invalid employee relation');
+      }
+      if (error.code === 'P2025') {
+        throw new NotFoundException('Employee not found');
+      }
+    }
+
+    throw error;
   }
 
   private employeeInclude() {
