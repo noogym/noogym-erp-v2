@@ -4,6 +4,7 @@ import { readLocal, uid, writeLocal } from "../lib/storage";
 import { useAppStore } from "./appStore";
 import { useAuthStore } from "./authStore";
 import { useClientsStore } from "./clientsStore";
+import { useNotificationsStore } from "./notificationsStore";
 import type { CheckinRecord } from "@noogym/types";
 
 const initial: CheckinRecord[] = [
@@ -33,7 +34,7 @@ export const useCheckinsStore = create<{
   checkins: CheckinRecord[];
   todayCount: number;
   loadOnline: () => Promise<void>;
-  addCheckin: (checkin: Partial<CheckinRecord>) => void;
+  addCheckin: (checkin: Partial<CheckinRecord>) => boolean;
 }>((set, get) => ({
   checkins: readLocal("noogym:checkins", initial),
   todayCount: readLocal("noogym:checkins", initial).length + 139,
@@ -46,7 +47,12 @@ export const useCheckinsStore = create<{
     syncClientLastCheckins(checkins);
     set({ checkins, todayCount: checkins.filter((checkin) => checkin.dateTime.startsWith("Hoje")).length });
   },
-  addCheckin: (checkin) => set((state) => {
+  addCheckin: (checkin) => {
+    const client = useClientsStore.getState().clients.find((item) => item.id === checkin.clientId);
+    if (client && client.status !== "Ativo") {
+      return false;
+    }
+
     const record: CheckinRecord = {
       id: uid("CHK"),
       clientName: checkin.clientName ?? "Cliente Noogym",
@@ -57,13 +63,29 @@ export const useCheckinsStore = create<{
       checkedAtIso: checkin.checkedAtIso,
       observation: checkin.observation
     };
-    const checkins = [record, ...state.checkins];
-    persist(checkins);
-    useClientsStore.getState().updateLastCheckin(record.clientId, record.dateTime);
-    useAppStore.getState().addPendingSync();
 
     const token = useAuthStore.getState().accessToken;
-    if (useAppStore.getState().onlineOnly && token) {
+    const shouldSyncOnline = useAppStore.getState().onlineOnly && Boolean(token);
+
+    set((state) => {
+      const checkins = [record, ...state.checkins];
+      persist(checkins);
+      useClientsStore.getState().updateLastCheckin(record.clientId, record.dateTime);
+      useAppStore.getState().addPendingSync();
+      useNotificationsStore.getState().addNotification({
+        sourceId: `event:checkins:${record.id}`,
+        title: "Check-in realizado",
+        description: `${record.clientName} registado por ${record.type}.`,
+        category: "checkins",
+        tone: "success",
+        route: "checkin",
+        actionLabel: "Ver check-ins"
+      });
+
+      return { checkins, todayCount: state.todayCount + 1 };
+    });
+
+    if (shouldSyncOnline && token) {
       createResource<Record<string, unknown>>("checkins", token, checkinToDto(record))
         .then((apiCheckin) => {
           const synced = checkinFromApi(apiCheckin);
@@ -107,6 +129,6 @@ export const useCheckinsStore = create<{
         });
     }
 
-    return { checkins, todayCount: state.todayCount + 1 };
-  })
+    return true;
+  }
 }));

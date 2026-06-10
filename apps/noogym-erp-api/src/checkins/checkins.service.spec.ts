@@ -49,6 +49,7 @@ describe('CheckinsService', () => {
         memberId: 'member-1',
         gymId: 'gym-1',
         method: CheckInMethod.MANUAL,
+        checkedAt: expect.any(Date),
         notes: undefined,
       },
       include: { member: true, gym: true },

@@ -29,8 +29,8 @@ export function PaymentMethodsTab({ openAction, data }: FinanceTabProps): Financ
         <div className="finance-grid-3">
           <FinanceChartCard title="Desempenho por metodo">
             <FinanceTable columns={["Metodo", "Receita", "%", "Trans.", "Ticket", "Estado"]}>
-              {data.payments.performanceRows.map((row) => (
-                <tr key={row[0]} className="table-row">
+              {data.payments.performanceRows.map((row, rowIndex) => (
+                <tr key={`${row[0]}-${rowIndex}`} className="table-row">
                   {row.map((cell, index) => <FinanceCell key={`${row[0]}-${index}`} tone={index === 1 ? "lime" : undefined}>{cell}</FinanceCell>)}
                 </tr>
               ))}
@@ -67,7 +67,7 @@ export function PaymentMethodsTab({ openAction, data }: FinanceTabProps): Financ
         <FinancePanelSection title="Alertas">
           <Alert icon={<ShieldAlert className="h-4 w-4" />} title="Cancelamentos e reembolsos" desc="Verifique vendas canceladas no POS." onClick={() => openAction({ title: "Cancelamentos e reembolsos", rows: [["Origem", "Vendas POS"], ["Status", "Ver listagem de vendas"]] })} />
           <Alert icon={<RotateCcw className="h-4 w-4" />} title="Conferencia de metodos" desc="Compare dinheiro, cartao e transferencia no fecho do dia." onClick={() => openAction({ title: "Conferencia de metodos", rows: data.payments.performanceRows })} />
-          {data.payments.performanceRows.map((row) => <ProgressRow key={row[0]} label={row[0]} value={row[2]} percent={Number(String(row[2]).replace(/\D/g, "")) || 0} tone="blue" />)}
+          {data.payments.performanceRows.map((row, index) => <ProgressRow key={`${row[0]}-${index}`} label={row[0]} value={row[2]} percent={Number(String(row[2]).replace(/\D/g, "")) || 0} tone="blue" />)}
         </FinancePanelSection>
       </FinanceRightPanel>
     )

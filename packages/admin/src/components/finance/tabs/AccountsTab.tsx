@@ -11,8 +11,8 @@ export function AccountsTab({ openAction, data }: FinanceTabProps): FinanceTabVi
     main: (
       <div className="space-y-4">
         <div className="finance-kpi-grid">
-          {data.accounts.cards.map(([name, balance, entries, exits, badge, color]) => (
-            <button key={name} className="panel p-4 text-left transition hover:border-noogym-lime/40" onClick={() => openAction({ title: `Detalhes - ${name}`, rows: [["Saldo disponivel", balance], ["Entradas", entries], ["Saidas", exits]] })}>
+          {data.accounts.cards.map(([name, balance, entries, exits, badge, color], index) => (
+            <button key={`${name}-${index}`} className="panel p-4 text-left transition hover:border-noogym-lime/40" onClick={() => openAction({ title: `Detalhes - ${name}`, rows: [["Saldo disponivel", balance], ["Entradas", entries], ["Saidas", exits]] })}>
               <div className="flex items-center gap-3">
                 <span className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/10" style={{ color, backgroundColor: `${color}1A` }}>
                   <Building2 className="h-5 w-5" />
@@ -41,8 +41,8 @@ export function AccountsTab({ openAction, data }: FinanceTabProps): FinanceTabVi
         <div className="finance-grid-wide">
           <FinanceChartCard title="Contas" action={<div className="flex max-w-full flex-wrap gap-2"><SmallInput /><button className="rounded-md border border-white/10 px-3 py-2 text-xs"><Filter className="mr-1 inline h-3.5 w-3.5" />Filtros</button></div>}>
             <FinanceTable columns={["Conta", "Banco", "Tipo", "Saldo disponivel", "Saldo contabil", "Entradas", "Saidas", "Status", "Acoes"]}>
-              {data.accounts.table.map((row) => (
-                <tr key={row[0]} className="table-row">
+              {data.accounts.table.map((row, rowIndex) => (
+                <tr key={`${row[0]}-${rowIndex}`} className="table-row">
                   {row.map((cell, index) => <FinanceCell key={`${row[0]}-${index}`} tone={index === 3 || index === 5 ? "lime" : index === 6 ? "red" : undefined}>{cell}</FinanceCell>)}
                   <FinanceCell><button onClick={() => openAction({ title: `Detalhes - ${row[0]}`, rows: [["Saldo", row[3]], ["Entradas", row[5]], ["Saidas", row[6]]] })}>...</button></FinanceCell>
                 </tr>
@@ -58,8 +58,8 @@ export function AccountsTab({ openAction, data }: FinanceTabProps): FinanceTabVi
         <div className="finance-grid-wide">
           <FinanceChartCard title="Transacoes recentes" action={<button className="text-xs text-noogym-lime" onClick={() => openAction({ title: "Transacoes recentes", rows: data.accounts.transactions })}>Ver todas</button>}>
             <FinanceTable columns={["Data", "Conta", "Descricao", "Tipo", "Categoria", "Valor", "Saldo apos"]}>
-              {data.accounts.transactions.map((row) => (
-                <tr key={`${row[0]}-${row[2]}`} className="table-row">
+              {data.accounts.transactions.map((row, index) => (
+                <tr key={`${row[0]}-${row[1]}-${row[2]}-${row[5]}-${index}`} className="table-row">
                   {row.map((cell, index) => <FinanceCell key={`${row[0]}-${index}`} tone={index === 5 ? (String(cell).startsWith("+") ? "lime" : "red") : undefined}>{cell}</FinanceCell>)}
                 </tr>
               ))}
@@ -82,8 +82,8 @@ export function AccountsTab({ openAction, data }: FinanceTabProps): FinanceTabVi
           <button className="w-full text-sm text-noogym-lime" onClick={() => openAction({ title: "Resumo completo de contas", rows: [["Saldo atual", money(data.accounts.currentBalance)], ["Fluxo liquido", money(data.totals.net)]] })}>Ver resumo completo</button>
         </FinancePanelSection>
         <FinancePanelSection title="Acoes rapidas">
-          {["Nova transferencia", "Conciliacao bancaria", "Adicionar conta", "Relatorio de contas"].map((label) => (
-            <button key={label} className="flex w-full items-center justify-between rounded-md border border-white/10 bg-white/[0.025] px-3 py-3 text-left text-sm hover:border-noogym-lime/40" onClick={() => openAction({ title: label, confirmLabel: label === "Relatorio de contas" ? "Gerar" : "Salvar", rows: [["Periodo", data.period], ["Status", "Local"]] })}>
+          {["Nova transferencia", "Conciliacao bancaria", "Adicionar conta", "Relatorio de contas"].map((label, index) => (
+            <button key={`${label}-${index}`} className="flex w-full items-center justify-between rounded-md border border-white/10 bg-white/[0.025] px-3 py-3 text-left text-sm hover:border-noogym-lime/40" onClick={() => openAction({ title: label, confirmLabel: label === "Relatorio de contas" ? "Gerar" : "Salvar", rows: [["Periodo", data.period], ["Status", "Local"]] })}>
               {label}
               <ArrowRight className="h-4 w-4 text-zinc-500" />
             </button>

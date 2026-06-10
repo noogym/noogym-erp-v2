@@ -35,8 +35,8 @@ export function ExpensesTab({ openAction, records = [], data }: FinanceTabProps)
           </FinanceChartCard>
           <FinanceChartCard title="Detalhamento das despesas" action={<button className="text-xs text-noogym-lime" onClick={() => openAction({ title: "Detalhamento das despesas", rows: data.expenses.detailRows })}>Ver todos</button>}>
             <FinanceTable columns={["Categoria", "Despesa", "%", "Estado"]}>
-              {data.expenses.detailRows.map(([category, value, percent, status]) => (
-                <tr key={category} className="table-row">
+              {data.expenses.detailRows.map(([category, value, percent, status], index) => (
+                <tr key={`${category}-${index}`} className="table-row">
                   <FinanceCell>{category}</FinanceCell>
                   <FinanceCell tone="red">{value}</FinanceCell>
                   <FinanceCell>{percent}</FinanceCell>
@@ -72,7 +72,7 @@ export function ExpensesTab({ openAction, records = [], data }: FinanceTabProps)
           <ProgressRow label="% da receita usado" value={`${percent(data.totals.expenses, data.totals.revenue)}%`} percent={Math.min(100, percent(data.totals.expenses, data.totals.revenue))} />
         </FinancePanelSection>
         <FinancePanelSection title="Maiores despesas">
-          {data.expenses.biggest.map(([label, value, percent]) => <ProgressRow key={label} label={label} value={value} percent={percent} tone="red" />)}
+          {data.expenses.biggest.map(([label, value, percent], index) => <ProgressRow key={`${label}-${index}`} label={label} value={value} percent={percent} tone="red" />)}
           <button className="text-sm text-noogym-lime" onClick={() => openAction({ title: "Todas as despesas", rows: data.expenses.biggest.map(([label, value]) => [label, value]) })}>Ver todas as despesas</button>
         </FinancePanelSection>
         <FinancePanelSection title="Alertas de despesas">

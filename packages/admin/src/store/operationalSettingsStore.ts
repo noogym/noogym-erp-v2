@@ -61,6 +61,23 @@ export interface OperationalSettings {
     publicApi: boolean;
     webhookUrl: string;
   };
+  printing: {
+    enabled: boolean;
+    defaultPrinterName: string;
+    connectionType: "network" | "usb" | "serial";
+    profile: "generic" | "epson" | "bematech" | "xprinter" | "rongta" | "wintec";
+    paperWidth: 58 | 80;
+    networkHost: string;
+    networkPort: number;
+    usbDeviceName: string;
+    serialPath: string;
+    cashDrawerEnabled: boolean;
+    cashDrawerPin: 0 | 1;
+    cashDrawerOnTimeMs: number;
+    cashDrawerOffTimeMs: number;
+    autoPrintReceipt: boolean;
+    openDrawerOnCashPayment: boolean;
+  };
   backup: {
     localBackup: boolean;
     cloudBackup: boolean;
@@ -140,6 +157,23 @@ const defaultSettings: OperationalSettings = {
     publicApi: false,
     webhookUrl: ""
   },
+  printing: {
+    enabled: true,
+    defaultPrinterName: "Impressora POS Recepcao",
+    connectionType: "network",
+    profile: "generic",
+    paperWidth: 58,
+    networkHost: "192.168.1.50",
+    networkPort: 9100,
+    usbDeviceName: "",
+    serialPath: "COM1",
+    cashDrawerEnabled: false,
+    cashDrawerPin: 0,
+    cashDrawerOnTimeMs: 50,
+    cashDrawerOffTimeMs: 250,
+    autoPrintReceipt: true,
+    openDrawerOnCashPayment: true
+  },
   backup: {
     localBackup: true,
     cloudBackup: false,
@@ -165,6 +199,7 @@ const mergeSettings = (stored: unknown): OperationalSettings => {
     checkin: { ...defaultSettings.checkin, ...partial.checkin },
     notifications: { ...defaultSettings.notifications, ...partial.notifications },
     integrations: { ...defaultSettings.integrations, ...partial.integrations },
+    printing: { ...defaultSettings.printing, ...partial.printing },
     backup: { ...defaultSettings.backup, ...partial.backup }
   };
 };

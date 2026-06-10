@@ -52,6 +52,107 @@ async function main() {
     },
   });
 
+  const testUsers = [
+    {
+      name: 'Administrador Teste',
+      email: 'admin.teste@noogym.com',
+      role: UserRole.ADMIN,
+      employeeRole: 'Administrador',
+      department: 'Administrativo',
+      phone: '+244 923 100 001',
+      salary: 650000,
+    },
+    {
+      name: 'Gerente Teste',
+      email: 'gerente.teste@noogym.com',
+      role: UserRole.MANAGER,
+      employeeRole: 'Gerente',
+      department: 'Gestao',
+      phone: '+244 923 100 002',
+      salary: 520000,
+    },
+    {
+      name: 'Recepcionista Teste',
+      email: 'recepcao.teste@noogym.com',
+      role: UserRole.RECEPTIONIST,
+      employeeRole: 'Recepcionista',
+      department: 'Atendimento',
+      phone: '+244 923 100 003',
+      salary: 220000,
+    },
+    {
+      name: 'Personal Trainer Teste',
+      email: 'personal.teste@noogym.com',
+      role: UserRole.TRAINER,
+      employeeRole: 'Personal Trainer',
+      department: 'Tecnico',
+      phone: '+244 923 100 004',
+      salary: 350000,
+    },
+    {
+      name: 'Instrutor de Aulas Teste',
+      email: 'instrutor.aulas.teste@noogym.com',
+      role: UserRole.TRAINER,
+      employeeRole: 'Instrutor de Aulas',
+      department: 'Aulas',
+      phone: '+244 923 100 005',
+      salary: 300000,
+    },
+  ];
+
+  for (const testUser of testUsers) {
+    const user = await prisma.user.upsert({
+      where: { email: testUser.email },
+      update: {
+        organizationId: organization.id,
+        name: testUser.name,
+        phone: testUser.phone,
+        passwordHash,
+        role: testUser.role,
+      },
+      create: {
+        organizationId: organization.id,
+        name: testUser.name,
+        email: testUser.email,
+        phone: testUser.phone,
+        passwordHash,
+        role: testUser.role,
+      },
+    });
+
+    await prisma.userGym.upsert({
+      where: { userId_gymId: { userId: user.id, gymId: gym.id } },
+      update: {},
+      create: { userId: user.id, gymId: gym.id },
+    });
+
+    await prisma.employee.upsert({
+      where: { userId: user.id },
+      update: {
+        organizationId: organization.id,
+        gymId: gym.id,
+        name: testUser.name,
+        role: testUser.employeeRole,
+        department: testUser.department,
+        email: testUser.email,
+        phone: testUser.phone,
+        salary: testUser.salary,
+      },
+      create: {
+        organizationId: organization.id,
+        gymId: gym.id,
+        userId: user.id,
+        name: testUser.name,
+        role: testUser.employeeRole,
+        department: testUser.department,
+        email: testUser.email,
+        phone: testUser.phone,
+        salary: testUser.salary,
+        hireDate: new Date(),
+      },
+    });
+  }
+
   const receptionEmployee = await prisma.employee.upsert({
     where: { userId: admin.id },
     update: {},
