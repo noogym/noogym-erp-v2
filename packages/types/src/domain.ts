@@ -244,4 +244,22 @@ export interface FinanceRecord {
   date: string;
   status: string;
   note?: string;
+  accountId?: string;
+  accountName?: string;
+  method?: string;
+  supplier?: string;
+  dueDate?: string;
+  paidAt?: string;
+}
+
+export interface FinanceAccountRecord {
+  id: string;
+  name: string;
+  bank?: string;
+  type: "Caixa" | "Corrente" | "Poupanca" | "Carteira movel" | "Cartao" | "Outro";
+  openingBalance: number;
+  balance: number;
+  status: "Ativa" | "Inativa";
+  isDefault?: boolean;
+  color?: string;
 }

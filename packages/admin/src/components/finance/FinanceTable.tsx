@@ -6,8 +6,8 @@ export function FinanceTable({ columns, children }: { columns: string[]; childre
       <table className="min-w-[640px] border-collapse text-left text-sm lg:min-w-full">
         <thead className="bg-white/[0.025] text-xs font-medium text-zinc-400">
           <tr>
-            {columns.map((column) => (
-              <th key={column} className="whitespace-nowrap px-3 py-3">
+            {columns.map((column, index) => (
+              <th key={`${column}-${index}`} className="whitespace-nowrap px-3 py-3">
                 {column}
               </th>
             ))}

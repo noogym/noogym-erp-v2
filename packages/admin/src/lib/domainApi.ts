@@ -34,10 +34,10 @@ export const deleteResource = <T>(resource: ResourceName, id: string, token: str
 export const createSubscription = (token: string, body: { memberId: string; planId: string; startDate?: string; autoRenew?: boolean }) =>
   apiRequest<Entity>("/subscriptions", { method: "POST", token, body });
 
-export const listFinanceRecords = async (token: string) => {
+export const listFinanceRecords = async (token: string, query?: { startDate?: string; endDate?: string; method?: string }) => {
   const [payments, expenses] = await Promise.all([
-    apiRequest<PaginatedResponse<Entity>>(apiPath("/payments", { limit: 100 }), { token }),
-    apiRequest<PaginatedResponse<Entity>>(apiPath("/expenses", { limit: 100 }), { token })
+    apiRequest<PaginatedResponse<Entity>>(apiPath("/payments", { limit: 100, ...query }), { token }),
+    apiRequest<PaginatedResponse<Entity>>(apiPath("/expenses", { limit: 100, ...query }), { token })
   ]);
 
   return [

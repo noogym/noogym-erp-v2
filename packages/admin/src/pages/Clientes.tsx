@@ -1,5 +1,5 @@
 import { Download, Gift, Mail, Plus, Upload, UsersRound } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ClientRecord } from "@noogym/types";
 import { ConfirmModal } from "../components/modals/ConfirmModal";
 import { ExportModal } from "../components/modals/ExportModal";
@@ -14,12 +14,12 @@ import { DonutChart } from "../components/ui/Charts";
 import { DropdownMenu } from "@noogym/ui";
 import { FormSelect } from "@noogym/ui";
 import { FormTextarea } from "@noogym/ui";
-import { Input } from "@noogym/ui";
 import { MetricCard } from "@noogym/ui";
 import { Modal } from "@noogym/ui";
 import { Select } from "@noogym/ui";
 import { StatusDot } from "../components/ui/StatusDot";
 import { Table } from "@noogym/ui";
+import { ListPagination, ListToolbar, paginateRows } from "../components/tables/ListControls";
 import { TableActions } from "../components/tables/TableActions";
 import { useCheckinsStore } from "../store/checkinsStore";
 import { useClientsStore } from "../store/clientsStore";
@@ -154,6 +154,8 @@ export default function Clientes() {
   const [query, setQuery] = useState("");
   const [planFilter, setPlanFilter] = useState("Todos os planos");
   const [statusFilter, setStatusFilter] = useState("Todos");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
   const [modal, setModal] = useState<ClientModal>(null);
   const [selectedClient, setSelectedClient] = useState<ClientRecord | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -180,6 +182,8 @@ export default function Clientes() {
     const matchesStatus = statusFilter === "Todos" || client.status === statusFilter;
     return matchesQuery && matchesPlan && matchesStatus;
   }), [clientsWithCheckins, planFilter, query, statusFilter]);
+  const pageData = useMemo(() => paginateRows(filtered, page, pageSize), [filtered, page, pageSize]);
+  useEffect(() => setPage(1), [pageSize, planFilter, query, statusFilter]);
   const selectedClients = useMemo(() => clientsWithCheckins.filter((client) => selectedIds.includes(client.id)), [clientsWithCheckins, selectedIds]);
   const allFilteredSelected = filtered.length > 0 && filtered.every((client) => selectedIds.includes(client.id));
   const metrics = useMemo(() => {
@@ -264,8 +268,8 @@ export default function Clientes() {
           <MetricCard title="Total de clientes" value={String(metrics.total)} change="Total registrado" icon={<UsersRound className="h-5 w-5" />} tone="purple" />
         </div>
         <Card className="mt-4 p-4">
-          <div className="mb-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_170px_150px]">
-            <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar por nome, telefone ou e-mail..." />
+          <div className="mb-4">
+            <ListToolbar query={query} onQueryChange={setQuery} queryPlaceholder="Buscar por nome, telefone ou e-mail..." pageSize={pageSize} onPageSizeChange={setPageSize} onClear={() => { setQuery(""); setPlanFilter("Todos os planos"); setStatusFilter("Todos"); setSelectedIds([]); }}>
             <Select value={planFilter} onChange={(event) => setPlanFilter(event.target.value)}>
               <option>Todos os planos</option>
               {plans.map((plan) => <option key={plan}>{plan}</option>)}
@@ -274,9 +278,10 @@ export default function Clientes() {
               <option>Todos</option>
               {statuses.map((status) => <option key={status}>{status}</option>)}
             </Select>
+            </ListToolbar>
           </div>
           <Table columns={["", "Cliente", "Plano", "Status", "Último check-in", "Vencimento", "Ações"]} containerClassName="max-h-[430px]">
-            {filtered.map((client) => (
+            {pageData.pageRows.map((client) => (
               <tr key={client.id} className="table-row">
                 <td className="px-4 py-3"><input type="checkbox" className="h-4 w-4 accent-noogym-lime" checked={selectedIds.includes(client.id)} onChange={() => toggleSelection(client.id)} /></td>
                 <td className="px-4 py-3"><div className="flex items-center gap-3"><Avatar label={client.avatar ?? "CL"} /><div><p>{client.name}</p><p className="text-xs text-zinc-400">{client.phone}</p></div></div></td>
@@ -288,8 +293,8 @@ export default function Clientes() {
               </tr>
             ))}
           </Table>
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-zinc-400">
-            <p>Mostrando {filtered.length ? 1 : 0} a {filtered.length} de {clientsWithCheckins.length} clientes</p>
+          <ListPagination page={pageData.page} totalPages={pageData.totalPages} totalItems={filtered.length} start={pageData.start} end={pageData.end} label="clientes" onPageChange={setPage} />
+          <div className="mt-3 flex justify-end text-sm">
             <button className="text-noogym-lime" onClick={toggleFilteredSelection}>{allFilteredSelected ? "Limpar seleção filtrada" : "Selecionar filtrados"}</button>
           </div>
         </Card>

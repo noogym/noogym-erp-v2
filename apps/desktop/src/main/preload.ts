@@ -10,5 +10,12 @@ contextBridge.exposeInMainWorld("noogym", {
   zoomControls: {
     getZoomFactor: () => ipcRenderer.invoke("window:zoom:get"),
     setZoomFactor: (zoomFactor: number) => ipcRenderer.invoke("window:zoom:set", zoomFactor)
+  },
+  printer: {
+    list: () => ipcRenderer.invoke("printer:list"),
+    printTestPage: (config: unknown) => ipcRenderer.invoke("printer:test-page", config),
+    printReceipt: (data: unknown, config: unknown) => ipcRenderer.invoke("printer:receipt", data, config),
+    printQRCode: (data: unknown, config: unknown) => ipcRenderer.invoke("printer:qr-code", data, config),
+    openCashDrawer: (config: unknown) => ipcRenderer.invoke("printer:cash-drawer", config)
   }
 });

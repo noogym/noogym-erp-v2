@@ -50,8 +50,8 @@ export function FinanceActionModal({ action, onClose }: { action: FinanceActionC
     >
       {action.children ?? (
         <div className="space-y-3">
-          {(action.rows ?? [["Período", "01/05/2024 - 15/05/2024"], ["Estado", "Pendente de sincronização"]]).map(([label, value]) => (
-            <div key={label} className="flex items-center justify-between rounded-lg border border-white/10 bg-white/[0.035] p-3 text-sm">
+          {(action.rows ?? [["Período", "01/05/2024 - 15/05/2024"], ["Estado", "Pendente de sincronização"]]).map(([label, value], index) => (
+            <div key={`${label}-${index}`} className="flex items-center justify-between rounded-lg border border-white/10 bg-white/[0.035] p-3 text-sm">
               <span className="text-zinc-400">{label}</span>
               <span className="font-medium text-zinc-100">{value}</span>
             </div>

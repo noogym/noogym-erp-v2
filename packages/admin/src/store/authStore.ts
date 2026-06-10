@@ -75,9 +75,14 @@ const saveSession = (user: AuthUser, accessToken?: string) => {
 
 const roleLabel = (role: string) => {
   const labels: Record<string, string> = {
+    SUPER_ADMIN: "Super administrador",
     OWNER: "Proprietario",
     ADMIN: "Administrador",
     MANAGER: "Gerente",
+    TRAINER: "Personal Trainer",
+    RECEPTIONIST: "Recepcionista",
+    FINANCE: "Financeiro",
+    NUTRITIONIST: "Nutricionista",
     STAFF: "Funcionario"
   };
 
