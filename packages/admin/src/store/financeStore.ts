@@ -1,8 +1,25 @@
 import { create } from "zustand";
 import { createExpense, createRevenue, listFinanceRecords } from "../lib/domainApi";
+import {
+  closeCashSession as closeCashSessionApi,
+  createFinanceAccount,
+  createFinanceCategory,
+  deleteFinanceCategory,
+  getCurrentCashSession,
+  getFinanceAccounts,
+  getFinanceCategories,
+  getFinanceSummary,
+  listCashSessions,
+  openCashSession as openCashSessionApi,
+  updateFinanceAccount,
+  updateFinanceCategory
+} from "../lib/financeApi";
+import type { CashSessionRecord, CloseCashSessionPayload, FinanceSummaryFilters, OpenCashSessionPayload } from "../lib/financeApi";
+import type { FinanceLocalData } from "../lib/localFinance";
 import { readLocal, uid, writeLocal } from "../lib/storage";
 import { useAppStore } from "./appStore";
 import { useAuthStore } from "./authStore";
+import { useNotificationsStore } from "./notificationsStore";
 import type { FinanceAccountRecord, FinanceRecord } from "@noogym/types";
 
 export type FinanceCategoryKind = "Receita" | "Despesa";
@@ -59,7 +76,14 @@ export const useFinanceStore = create<{
   records: FinanceRecord[];
   categories: FinanceCategory[];
   accounts: FinanceAccountRecord[];
-  loadOnline: () => Promise<void>;
+  remoteDashboard: FinanceLocalData | null;
+  activeFilters: FinanceSummaryFilters;
+  currentCashSession: CashSessionRecord | null;
+  cashSessions: CashSessionRecord[];
+  loadOnline: (filters?: FinanceSummaryFilters) => Promise<void>;
+  loadCashSessions: () => Promise<void>;
+  openCashSession: (payload: OpenCashSessionPayload) => Promise<CashSessionRecord | null>;
+  closeCashSession: (id: string, payload: CloseCashSessionPayload) => Promise<CashSessionRecord | null>;
   addRevenue: (record: Partial<FinanceRecord>) => void;
   addExpense: (record: Partial<FinanceRecord>) => void;
   addCategory: (category: Omit<FinanceCategory, "id">) => boolean;
@@ -72,12 +96,56 @@ export const useFinanceStore = create<{
   records: readLocal("noogym:finance", initial),
   categories: readLocal("noogym:finance-categories", initialCategories),
   accounts: readLocal("noogym:finance-accounts", initialAccounts),
-  loadOnline: async () => {
+  remoteDashboard: null,
+  activeFilters: {},
+  currentCashSession: null,
+  cashSessions: [],
+  loadOnline: async (filters = {}) => {
+    const token = useAuthStore.getState().accessToken;
+    if (!token) {
+      set({ activeFilters: filters, remoteDashboard: null, currentCashSession: null, cashSessions: [] });
+      return;
+    }
+    const [records, accounts, categories, remoteDashboard, currentCashSession, cashSessions] = await Promise.all([
+      listFinanceRecords(token, filters),
+      getFinanceAccounts(token),
+      getFinanceCategories(token),
+      getFinanceSummary(token, filters),
+      getCurrentCashSession(token),
+      listCashSessions(token)
+    ]);
+    persist(records);
+    persistAccounts(accounts);
+    persistCategories(categories);
+    set({ records, accounts, categories, remoteDashboard, currentCashSession, cashSessions, activeFilters: filters });
+  },
+  loadCashSessions: async () => {
     const token = useAuthStore.getState().accessToken;
     if (!token) return;
-    const records = await listFinanceRecords(token);
-    persist(records);
-    set({ records });
+    const [currentCashSession, cashSessions] = await Promise.all([
+      getCurrentCashSession(token),
+      listCashSessions(token)
+    ]);
+    set({ currentCashSession, cashSessions });
+  },
+  openCashSession: async (payload) => {
+    const token = useAuthStore.getState().accessToken;
+    if (!token) throw new Error("AUTH_REQUIRED");
+    const session = await openCashSessionApi(token, payload);
+    const cashSessions = await listCashSessions(token);
+    set({ currentCashSession: session, cashSessions });
+    return session;
+  },
+  closeCashSession: async (id, payload) => {
+    const token = useAuthStore.getState().accessToken;
+    if (!token) throw new Error("AUTH_REQUIRED");
+    const session = await closeCashSessionApi(token, id, payload);
+    const [currentCashSession, cashSessions] = await Promise.all([
+      getCurrentCashSession(token),
+      listCashSessions(token)
+    ]);
+    set({ currentCashSession, cashSessions });
+    return session;
   },
   addRevenue: (record) => set((state) => {
     const target = accountSnapshot(state.accounts, record.accountId);
@@ -87,6 +155,15 @@ export const useFinanceStore = create<{
     persist(records);
     persistAccounts(accounts);
     useAppStore.getState().addPendingSync();
+    useNotificationsStore.getState().addNotification({
+      sourceId: `event:finance:revenue:${created.id}`,
+      title: "Receita registada",
+      description: `${created.category} - ${created.value.toLocaleString("pt-AO")} Kz.`,
+      category: "finance",
+      tone: "success",
+      route: "financas",
+      actionLabel: "Ver financas"
+    });
 
     const token = useAuthStore.getState().accessToken;
     if (useAppStore.getState().onlineOnly && token) createRevenue(token, created).catch(console.error);
@@ -101,6 +178,15 @@ export const useFinanceStore = create<{
     persist(records);
     persistAccounts(accounts);
     useAppStore.getState().addPendingSync();
+    useNotificationsStore.getState().addNotification({
+      sourceId: `event:finance:expense:${created.id}`,
+      title: created.status === "Pago" ? "Despesa paga" : "Despesa pendente",
+      description: `${created.category} - ${created.value.toLocaleString("pt-AO")} Kz.`,
+      category: "finance",
+      tone: created.status === "Pago" ? "info" : "warning",
+      route: "financas",
+      actionLabel: "Ver financas"
+    });
 
     const token = useAuthStore.getState().accessToken;
     if (useAppStore.getState().onlineOnly && token) createExpense(token, created).catch(console.error);
@@ -120,6 +206,8 @@ export const useFinanceStore = create<{
       persistCategories(categories);
       useAppStore.getState().addPendingSync();
       created = true;
+      const token = useAuthStore.getState().accessToken;
+      if (useAppStore.getState().onlineOnly && token) createFinanceCategory(token, { ...category, name }).catch(console.error);
       return { categories };
     });
     return created;
@@ -135,6 +223,8 @@ export const useFinanceStore = create<{
       const categories = state.categories.map((item) => item.id === id ? { ...item, ...category, name } : item);
       persistCategories(categories);
       updated = true;
+      const token = useAuthStore.getState().accessToken;
+      if (useAppStore.getState().onlineOnly && token) updateFinanceCategory(token, id, { ...category, name }).catch(console.error);
       return { categories };
     });
     return updated;
@@ -149,6 +239,8 @@ export const useFinanceStore = create<{
       const categories = state.categories.filter((item) => item.id !== id);
       persistCategories(categories);
       removed = true;
+      const token = useAuthStore.getState().accessToken;
+      if (useAppStore.getState().onlineOnly && token) deleteFinanceCategory(token, id).catch(console.error);
       return { categories };
     });
     return removed;
@@ -168,12 +260,16 @@ export const useFinanceStore = create<{
     const accounts = [created, ...state.accounts.map((item) => created.isDefault ? { ...item, isDefault: false } : item)];
     persistAccounts(accounts);
     useAppStore.getState().addPendingSync();
+    const token = useAuthStore.getState().accessToken;
+    if (useAppStore.getState().onlineOnly && token) createFinanceAccount(token, created).catch(console.error);
     return { accounts };
   }),
   updateAccount: (id, account) => set((state) => {
     const accounts = state.accounts.map((item) => item.id === id ? { ...item, ...account, isDefault: account.isDefault ? true : item.isDefault } : account.isDefault ? { ...item, isDefault: false } : item);
     persistAccounts(accounts);
     useAppStore.getState().addPendingSync();
+    const token = useAuthStore.getState().accessToken;
+    if (useAppStore.getState().onlineOnly && token) updateFinanceAccount(token, id, account).catch(console.error);
     return { accounts };
   }),
   addTransfer: ({ fromAccountId, toAccountId, value, date = "Hoje", note = "Transferencia entre contas" }) => set((state) => {
@@ -194,6 +290,15 @@ export const useFinanceStore = create<{
     persist(records);
     persistAccounts(accounts);
     useAppStore.getState().addPendingSync();
+    useNotificationsStore.getState().addNotification({
+      sourceId: `event:finance:transfer:${records[0].id}:${records[1].id}`,
+      title: "Transferencia entre contas",
+      description: `${value.toLocaleString("pt-AO")} Kz movimentados entre contas.`,
+      category: "finance",
+      tone: "info",
+      route: "financas",
+      actionLabel: "Ver contas"
+    });
     return { records, accounts };
   })
 }));

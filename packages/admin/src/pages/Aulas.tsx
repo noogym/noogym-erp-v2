@@ -1,5 +1,5 @@
 import { CalendarDays, Copy, Edit, ListChecks, Plus, RefreshCcw, UsersRound, XCircle } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ClassAgendaModal, ClassRosterModal, ClassSessionModal, EndClassModal } from "../components/modals/OperationalModals";
 import { PageHeader } from "../components/layout/PageHeader";
 import { Avatar } from "../components/ui/Avatar";
@@ -7,11 +7,11 @@ import { StatusDot } from "../components/ui/StatusDot";
 import { Badge } from "@noogym/ui";
 import { Button } from "@noogym/ui";
 import { Card } from "@noogym/ui";
-import { Input } from "@noogym/ui";
 import { MetricCard } from "@noogym/ui";
 import { Select } from "@noogym/ui";
 import { Table } from "@noogym/ui";
 import { Tabs } from "@noogym/ui";
+import { ListPagination, ListToolbar, paginateRows } from "../components/tables/ListControls";
 import { useClassesStore } from "../store/classesStore";
 import { useClientsStore } from "../store/clientsStore";
 import { toastSuccess } from "../store/toastStore";
@@ -62,6 +62,8 @@ export default function Aulas() {
   const [instructorFilter, setInstructorFilter] = useState("Todos os instrutores");
   const [categoryFilter, setCategoryFilter] = useState("Todas as categorias");
   const [statusFilter, setStatusFilter] = useState("Todos os status");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
   const [modal, setModal] = useState<"new" | "schedule" | "edit" | "end" | "students" | null>(null);
   const [selected, setSelected] = useState<ClassRecord | undefined>();
   const classes = useClassesStore((state) => state.classes);
@@ -82,6 +84,8 @@ export default function Aulas() {
     const matchesStatus = statusFilter === "Todos os status" || item.status === statusFilter;
     return matchesQuery && matchesInstructor && matchesCategory && matchesStatus;
   }), [categoryFilter, classes, instructorFilter, query, statusFilter]);
+  const pageData = useMemo(() => paginateRows(filtered, page, pageSize), [filtered, page, pageSize]);
+  useEffect(() => setPage(1), [categoryFilter, instructorFilter, pageSize, query, statusFilter]);
   const todayClasses = useMemo(() => classes.filter(isToday), [classes]);
   const weekClasses = useMemo(() => classes.filter(isThisWeek), [classes]);
   const activeClasses = useMemo(() => classes.filter((item) => item.status !== "Encerrada" && item.status !== "Cancelada"), [classes]);
@@ -114,9 +118,10 @@ export default function Aulas() {
 
         {tab === "Aulas" ? (
           <>
-            <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_190px_190px_160px]"><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar aula por nome, sala ou instrutor..." /><Select value={instructorFilter} onChange={(event) => setInstructorFilter(event.target.value)}>{instructors.map((item) => <option key={item}>{item}</option>)}</Select><Select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}>{categories.map((item) => <option key={item}>{item}</option>)}</Select><Select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option>Todos os status</option><option>Agendada</option><option>Em andamento</option><option>Encerrada</option><option>Cancelada</option></Select></div>
+            <div className="mt-4"><ListToolbar query={query} onQueryChange={setQuery} queryPlaceholder="Buscar aula por nome, sala ou instrutor..." pageSize={pageSize} onPageSizeChange={setPageSize} onClear={() => { setQuery(""); setInstructorFilter("Todos os instrutores"); setCategoryFilter("Todas as categorias"); setStatusFilter("Todos os status"); }}><Select value={instructorFilter} onChange={(event) => setInstructorFilter(event.target.value)}>{instructors.map((item) => <option key={item}>{item}</option>)}</Select><Select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}>{categories.map((item) => <option key={item}>{item}</option>)}</Select><Select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option>Todos os status</option><option>Agendada</option><option>Em andamento</option><option>Encerrada</option><option>Cancelada</option></Select></ListToolbar></div>
             <div className="mt-4">
-              <ClassTable classes={filtered} clients={clients} onSelect={setSelected} onEdit={editLesson} onRoster={rosterLesson} onDuplicate={(item) => { duplicateClass(item.id); toastSuccess("Aula duplicada com sucesso"); }} onStart={(item) => startClass(item.id)} onEnd={(item) => { setSelected(item); setModal("end"); }} onCancel={(item) => { cancelClass(item.id); toastSuccess("Aula cancelada"); }} />
+              <ClassTable classes={pageData.pageRows} clients={clients} onSelect={setSelected} onEdit={editLesson} onRoster={rosterLesson} onDuplicate={(item) => { duplicateClass(item.id); toastSuccess("Aula duplicada com sucesso"); }} onStart={(item) => startClass(item.id)} onEnd={(item) => { setSelected(item); setModal("end"); }} onCancel={(item) => { cancelClass(item.id); toastSuccess("Aula cancelada"); }} />
+              <ListPagination page={pageData.page} totalPages={pageData.totalPages} totalItems={filtered.length} start={pageData.start} end={pageData.end} label="aulas" onPageChange={setPage} />
             </div>
           </>
         ) : null}

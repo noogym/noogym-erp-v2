@@ -28,8 +28,8 @@ export function OverdueTab({ openAction, data }: FinanceTabProps): FinanceTabVie
         <div className="finance-grid-3">
           <FinanceChartCard title="Clientes inadimplentes" action={<button className="text-xs text-noogym-lime" onClick={() => openAction({ title: "Clientes inadimplentes", rows: data.overdue.clients })}>Ver todos</button>}>
             <FinanceTable columns={["Cliente", "Plano", "Dias", "Valor", "Ultimo vencimento"]}>
-              {data.overdue.clients.map((row) => (
-                <tr key={row[0]} className="table-row">
+              {data.overdue.clients.map((row, rowIndex) => (
+                <tr key={`${row[0]}-${rowIndex}`} className="table-row">
                   {row.map((cell, index) => <FinanceCell key={`${row[0]}-${index}`} tone={index === 2 ? "red" : undefined}>{cell}</FinanceCell>)}
                 </tr>
               ))}
@@ -42,8 +42,8 @@ export function OverdueTab({ openAction, data }: FinanceTabProps): FinanceTabVie
           </FinanceChartCard>
           <FinanceChartCard title="Acoes recomendadas">
             <div className="space-y-3">
-              {data.overdue.actions.map(([title, desc, count, value, label]) => (
-                <div key={title} className="grid grid-cols-[1fr_auto] gap-3 rounded-lg border border-white/10 bg-white/[0.025] p-3 text-sm">
+              {data.overdue.actions.map(([title, desc, count, value, label], index) => (
+                <div key={`${title}-${index}`} className="grid grid-cols-[1fr_auto] gap-3 rounded-lg border border-white/10 bg-white/[0.025] p-3 text-sm">
                   <div className="flex gap-3">
                     <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-red-500/10 text-red-400">{label === "Ligar" ? <Phone className="h-4 w-4" /> : <Send className="h-4 w-4" />}</span>
                     <div>

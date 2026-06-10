@@ -1,5 +1,5 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { SubscriptionStatus } from '@prisma/client';
+import { MemberStatus, SubscriptionStatus } from '@prisma/client';
 import { SubscriptionsService } from './subscriptions.service';
 
 describe('SubscriptionsService', () => {
@@ -43,7 +43,10 @@ describe('SubscriptionsService', () => {
 
   it('creates a subscription and pending payment for paid plans', async () => {
     const { prisma, tx, service } = createService();
-    prisma.member.findFirst.mockResolvedValue({ id: 'member-1' });
+    prisma.member.findFirst.mockResolvedValue({
+      id: 'member-1',
+      status: MemberStatus.ACTIVE,
+    });
     prisma.plan.findFirst.mockResolvedValue({
       id: 'plan-1',
       durationDays: 30,
@@ -80,7 +83,10 @@ describe('SubscriptionsService', () => {
 
   it('does not create payment for free plans', async () => {
     const { prisma, tx, service } = createService();
-    prisma.member.findFirst.mockResolvedValue({ id: 'member-1' });
+    prisma.member.findFirst.mockResolvedValue({
+      id: 'member-1',
+      status: MemberStatus.ACTIVE,
+    });
     prisma.plan.findFirst.mockResolvedValue({
       id: 'plan-1',
       durationDays: 30,
@@ -108,7 +114,10 @@ describe('SubscriptionsService', () => {
 
   it('throws when plan does not exist', async () => {
     const { prisma, service } = createService();
-    prisma.member.findFirst.mockResolvedValue({ id: 'member-1' });
+    prisma.member.findFirst.mockResolvedValue({
+      id: 'member-1',
+      status: MemberStatus.ACTIVE,
+    });
     prisma.plan.findFirst.mockResolvedValue(null);
     prisma.subscription.findFirst.mockResolvedValue(null);
 
@@ -117,9 +126,26 @@ describe('SubscriptionsService', () => {
     );
   });
 
+  it('throws when member is not active', async () => {
+    const { prisma, service } = createService();
+    prisma.member.findFirst.mockResolvedValue({
+      id: 'member-1',
+      status: MemberStatus.INACTIVE,
+    });
+    prisma.plan.findFirst.mockResolvedValue({ id: 'plan-1' });
+    prisma.subscription.findFirst.mockResolvedValue(null);
+
+    await expect(service.create(organizationId, dto)).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+  });
+
   it('prevents more than one active valid subscription per member', async () => {
     const { prisma, service } = createService();
-    prisma.member.findFirst.mockResolvedValue({ id: 'member-1' });
+    prisma.member.findFirst.mockResolvedValue({
+      id: 'member-1',
+      status: MemberStatus.ACTIVE,
+    });
     prisma.plan.findFirst.mockResolvedValue({ id: 'plan-1' });
     prisma.subscription.findFirst.mockResolvedValue({
       id: 'subscription-active',

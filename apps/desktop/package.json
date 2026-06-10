@@ -54,6 +54,7 @@
     "@noogym/admin": "workspace:*",
     "@noogym/core": "workspace:*",
     "@noogym/data-access": "workspace:*",
+    "@noogym/printer": "workspace:*",
     "@noogym/types": "workspace:*",
     "@noogym/ui": "workspace:*",
     "@vitejs/plugin-react": "^5.0.4",

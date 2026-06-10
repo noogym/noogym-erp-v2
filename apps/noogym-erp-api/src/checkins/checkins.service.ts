@@ -3,9 +3,10 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { MemberStatus, Prisma, SubscriptionStatus } from '@prisma/client';
+import { Prisma, SubscriptionStatus } from '@prisma/client';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 import { getPagination, paginated } from '../common/utils/pagination';
+import { assertActiveMember } from '../members/member-status';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateCheckinDto } from './dto/create-checkin.dto';
 
@@ -68,9 +69,7 @@ export class CheckinsService {
     });
 
     if (!member) throw new NotFoundException('Member not found');
-    if (member.status !== MemberStatus.ACTIVE) {
-      throw new BadRequestException('Member is not active');
-    }
+    assertActiveMember(member);
 
     const activeSubscription = await this.prisma.subscription.findFirst({
       where: {

@@ -1,5 +1,5 @@
 import { CalendarDays, Copy, Grid2X2, Pencil, Plus, UsersRound } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ConfirmModal } from "../components/modals/ConfirmModal";
 import { CategoryModal, PlanFormModal } from "../components/modals/OperationalModals";
 import { PageHeader } from "../components/layout/PageHeader";
@@ -7,12 +7,12 @@ import { Badge } from "@noogym/ui";
 import { Button } from "@noogym/ui";
 import { Card } from "@noogym/ui";
 import { DonutChart } from "../components/ui/Charts";
-import { Input } from "@noogym/ui";
 import { MetricCard } from "@noogym/ui";
 import { Select } from "@noogym/ui";
 import { StatusDot } from "../components/ui/StatusDot";
 import { Table } from "@noogym/ui";
 import { Tabs } from "@noogym/ui";
+import { ListPagination, ListToolbar, paginateRows } from "../components/tables/ListControls";
 import { useClientsStore } from "../store/clientsStore";
 import { usePlansStore } from "../store/plansStore";
 import { toastSuccess } from "../store/toastStore";
@@ -34,6 +34,8 @@ export default function Planos() {
   const [query, setQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState("Todos os tipos");
   const [statusFilter, setStatusFilter] = useState("Todos");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
   const [modal, setModal] = useState<"new" | "edit" | "category" | "editCategory" | "deactivate" | null>(null);
   const [selected, setSelected] = useState<PlanRecord | undefined>();
   const [selectedCategory, setSelectedCategory] = useState<PlanCategory | null>(null);
@@ -73,6 +75,14 @@ export default function Planos() {
     const recurringRevenue = categoryPlans.reduce((sum, plan) => sum + (parseMoney(plan.price) / durationDivisor(plan.duration)) * (plan.clients ?? 0), 0);
     return { name: category.name, color: category.color, icon: category.icon, description: category.description, status: category.status, order: category.order, total: categoryPlans.length, active: activePlans.length, clients: clientsInCategory, revenue: recurringRevenue };
   }).sort((a, b) => a.order - b.order || b.total - a.total || a.name.localeCompare(b.name)), [categoryDetails, plansWithClientCount]);
+  const visibleCategories = useMemo(() => categoryRows.filter((category) => {
+    const matchesQuery = category.name.toLowerCase().includes(query.toLowerCase());
+    const matchesStatus = statusFilter === "Todos" || category.status === statusFilter;
+    return matchesQuery && matchesStatus;
+  }), [categoryRows, query, statusFilter]);
+  const planPageData = useMemo(() => paginateRows(visiblePlans, page, pageSize), [page, pageSize, visiblePlans]);
+  const categoryPageData = useMemo(() => paginateRows(visibleCategories, page, pageSize), [page, pageSize, visibleCategories]);
+  useEffect(() => setPage(1), [pageSize, query, statusFilter, tab, typeFilter]);
   const metrics = useMemo(() => {
     const activePlans = plansWithClientCount.filter((plan) => plan.status === "Ativo");
     const clientsInPlans = clients.filter((client) => client.plan && client.plan !== "Sem plano").length;
@@ -104,17 +114,20 @@ export default function Planos() {
       <div className="panel p-6">
         <PageHeader title="Planos" subtitle="Gerencie os planos da sua academia." actions={<><Button icon={<Grid2X2 className="h-4 w-4" />} onClick={() => setModal("category")}>Categorias</Button><Button variant="primary" icon={<Plus className="h-4 w-4" />} onClick={() => { setSelected(undefined); setModal("new"); }}>Novo plano</Button></>} />
         <Tabs tabs={["Planos ativos", "Planos inativos", "Categorias"]} active={tab} onChange={setTab} />
-        <div className="mt-5 grid gap-3 lg:grid-cols-[minmax(0,1fr)_170px_150px]">
-          <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={tab === "Categorias" ? "Buscar por categoria..." : "Buscar por nome do plano..."} />
+        <div className="mt-5">
+          <ListToolbar query={query} onQueryChange={setQuery} queryPlaceholder={tab === "Categorias" ? "Buscar por categoria..." : "Buscar por nome do plano..."} pageSize={pageSize} onPageSizeChange={setPageSize} onClear={() => { setQuery(""); setTypeFilter("Todos os tipos"); setStatusFilter("Todos"); }}>
+          {tab !== "Categorias" ? (
           <Select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}>
             <option>Todos os tipos</option>
             {types.map((type) => <option key={type}>{type}</option>)}
           </Select>
+          ) : null}
           <Select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
             <option>Todos</option>
             <option>Ativo</option>
             <option>Inativo</option>
           </Select>
+          </ListToolbar>
         </div>
         <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <MetricCard title="Total de planos ativos" value={String(metrics.activePlans)} change={`${plansWithClientCount.length} planos cadastrados`} icon={<CalendarDays className="h-5 w-5" />} />
@@ -125,7 +138,7 @@ export default function Planos() {
         <div className="mt-4">
           {tab === "Categorias" ? (
             <Table columns={["Categoria", "Planos", "Planos ativos", "Clientes", "Receita mensal estimada", "Status", "Ações"]}>
-              {categoryRows.filter((category) => category.name.toLowerCase().includes(query.toLowerCase())).map((category) => (
+              {categoryPageData.pageRows.map((category) => (
                 <tr key={category.name} className="table-row">
                   <td className="px-4 py-3"><span className="inline-flex items-center gap-2"><span className="h-3 w-3 rounded-full" style={{ backgroundColor: category.color }} /><Badge>{category.name}</Badge></span></td>
                   <td className="px-4 py-3">{category.total}</td>
@@ -139,7 +152,7 @@ export default function Planos() {
             </Table>
           ) : (
             <Table columns={["Plano", "Categoria", "Preço", "Duração", "Tipo", "Clientes", "Status", "Ações"]} containerClassName="max-h-[430px]">
-              {visiblePlans.map((plan) => (
+              {planPageData.pageRows.map((plan) => (
                 <tr key={plan.id} className="table-row">
                   <td className="px-4 py-3"><div className="flex items-start gap-3"><span className="mt-1.5 h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: plan.color ?? "#B6FF00" }} /><div><p>{plan.name}</p><p className="text-xs text-zinc-400">{plan.description}</p></div></div></td>
                   <td className="px-4 py-3"><Badge>{plan.category}</Badge></td>
@@ -152,6 +165,11 @@ export default function Planos() {
                 </tr>
               ))}
             </Table>
+          )}
+          {tab === "Categorias" ? (
+            <ListPagination page={categoryPageData.page} totalPages={categoryPageData.totalPages} totalItems={visibleCategories.length} start={categoryPageData.start} end={categoryPageData.end} label="categorias" onPageChange={setPage} />
+          ) : (
+            <ListPagination page={planPageData.page} totalPages={planPageData.totalPages} totalItems={visiblePlans.length} start={planPageData.start} end={planPageData.end} label="planos" onPageChange={setPage} />
           )}
         </div>
       </div>

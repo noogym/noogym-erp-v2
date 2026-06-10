@@ -6,6 +6,7 @@ import {
 import { Prisma } from '@prisma/client';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 import { getPagination, paginated } from '../common/utils/pagination';
+import { assertActiveMember } from '../members/member-status';
 import { PrismaService } from '../prisma/prisma.service';
 import { AddWorkoutExerciseDto } from './dto/add-workout-exercise.dto';
 import { AssignMemberDto } from './dto/assign-member.dto';
@@ -119,12 +120,13 @@ export class WorkoutsService {
     await this.ensureWorkout(organizationId, id);
     const member = await this.prisma.member.findFirst({
       where: { id: dto.memberId, organizationId },
-      select: { id: true },
+      select: { id: true, status: true },
     });
 
     if (!member) {
       throw new NotFoundException('Member not found');
     }
+    assertActiveMember(member);
 
     return this.prisma.workoutAssignment.create({
       data: {

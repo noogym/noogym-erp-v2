@@ -33,8 +33,8 @@ export function RevenuesTab({ openAction, data }: FinanceTabProps): FinanceTabVi
           </FinanceChartCard>
           <FinanceChartCard title="Detalhamento das receitas" action={<button className="text-xs text-noogym-lime" onClick={() => openAction({ title: "Todas as receitas", rows: data.revenues.detailRows })}>Ver todos</button>}>
             <FinanceTable columns={["Origem", "Receita", "%", "Estado"]}>
-              {data.revenues.detailRows.map(([origin, value, percent, status]) => (
-                <tr key={origin} className="table-row">
+              {data.revenues.detailRows.map(([origin, value, percent, status], index) => (
+                <tr key={`${origin}-${index}`} className="table-row">
                   <FinanceCell>{origin}</FinanceCell>
                   <FinanceCell tone="lime">{value}</FinanceCell>
                   <FinanceCell>{percent}</FinanceCell>
@@ -54,13 +54,13 @@ export function RevenuesTab({ openAction, data }: FinanceTabProps): FinanceTabVi
           <SummaryRow label="Receita a receber" value={money(data.totals.receivable)} tone="yellow" />
         </FinancePanelSection>
         <FinancePanelSection title="Receitas por metodo">
-          {data.revenues.methods.map(([label, value, percent]) => <ProgressRow key={label} label={label} value={value} percent={percent} />)}
+          {data.revenues.methods.map(([label, value, percent], index) => <ProgressRow key={`${label}-${index}`} label={label} value={value} percent={percent} />)}
           <button className="flex items-center gap-2 text-sm text-noogym-lime" onClick={() => openAction({ title: "Metodos de receita", rows: data.revenues.methods.map(([label, value]) => [label, value]) })}>
             Ver todos os metodos <ArrowRight className="h-4 w-4" />
           </button>
         </FinancePanelSection>
         <FinancePanelSection title="Top clientes por receita">
-          {data.revenues.topClients.map(([name, value]) => <SummaryRow key={name} label={name} value={value} />)}
+          {data.revenues.topClients.map(([name, value], index) => <SummaryRow key={`${name}-${index}`} label={name} value={value} />)}
           <button className="flex items-center gap-2 text-sm text-noogym-lime" onClick={() => openAction({ title: "Top clientes por receita", rows: data.revenues.topClients })}>
             Ver todos <ArrowRight className="h-4 w-4" />
           </button>

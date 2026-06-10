@@ -1,5 +1,5 @@
 import { Ban, Edit, Eye, KeyRound, Lock, Mail, Plus, RotateCcw, ShieldCheck, Unlock, UsersRound } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ConfirmModal } from "../components/modals/ConfirmModal";
 import { EmployeeBuilderModal, RolesModal } from "../components/modals/OperationalModals";
 import { PageHeader } from "../components/layout/PageHeader";
@@ -8,12 +8,12 @@ import { Badge } from "@noogym/ui";
 import { Button } from "@noogym/ui";
 import { Card } from "@noogym/ui";
 import { FormCheckbox } from "@noogym/ui";
-import { Input } from "@noogym/ui";
 import { MetricCard } from "@noogym/ui";
 import { Select } from "@noogym/ui";
 import { StatusDot } from "../components/ui/StatusDot";
 import { Table } from "@noogym/ui";
 import { Tabs } from "@noogym/ui";
+import { ListPagination, ListToolbar, paginateRows } from "../components/tables/ListControls";
 import { formatKz as money } from "@noogym/core";
 import { employeeModules, useEmployeesStore } from "../store/employeesStore";
 import { toastSuccess } from "../store/toastStore";
@@ -55,6 +55,8 @@ export default function Funcionarios() {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("Todos os status");
   const [roleFilter, setRoleFilter] = useState("Todas as funcoes");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
   const employees = useEmployeesStore((state) => state.employees);
   const roles = useEmployeesStore((state) => state.roles);
   const activities = useEmployeesStore((state) => state.activities);
@@ -73,6 +75,8 @@ export default function Funcionarios() {
     const matchesRole = roleFilter === "Todas as funcoes" || employee.role === roleFilter;
     return matchesQuery && matchesStatus && matchesRole;
   }), [employees, query, roleFilter, statusFilter]);
+  const pageData = useMemo(() => paginateRows(filtered, page, pageSize), [filtered, page, pageSize]);
+  useEffect(() => setPage(1), [pageSize, query, roleFilter, statusFilter]);
 
   const payroll = employees.filter((employee) => employee.status === "Ativo").reduce((sum, employee) => sum + parseSalary(employee.salary), 0);
   const blocked = employees.filter((employee) => employee.accessStatus === "Bloqueado").length;
@@ -105,13 +109,12 @@ export default function Funcionarios() {
 
         {activeTab === "Funcionarios" && (
           <div className="space-y-4">
-            <div className="grid gap-3 xl:grid-cols-[1fr_180px_210px]">
-              <Input placeholder="Buscar por nome, e-mail, telefone, funcao..." value={query} onChange={(event) => setQuery(event.target.value)} />
+            <ListToolbar query={query} onQueryChange={setQuery} queryPlaceholder="Buscar por nome, e-mail, telefone, funcao..." pageSize={pageSize} onPageSizeChange={setPageSize} onClear={() => { setQuery(""); setStatusFilter("Todos os status"); setRoleFilter("Todas as funcoes"); }}>
               <Select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>{["Todos os status", "Ativo", "Inativo", "Licenca", "Desligado"].map((status) => <option key={status}>{status}</option>)}</Select>
               <Select value={roleFilter} onChange={(event) => setRoleFilter(event.target.value)}>{roleOptions.map((role) => <option key={role}>{role}</option>)}</Select>
-            </div>
+            </ListToolbar>
             <Table columns={["Funcionario", "Funcao", "Departamento", "Turno", "Conta", "Acesso", "Status", "Acoes"]}>
-              {filtered.map((employee) => (
+              {pageData.pageRows.map((employee) => (
                 <tr key={employee.id} className="table-row cursor-pointer" onClick={() => setSelected(employee)}>
                   <td className="px-4 py-3"><div className="flex items-center gap-3"><Avatar label={initials(employee.name)} /><div><p>{employee.name}</p><p className="text-xs text-zinc-400">{employee.email}</p></div></div></td>
                   <td className="px-4 py-3"><Badge>{employee.role}</Badge></td>
@@ -133,6 +136,7 @@ export default function Funcionarios() {
                 </tr>
               ))}
             </Table>
+            <ListPagination page={pageData.page} totalPages={pageData.totalPages} totalItems={filtered.length} start={pageData.start} end={pageData.end} label="funcionarios" onPageChange={setPage} />
             {!filtered.length && <p className="rounded-lg border border-white/10 p-6 text-center text-sm text-zinc-400">Nenhum funcionario encontrado.</p>}
           </div>
         )}
