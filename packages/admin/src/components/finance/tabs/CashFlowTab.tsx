@@ -34,8 +34,8 @@ export function CashFlowTab({ openAction, data }: FinanceTabProps): FinanceTabVi
         <div className="finance-grid-table">
           <FinanceChartCard title="Fluxo de caixa diario">
             <FinanceTable columns={["Data", "Entradas", "Saidas", "Fluxo liquido", "Saldo acumulado"]}>
-              {data.cashFlow.dailyRows.map((row) => (
-                <tr key={row[0]} className="table-row">
+              {data.cashFlow.dailyRows.map((row, rowIndex) => (
+                <tr key={`${row[0]}-${rowIndex}`} className="table-row">
                   {row.map((cell, index) => <FinanceCell key={`${row[0]}-${index}`} tone={index === 3 ? (String(cell).startsWith("-") ? "red" : "lime") : undefined}>{cell}</FinanceCell>)}
                 </tr>
               ))}

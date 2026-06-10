@@ -4,6 +4,7 @@ import { createResource, listResource, saleFromApi, saleToDto } from "../lib/dom
 import { readLocal, uid, writeLocal } from "../lib/storage";
 import { useAppStore } from "./appStore";
 import { useAuthStore } from "./authStore";
+import { useNotificationsStore } from "./notificationsStore";
 import { toastInfo } from "./toastStore";
 import type { SaleItemRecord, SaleRecord } from "@noogym/types";
 
@@ -49,6 +50,15 @@ export const useSalesStore = create<{
     const sales = [record, ...state.sales];
     persist(sales);
     useAppStore.getState().addPendingSync();
+    useNotificationsStore.getState().addNotification({
+      sourceId: `event:sales:created:${record.id}`,
+      title: record.status === "Orcamento" ? "Orcamento criado" : "Venda concluida",
+      description: `${record.total.toLocaleString("pt-AO")} Kz - ${record.paymentMethod}.`,
+      category: "sales",
+      tone: record.status === "Orcamento" ? "info" : "success",
+      route: "vendas",
+      actionLabel: "Ver vendas"
+    });
 
     const token = useAuthStore.getState().accessToken;
     if (useAppStore.getState().onlineOnly && token) {
@@ -67,6 +77,18 @@ export const useSalesStore = create<{
   cancelSale: (id) => set((state) => {
     const sales = state.sales.map((sale) => sale.id === id ? { ...sale, status: "Cancelada" } : sale);
     persist(sales);
+    const cancelled = sales.find((sale) => sale.id === id);
+    if (cancelled) {
+      useNotificationsStore.getState().addNotification({
+        sourceId: `event:sales:cancelled:${id}`,
+        title: "Venda cancelada",
+        description: `${cancelled.total.toLocaleString("pt-AO")} Kz removidos do resumo.`,
+        category: "sales",
+        tone: "warning",
+        route: "vendas",
+        actionLabel: "Ver vendas"
+      });
+    }
 
     const token = useAuthStore.getState().accessToken;
     if (useAppStore.getState().onlineOnly && token && !id.startsWith("SALE")) {

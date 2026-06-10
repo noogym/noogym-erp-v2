@@ -10,6 +10,7 @@ import {
   Globe2,
   KeyRound,
   Link2,
+  Printer,
   QrCode,
   RefreshCw,
   Save,
@@ -32,6 +33,7 @@ const configTabs = [
   "Geral",
   "Academia",
   "Financeiro",
+  "Impressao",
   "Planos e contratos",
   "Check-in",
   "Notificacoes",
@@ -97,6 +99,7 @@ export default function Configuracoes() {
           {tab === "Geral" ? <GeneralTab organization={organization} primaryGym={primaryGym} /> : null}
           {tab === "Academia" ? <GymTab organization={organization} gyms={gyms} primaryGym={primaryGym} /> : null}
           {tab === "Financeiro" ? <FinanceTab /> : null}
+          {tab === "Impressao" ? <PrintingTab /> : null}
           {tab === "Planos e contratos" ? <ContractsTab /> : null}
           {tab === "Check-in" ? <CheckinTab /> : null}
           {tab === "Notificacoes" ? <NotificationsTab /> : null}
@@ -412,6 +415,170 @@ function FinanceTab() {
           </table>
         </div>
       </Card>
+    </div>
+  );
+}
+
+function PrintingTab() {
+  const printing = useOperationalSettingsStore((state) => state.settings.printing);
+  const updateSection = useOperationalSettingsStore((state) => state.updateSection);
+  const [printers, setPrinters] = useState<Array<{ id: string; name: string; connectionType: string; isDefault?: boolean }>>([]);
+  const [isTesting, setIsTesting] = useState(false);
+  const [isOpeningDrawer, setIsOpeningDrawer] = useState(false);
+  const printerBridge = typeof window === "undefined" ? undefined : window.noogym?.printer;
+  const bridgeLabel = printerBridge ? "Desktop conectado" : "Bridge desktop indisponivel";
+
+  const updatePrinting = (data: Partial<OperationalSettings["printing"]>) => updateSection("printing", data);
+
+  const loadPrinters = () => {
+    if (!printerBridge) {
+      toastInfo("Impressao desktop", "Abra o Noogym Desktop para listar impressoras USB/Serial.");
+      return;
+    }
+
+    printerBridge.list()
+      .then((items) => {
+        setPrinters(items);
+        toastSuccess("Impressoras verificadas", items.length ? `${items.length} impressora(s) encontrada(s).` : "Nenhuma impressora USB/Serial retornada pela bridge.");
+      })
+      .catch((error) => toastInfo("Falha ao listar", error instanceof Error ? error.message : "Nao foi possivel listar impressoras."));
+  };
+
+  const testPrint = () => {
+    if (!printerBridge) {
+      toastInfo("Impressao desktop", "A impressao termica esta disponivel no aplicativo Desktop/Electron.");
+      return;
+    }
+
+    const config = buildPrinterConfig(printing);
+    const validation = validatePrintingConfig(printing);
+    if (validation) {
+      toastInfo("Configuracao incompleta", validation);
+      return;
+    }
+
+    setIsTesting(true);
+    printerBridge.printTestPage(config)
+      .then((result) => result.success ? toastSuccess("Teste enviado", result.message) : toastInfo("Teste falhou", result.error || result.message))
+      .catch((error) => toastInfo("Teste falhou", error instanceof Error ? error.message : "Nao foi possivel testar a impressora."))
+      .finally(() => setIsTesting(false));
+  };
+
+  const openDrawer = () => {
+    if (!printerBridge) {
+      toastInfo("Gaveta de dinheiro", "A abertura de gaveta precisa do aplicativo Desktop/Electron.");
+      return;
+    }
+
+    const validation = validatePrintingConfig(printing);
+    if (validation) {
+      toastInfo("Configuracao incompleta", validation);
+      return;
+    }
+
+    setIsOpeningDrawer(true);
+    printerBridge.openCashDrawer(buildPrinterConfig(printing))
+      .then((result) => result.success ? toastSuccess("Pulso enviado", result.message) : toastInfo("Gaveta nao abriu", result.error || result.message))
+      .catch((error) => toastInfo("Gaveta nao abriu", error instanceof Error ? error.message : "Nao foi possivel enviar o comando."))
+      .finally(() => setIsOpeningDrawer(false));
+  };
+
+  return (
+    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
+      <div className="space-y-4">
+        <Card className="p-5">
+          <SectionTitle icon={Printer} title="Impressora padrao" description="Configure a impressora termica usada por POS, recibos, pagamentos e caixa." />
+          <div className="grid gap-3 md:grid-cols-3">
+            <FormSwitch label="Impressao ativa" checked={printing.enabled} onChange={(enabled) => updatePrinting({ enabled })} />
+            <FormInput className="md:col-span-2" label="Nome da impressora" value={printing.defaultPrinterName} onChange={(event) => updatePrinting({ defaultPrinterName: event.target.value })} />
+            <FormSelect label="Tipo de conexao" value={printing.connectionType} onChange={(event) => updatePrinting({ connectionType: event.target.value as OperationalSettings["printing"]["connectionType"] })} options={["network", "usb", "serial"]} />
+            <FormSelect label="Perfil ESC/POS" value={printing.profile} onChange={(event) => updatePrinting({ profile: event.target.value as OperationalSettings["printing"]["profile"] })} options={["generic", "epson", "bematech", "xprinter", "rongta", "wintec"]} />
+            <FormSelect label="Largura do papel" value={String(printing.paperWidth)} onChange={(event) => updatePrinting({ paperWidth: Number(event.target.value) as 58 | 80 })} options={["58", "80"]} />
+          </div>
+
+          {printing.connectionType === "network" ? (
+            <div className="mt-4 grid gap-3 md:grid-cols-3">
+              <FormInput className="md:col-span-2" label="IP/Host da impressora" value={printing.networkHost} onChange={(event) => updatePrinting({ networkHost: event.target.value })} />
+              <FormInput label="Porta" type="number" min="1" value={printing.networkPort} onChange={(event) => updatePrinting({ networkPort: numberValue(event.target.value, 9100) })} />
+            </div>
+          ) : null}
+
+          {printing.connectionType === "usb" ? (
+            <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
+              <FormInput label="Dispositivo USB" value={printing.usbDeviceName} onChange={(event) => updatePrinting({ usbDeviceName: event.target.value })} />
+              <Button onClick={loadPrinters}>Listar impressoras</Button>
+            </div>
+          ) : null}
+
+          {printing.connectionType === "serial" ? (
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              <FormInput label="Porta serial" value={printing.serialPath} onChange={(event) => updatePrinting({ serialPath: event.target.value })} />
+              <Button className="self-end" onClick={loadPrinters}>Listar portas</Button>
+            </div>
+          ) : null}
+
+          <div className="mt-4 flex flex-wrap justify-end gap-2">
+            <Button onClick={saveToast}>Salvar impressora</Button>
+            <Button variant="primary" disabled={isTesting} icon={<Printer className="h-4 w-4" />} onClick={testPrint}>
+              {isTesting ? "Testando..." : "Testar impressao"}
+            </Button>
+          </div>
+        </Card>
+
+        <Card className="p-5">
+          <SectionTitle icon={CreditCard} title="Gaveta de dinheiro" description="Configure o pulso ESC/POS para abrir a gaveta conectada a impressora." />
+          <div className="grid gap-3 md:grid-cols-3">
+            <FormSwitch label="Gaveta ativa" checked={printing.cashDrawerEnabled} onChange={(cashDrawerEnabled) => updatePrinting({ cashDrawerEnabled })} />
+            <FormSwitch label="Abrir no pagamento em dinheiro" checked={printing.openDrawerOnCashPayment} onChange={(openDrawerOnCashPayment) => updatePrinting({ openDrawerOnCashPayment })} />
+            <FormSwitch label="Imprimir recibo automaticamente" checked={printing.autoPrintReceipt} onChange={(autoPrintReceipt) => updatePrinting({ autoPrintReceipt })} />
+            <FormSelect label="Pino" value={String(printing.cashDrawerPin)} onChange={(event) => updatePrinting({ cashDrawerPin: Number(event.target.value) as 0 | 1 })} options={["0", "1"]} />
+            <FormInput label="Pulso ligado (ms)" type="number" min="1" value={printing.cashDrawerOnTimeMs} onChange={(event) => updatePrinting({ cashDrawerOnTimeMs: numberValue(event.target.value, 50) })} />
+            <FormInput label="Pulso desligado (ms)" type="number" min="1" value={printing.cashDrawerOffTimeMs} onChange={(event) => updatePrinting({ cashDrawerOffTimeMs: numberValue(event.target.value, 250) })} />
+          </div>
+          <div className="mt-4 flex justify-end">
+            <Button disabled={isOpeningDrawer || !printing.cashDrawerEnabled} onClick={openDrawer}>
+              {isOpeningDrawer ? "Abrindo..." : "Testar gaveta"}
+            </Button>
+          </div>
+        </Card>
+      </div>
+
+      <div className="space-y-4">
+        <Card className="p-5">
+          <SectionTitle icon={Printer} title="Estado de impressao" description="Resumo da configuracao aplicada ao Desktop." />
+          <div className="space-y-3 text-sm">
+            <InfoLine label="Bridge" value={bridgeLabel} />
+            <InfoLine label="Conexao" value={printing.connectionType.toUpperCase()} />
+            <InfoLine label="Papel" value={`${printing.paperWidth}mm`} />
+            <InfoLine label="Perfil" value={printing.profile} />
+            <InfoLine label="Gaveta" value={printing.cashDrawerEnabled ? "Ativa" : "Inativa"} />
+          </div>
+        </Card>
+
+        <Card className="p-5">
+          <SectionTitle icon={Wifi} title="Impressoras detectadas" description="USB/Serial dependem da bridge do Desktop." />
+          {printers.length ? (
+            <div className="space-y-3">
+              {printers.map((printer) => (
+                <button
+                  key={printer.id}
+                  className="w-full rounded-md border border-white/10 bg-white/[0.03] p-3 text-left text-sm transition hover:border-noogym-lime/50"
+                  onClick={() => updatePrinting({ defaultPrinterName: printer.name, connectionType: printer.connectionType as OperationalSettings["printing"]["connectionType"] })}
+                >
+                  <span className="flex items-center justify-between gap-3">
+                    <span className="font-medium">{printer.name}</span>
+                    <Badge>{printer.isDefault ? "Padrao" : printer.connectionType}</Badge>
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p className="rounded-md border border-white/10 bg-white/[0.03] p-3 text-sm text-zinc-400">
+              Nenhuma impressora listada ainda. Use LAN/IP ou clique em listar no Desktop.
+            </p>
+          )}
+        </Card>
+      </div>
     </div>
   );
 }
@@ -758,6 +925,41 @@ function fallbackUsers() {
 function numberValue(value: string, fallback = 0) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function buildPrinterConfig(printing: OperationalSettings["printing"]) {
+  return {
+    name: printing.defaultPrinterName,
+    connectionType: printing.connectionType,
+    profile: printing.profile,
+    paperWidth: printing.paperWidth,
+    network: printing.connectionType === "network" ? {
+      host: printing.networkHost.trim(),
+      port: printing.networkPort || 9100,
+      timeoutMs: 5000
+    } : undefined,
+    usb: printing.connectionType === "usb" ? {
+      deviceName: printing.usbDeviceName.trim() || undefined
+    } : undefined,
+    serial: printing.connectionType === "serial" ? {
+      path: printing.serialPath.trim(),
+      baudRate: 9600
+    } : undefined,
+    cashDrawer: {
+      enabled: printing.cashDrawerEnabled,
+      pin: printing.cashDrawerPin,
+      onTimeMs: printing.cashDrawerOnTimeMs,
+      offTimeMs: printing.cashDrawerOffTimeMs
+    }
+  };
+}
+
+function validatePrintingConfig(printing: OperationalSettings["printing"]) {
+  if (!printing.enabled) return "Ative a impressao antes de testar.";
+  if (!printing.defaultPrinterName.trim()) return "Informe o nome da impressora padrao.";
+  if (printing.connectionType === "network" && !printing.networkHost.trim()) return "Informe o IP/host da impressora LAN.";
+  if (printing.connectionType === "serial" && !printing.serialPath.trim()) return "Informe a porta serial.";
+  return "";
 }
 
 function optional(value: string) {

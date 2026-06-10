@@ -1,9 +1,10 @@
 import { Barcode, Copy, Download, Eye, Plus, ReceiptText, RefreshCcw, ShoppingCart, Trash2, WalletCards, X, XCircle } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ConfirmModal } from "../components/modals/ConfirmModal";
 import { BarcodeModal, FinalizeSaleModal } from "../components/modals/OperationalModals";
 import { ProductVisual } from "../components/ui/ProductVisual";
 import { StatusDot } from "../components/ui/StatusDot";
+import { ListPagination, ListToolbar, paginateRows } from "../components/tables/ListControls";
 import { Button } from "@noogym/ui";
 import { Card } from "@noogym/ui";
 import { Input } from "@noogym/ui";
@@ -109,8 +110,13 @@ export default function VendasPOS() {
   const [query, setQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("Todas as categorias");
   const [saleQuery, setSaleQuery] = useState("");
+  const [quoteQuery, setQuoteQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("Todos");
   const [paymentFilter, setPaymentFilter] = useState("Todos");
+  const [salesPage, setSalesPage] = useState(1);
+  const [salesPageSize, setSalesPageSize] = useState(25);
+  const [quotesPage, setQuotesPage] = useState(1);
+  const [quotesPageSize, setQuotesPageSize] = useState(25);
   const [modal, setModal] = useState<"finalize" | "quote" | "clear" | "barcode" | "cancelSale" | null>(null);
   const [selectedSale, setSelectedSale] = useState<SaleRecord | null>(null);
   const products = useProductsStore((state) => state.products);
@@ -149,6 +155,11 @@ export default function VendasPOS() {
     const matchesPayment = paymentFilter === "Todos" || sale.paymentMethod === paymentFilter;
     return matchesQuery && matchesStatus && matchesPayment;
   }), [completedSales, paymentFilter, saleQuery, statusFilter]);
+  const filteredQuotes = useMemo(() => quotes.filter((sale) => `${sale.customer ?? ""} ${sale.seller} ${sale.paymentMethod} ${saleItemsLabel(sale)} ${sale.id}`.toLowerCase().includes(quoteQuery.toLowerCase())), [quoteQuery, quotes]);
+  const salesPageData = useMemo(() => paginateRows(filteredSales, salesPage, salesPageSize), [filteredSales, salesPage, salesPageSize]);
+  const quotesPageData = useMemo(() => paginateRows(filteredQuotes, quotesPage, quotesPageSize), [filteredQuotes, quotesPage, quotesPageSize]);
+  useEffect(() => setSalesPage(1), [paymentFilter, saleQuery, salesPageSize, statusFilter]);
+  useEffect(() => setQuotesPage(1), [quoteQuery, quotesPageSize]);
   const todaySales = useMemo(() => completedSales.filter((sale) => isTodaySale(sale)), [completedSales]);
   const cashSummary = useMemo(() => {
     const active = todaySales.filter((sale) => sale.status !== "Cancelada");
@@ -259,12 +270,14 @@ export default function VendasPOS() {
 
         {mainTab === "Vendas" ? (
           <>
-            <div className="mt-5 grid gap-3 lg:grid-cols-[minmax(0,1fr)_170px_190px]">
-              <Input value={saleQuery} onChange={(event) => setSaleQuery(event.target.value)} placeholder="Buscar por cliente, item, vendedor ou codigo..." />
+            <div className="mt-5">
+              <ListToolbar query={saleQuery} onQueryChange={setSaleQuery} queryPlaceholder="Buscar por cliente, item, vendedor ou codigo..." pageSize={salesPageSize} onPageSizeChange={setSalesPageSize} onClear={() => { setSaleQuery(""); setStatusFilter("Todos"); setPaymentFilter("Todos"); }}>
               <Select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option>Todos</option><option>Concluida</option><option>Cancelada</option><option>Reembolsada</option></Select>
               <Select value={paymentFilter} onChange={(event) => setPaymentFilter(event.target.value)}>{paymentMethods.map((method) => <option key={method}>{method}</option>)}</Select>
+              </ListToolbar>
             </div>
-            <SalesTable sales={filteredSales} onView={setSelectedSale} onReceipt={downloadReceipt} onDuplicate={fillCartFromSale} onCancel={(sale) => { setSelectedSale(sale); setModal("cancelSale"); }} />
+            <SalesTable sales={salesPageData.pageRows} onView={setSelectedSale} onReceipt={downloadReceipt} onDuplicate={fillCartFromSale} onCancel={(sale) => { setSelectedSale(sale); setModal("cancelSale"); }} />
+            <ListPagination page={salesPageData.page} totalPages={salesPageData.totalPages} totalItems={filteredSales.length} start={salesPageData.start} end={salesPageData.end} label="vendas" onPageChange={setSalesPage} />
             {selectedSale ? <SaleDetails sale={selectedSale} onClose={() => setSelectedSale(null)} /> : null}
           </>
         ) : null}
@@ -276,9 +289,13 @@ export default function VendasPOS() {
                 <h2 className="font-semibold">Orcamentos salvos</h2>
                 <p className="text-sm text-zinc-400">Converta propostas em vendas ou reutilize os itens no carrinho.</p>
               </div>
-              <span className="text-sm text-zinc-400">{quotes.length} registos</span>
+              <span className="text-sm text-zinc-400">{filteredQuotes.length} registos</span>
             </div>
-            <SalesTable sales={quotes} onView={setSelectedSale} onReceipt={downloadReceipt} onDuplicate={fillCartFromSale} onConvert={fillCartFromSale} />
+            <div className="mt-4">
+              <ListToolbar query={quoteQuery} onQueryChange={setQuoteQuery} queryPlaceholder="Buscar por cliente, item, vendedor ou codigo..." pageSize={quotesPageSize} onPageSizeChange={setQuotesPageSize} onClear={() => setQuoteQuery("")} />
+            </div>
+            <SalesTable sales={quotesPageData.pageRows} onView={setSelectedSale} onReceipt={downloadReceipt} onDuplicate={fillCartFromSale} onConvert={fillCartFromSale} />
+            <ListPagination page={quotesPageData.page} totalPages={quotesPageData.totalPages} totalItems={filteredQuotes.length} start={quotesPageData.start} end={quotesPageData.end} label="orcamentos" onPageChange={setQuotesPage} />
             {selectedSale ? <SaleDetails sale={selectedSale} onClose={() => setSelectedSale(null)} /> : null}
           </>
         ) : null}

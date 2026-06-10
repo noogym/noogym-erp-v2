@@ -69,7 +69,10 @@ export function ManualCheckinModal({ open, onClose }: { open: boolean; onClose: 
       toastInfo("Sem clientes", "Cadastre um cliente antes de realizar check-in.");
       return;
     }
-    addCheckin({ clientName: selected.name, clientId: selected.id, type: "Manual", accessType, dateTime: today });
+    if (!addCheckin({ clientName: selected.name, clientId: selected.id, type: "Manual", accessType, dateTime: today })) {
+      toastInfo("Check-in bloqueado", "Este cliente nao esta ativo.");
+      return;
+    }
     toastSuccess("Check-in realizado", `${selected.name} registado com sucesso.`);
     onClose();
   };
@@ -137,7 +140,10 @@ export function QrScannerModal({ open, onClose }: { open: boolean; onClose: () =
       toastInfo("Sem clientes", "Cadastre um cliente antes de realizar check-in.");
       return;
     }
-    addCheckin({ clientName: client.name, clientId: client.id, type: "QR Code", accessType: "Entrada", dateTime: today });
+    if (!addCheckin({ clientName: client.name, clientId: client.id, type: "QR Code", accessType: "Entrada", dateTime: today })) {
+      toastInfo("Check-in bloqueado", "Este cliente nao esta ativo.");
+      return;
+    }
     toastSuccess("Check-in realizado", "QR Code confirmado com sucesso.");
     setScanned(false);
     onClose();
@@ -199,7 +205,7 @@ export function NewCheckinModal({ open, onClose }: { open: boolean; onClose: () 
       return;
     }
 
-    addCheckin({
+    const created = addCheckin({
       clientName: selectedClient.name,
       clientId: selectedClient.id,
       type: tab === "Check-in avulso" ? "Manual" : checkinType,
@@ -208,6 +214,10 @@ export function NewCheckinModal({ open, onClose }: { open: boolean; onClose: () 
       checkedAtIso: parsedDate.toISOString(),
       observation: observation.trim() || undefined
     });
+    if (!created) {
+      toastInfo("Check-in bloqueado", "Este cliente nao esta ativo.");
+      return;
+    }
     toastSuccess("Check-in realizado", "Resumo do dia atualizado.");
     onClose();
   };

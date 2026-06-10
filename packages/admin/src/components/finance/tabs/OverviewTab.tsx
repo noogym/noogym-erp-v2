@@ -56,8 +56,8 @@ export function OverviewTab({ data, openAction }: FinanceTabProps): FinanceTabVi
             <p className="mt-2 text-2xl font-semibold">{money(data.cashFlow.currentBalance)}</p>
           </div>
           <h3 className="mt-5 font-semibold">Contas</h3>
-          {data.accounts.cards.map(([name, balance, entries, exits]) => (
-            <button key={name} className="mt-3 flex w-full justify-between rounded-md bg-white/[0.035] p-3 text-sm" onClick={() => openAction({ title: `Detalhes - ${name}`, rows: [["Saldo", balance], ["Entradas", entries], ["Saidas", exits]] })}>
+          {data.accounts.cards.map(([name, balance, entries, exits], index) => (
+            <button key={`${name}-${index}`} className="mt-3 flex w-full justify-between rounded-md bg-white/[0.035] p-3 text-sm" onClick={() => openAction({ title: `Detalhes - ${name}`, rows: [["Saldo", balance], ["Entradas", entries], ["Saidas", exits]] })}>
               <span>{name}</span>
               <span>{balance}</span>
             </button>

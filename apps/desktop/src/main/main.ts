@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain, type IpcMainInvokeEvent } from "electron";
 import path from "node:path";
+import { registerPrinterIpc } from "./printer-ipc";
 
 const MIN_ZOOM_FACTOR = 0.85;
 const MAX_ZOOM_FACTOR = 1.25;
@@ -61,6 +62,7 @@ app.whenReady().then(() => {
     window?.webContents.setZoomFactor(nextZoomFactor);
     return nextZoomFactor;
   });
+  registerPrinterIpc(ipcMain);
   createWindow();
 
   app.on("activate", () => {

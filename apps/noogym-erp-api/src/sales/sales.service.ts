@@ -11,6 +11,7 @@ import {
 } from '@prisma/client';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 import { getPagination, paginated } from '../common/utils/pagination';
+import { assertActiveMember } from '../members/member-status';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateSaleDto, CreateSaleItemDto } from './dto/create-sale.dto';
 
@@ -278,12 +279,14 @@ export class SalesService {
       );
     }
     if (dto.memberId) {
-      checks.push(
-        this.prisma.member.findFirst({
-          where: { id: dto.memberId, organizationId },
-          select: { id: true },
-        }),
-      );
+      const member = await this.prisma.member.findFirst({
+        where: { id: dto.memberId, organizationId },
+        select: { id: true, status: true },
+      });
+      if (!member) {
+        throw new NotFoundException('Related sale entity not found');
+      }
+      assertActiveMember(member);
     }
     const results = await Promise.all(checks);
     if (results.some((result) => !result)) {

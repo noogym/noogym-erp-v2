@@ -1,5 +1,5 @@
-import { Archive, BarChart3, ClipboardList, Copy, Dumbbell, Edit, Eye, Library, Pause, Play, Plus, Search, Trash2, UserPlus, UsersRound } from "lucide-react";
-import { useMemo, useState } from "react";
+import { Archive, BarChart3, ClipboardList, Copy, Dumbbell, Edit, Eye, Library, Pause, Play, Plus, Trash2, UserPlus, UsersRound } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { ConfirmModal } from "../components/modals/ConfirmModal";
 import { ExerciseLibraryModal, WorkoutBuilderModal } from "../components/modals/OperationalModals";
 import { PageHeader } from "../components/layout/PageHeader";
@@ -13,6 +13,7 @@ import { Select } from "@noogym/ui";
 import { StatusDot } from "../components/ui/StatusDot";
 import { Table } from "@noogym/ui";
 import { Tabs } from "@noogym/ui";
+import { ListPagination, ListToolbar, paginateRows } from "../components/tables/ListControls";
 import { useClientsStore } from "../store/clientsStore";
 import { useWorkoutsStore } from "../store/workoutsStore";
 import { toastInfo, toastSuccess } from "../store/toastStore";
@@ -52,6 +53,8 @@ export default function Treinos() {
   const [trainerFilter, setTrainerFilter] = useState("Todos os treinadores");
   const [goalFilter, setGoalFilter] = useState("Todos os objetivos");
   const [statusFilter, setStatusFilter] = useState("Status: Todos");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
   const [libraryQuery, setLibraryQuery] = useState("");
   const workouts = useWorkoutsStore((state) => state.workouts);
   const duplicateWorkout = useWorkoutsStore((state) => state.duplicateWorkout);
@@ -76,6 +79,8 @@ export default function Treinos() {
       return matchesQuery && matchesTrainer && matchesGoal && matchesStatus && matchesTab;
     });
   }, [activeTab, goalFilter, query, statusFilter, trainerFilter, workouts]);
+  const pageData = useMemo(() => paginateRows(filteredWorkouts, page, pageSize), [filteredWorkouts, page, pageSize]);
+  useEffect(() => setPage(1), [goalFilter, pageSize, query, statusFilter, trainerFilter]);
 
   const filteredExercises = useMemo(() => {
     const normalizedQuery = libraryQuery.trim().toLowerCase();
@@ -119,18 +124,14 @@ export default function Treinos() {
 
         {activeTab === "Planos de treino" && (
           <div className="space-y-4">
-            <div className="grid gap-3 xl:grid-cols-[1fr_210px_190px_160px]">
-              <div className="relative">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
-                <Input className="pl-10" placeholder="Buscar por treino, cliente, objetivo ou treinador..." value={query} onChange={(event) => setQuery(event.target.value)} />
-              </div>
+            <ListToolbar query={query} onQueryChange={setQuery} queryPlaceholder="Buscar por treino, cliente, objetivo ou treinador..." pageSize={pageSize} onPageSizeChange={setPageSize} onClear={() => { setQuery(""); setTrainerFilter("Todos os treinadores"); setGoalFilter("Todos os objetivos"); setStatusFilter("Status: Todos"); }}>
               <Select value={trainerFilter} onChange={(event) => setTrainerFilter(event.target.value)}>{trainers.map((trainer) => <option key={trainer}>{trainer}</option>)}</Select>
               <Select value={goalFilter} onChange={(event) => setGoalFilter(event.target.value)}>{goals.map((goal) => <option key={goal}>{goal}</option>)}</Select>
               <Select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>{["Status: Todos", "Status: Ativo", "Status: Rascunho", "Status: Pausado", "Status: Arquivado"].map((status) => <option key={status}>{status}</option>)}</Select>
-            </div>
+            </ListToolbar>
 
             <Table columns={["Treino", "Cliente", "Objetivo", "Frequencia", "Exercicios", "Revisao", "Status", "Acoes"]}>
-              {filteredWorkouts.map((workout) => (
+              {pageData.pageRows.map((workout) => (
                 <tr key={workout.id} className="table-row">
                   <td className="px-4 py-3">
                     <button className="flex items-center gap-3 text-left" onClick={() => openEditor(workout)}>
@@ -157,6 +158,7 @@ export default function Treinos() {
                 </tr>
               ))}
             </Table>
+            <ListPagination page={pageData.page} totalPages={pageData.totalPages} totalItems={filteredWorkouts.length} start={pageData.start} end={pageData.end} label="treinos" onPageChange={setPage} />
             {!filteredWorkouts.length && <p className="rounded-lg border border-white/10 p-6 text-center text-sm text-zinc-400">Nenhum treino encontrado para os filtros selecionados.</p>}
           </div>
         )}

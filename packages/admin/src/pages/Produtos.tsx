@@ -1,5 +1,5 @@
-import { Archive, Download, Edit, Eye, Package, Plus, RotateCcw, Search, Tag, Trash2, TrendingUp } from "lucide-react";
-import { useMemo, useState } from "react";
+import { Archive, Download, Edit, Eye, Package, Plus, RotateCcw, Tag, Trash2, TrendingUp } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { ConfirmModal } from "../components/modals/ConfirmModal";
 import { ImportModal } from "../components/modals/ImportModal";
 import { CategoryModal, ProductFormModal, StockMovementModal } from "../components/modals/OperationalModals";
@@ -7,13 +7,13 @@ import { PageHeader } from "../components/layout/PageHeader";
 import { Badge } from "@noogym/ui";
 import { Button } from "@noogym/ui";
 import { Card } from "@noogym/ui";
-import { Input } from "@noogym/ui";
 import { MetricCard } from "@noogym/ui";
 import { ProductVisual } from "../components/ui/ProductVisual";
 import { Select } from "@noogym/ui";
 import { StatusDot } from "../components/ui/StatusDot";
 import { Table } from "@noogym/ui";
 import { Tabs } from "@noogym/ui";
+import { ListPagination, ListToolbar, paginateRows } from "../components/tables/ListControls";
 import { formatKz as money } from "@noogym/core";
 import { useProductsStore } from "../store/productsStore";
 import { useSalesStore } from "../store/salesStore";
@@ -53,6 +53,8 @@ export default function Produtos() {
   const [query, setQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("Todas as categorias");
   const [statusFilter, setStatusFilter] = useState("Status: Todos");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
   const [modal, setModal] = useState<"new" | "edit" | "import" | "deactivate" | "category" | "editCategory" | "stock" | null>(null);
   const [selected, setSelected] = useState<ProductRecord | undefined>();
   const [selectedCategory, setSelectedCategory] = useState<ProductCategoryRecord | null>(null);
@@ -75,6 +77,8 @@ export default function Produtos() {
     const matchesStatus = statusFilter === "Status: Todos" || statusFilter.replace("Status: ", "") === status;
     return matchesQuery && matchesCategory && matchesStatus;
   }), [categoryFilter, products, query, statusFilter]);
+  const pageData = useMemo(() => paginateRows(filtered, page, pageSize), [filtered, page, pageSize]);
+  useEffect(() => setPage(1), [categoryFilter, pageSize, query, statusFilter]);
   const activeProduct = selected ?? filtered[0] ?? products[0];
   const lowStock = products.filter((product) => productStatus(product) === "Estoque baixo");
   const outOfStock = products.filter((product) => product.stock <= 0);
@@ -114,16 +118,12 @@ export default function Produtos() {
 
         {activeTab === "Produtos" && (
           <div className="space-y-4">
-            <div className="grid gap-3 xl:grid-cols-[1fr_220px_180px]">
-              <div className="relative">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
-                <Input className="pl-10" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar produto por nome, SKU ou codigo..." />
-              </div>
+            <ListToolbar query={query} onQueryChange={setQuery} queryPlaceholder="Buscar produto por nome, SKU ou codigo..." pageSize={pageSize} onPageSizeChange={setPageSize} onClear={() => { setQuery(""); setCategoryFilter("Todas as categorias"); setStatusFilter("Status: Todos"); }}>
               <Select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}>{categoryOptions.map((category) => <option key={category}>{category}</option>)}</Select>
               <Select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>{["Status: Todos", "Status: Ativo", "Status: Estoque baixo", "Status: Sem estoque", "Status: Inativo"].map((status) => <option key={status}>{status}</option>)}</Select>
-            </div>
+            </ListToolbar>
             <Table columns={["Produto", "Categoria", "Estoque", "Minimo", "Preco", "Margem", "Status", "Acoes"]}>
-              {filtered.map((product) => {
+              {pageData.pageRows.map((product) => {
                 const status = productStatus(product);
                 const margin = product.price - product.cost;
                 return (
@@ -140,6 +140,7 @@ export default function Produtos() {
                 );
               })}
             </Table>
+            <ListPagination page={pageData.page} totalPages={pageData.totalPages} totalItems={filtered.length} start={pageData.start} end={pageData.end} label="produtos" onPageChange={setPage} />
             {!filtered.length && <p className="rounded-lg border border-white/10 p-6 text-center text-sm text-zinc-400">Nenhum produto encontrado para os filtros selecionados.</p>}
           </div>
         )}
