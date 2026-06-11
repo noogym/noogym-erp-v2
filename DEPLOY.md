@@ -15,6 +15,12 @@ Este deploy sobe apenas a versao web do admin, a API e o MySQL.
 docker compose up -d --build
 ```
 
+Para subir localmente com portas publicadas no host:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.local.yml up -d --build
+```
+
 Para acompanhar logs:
 
 ```bash
@@ -38,6 +44,9 @@ Campos que devem mudar em producao:
 - `JWT_SECRET`
 - `CORS_ORIGINS`
 - `NEXT_PUBLIC_NOOGYM_API_URL`
+
+No Coolify, configure o dominio do servico `web-admin` para a porta interna `3000`.
+Se publicar a API separadamente, configure o dominio do servico `api` para a porta interna `3333`.
 
 Exemplo para dominio real:
 
