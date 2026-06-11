@@ -77,7 +77,7 @@ function LineVisual({ series, factor, showComparison }: { series: ReportSeries; 
         })}
       </svg>
       <div className="mt-2 grid grid-flow-col text-center text-xs text-zinc-400">
-        {series.labels.map((label) => <span key={label} className="min-w-0 truncate px-0.5">{label}</span>)}
+        {series.labels.map((label, index) => <span key={`${label}-${index}`} className="min-w-0 truncate px-0.5">{label}</span>)}
       </div>
       <div className="mt-3 flex flex-wrap justify-center gap-x-6 gap-y-2 text-xs text-zinc-400">
         <span className="inline-flex items-center gap-2"><span className="h-0.5 w-8 bg-noogym-lime" />Periodo ativo</span>
@@ -93,7 +93,7 @@ function BarVisual({ series, factor }: { series: ReportSeries; factor: number })
   return (
     <div className="flex h-56 min-w-0 items-end gap-2 px-1 pt-3 sm:gap-4 sm:px-3">
       {values.map((value, index) => (
-        <div key={series.labels[index]} className="flex min-w-0 flex-1 flex-col items-center gap-2">
+        <div key={`${series.labels[index] ?? "bar"}-${index}`} className="flex min-w-0 flex-1 flex-col items-center gap-2">
           <span className="text-xs text-zinc-100">{value}</span>
           <div className="w-full max-w-9 rounded-t bg-gradient-to-t from-[#6f9700] to-noogym-lime shadow-glow" style={{ height: `${Math.max(18, (value / max) * 150)}px` }} />
           <span className="max-w-full truncate text-xs text-zinc-400">{series.labels[index]}</span>
@@ -116,9 +116,9 @@ function DonutVisual({ center, items }: { center: string; items: DonutItem[] }) 
       <div className="relative h-32 w-32 shrink-0 sm:h-40 sm:w-40">
         <svg viewBox="0 0 42 42" className="-rotate-90">
           <circle cx="21" cy="21" r="15.9" fill="transparent" stroke="rgba(255,255,255,.08)" strokeWidth="6" />
-          {hasSlices ? chartItems.map((item) => {
+          {hasSlices ? chartItems.map((item, index) => {
             const dash = (item.value / total) * 100;
-            const circle = <circle key={item.label} cx="21" cy="21" r="15.9" fill="transparent" stroke={item.color} strokeWidth="6" strokeDasharray={`${dash} ${100 - dash}`} strokeDashoffset={offset} />;
+            const circle = <circle key={`${item.label}-${index}`} cx="21" cy="21" r="15.9" fill="transparent" stroke={item.color} strokeWidth="6" strokeDasharray={`${dash} ${100 - dash}`} strokeDashoffset={offset} />;
             offset -= dash;
             return circle;
           }) : null}
@@ -129,8 +129,8 @@ function DonutVisual({ center, items }: { center: string; items: DonutItem[] }) 
         </div>
       </div>
       <div className="w-full min-w-0 flex-1 space-y-3 text-sm">
-        {chartItems.map((item) => (
-          <div key={item.label} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
+        {chartItems.map((item, index) => (
+          <div key={`${item.label}-${index}`} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
             <span className="flex min-w-0 items-center gap-2 text-zinc-200">
               <span className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: item.color }} />
               <span className="truncate">{item.label}</span>
@@ -148,14 +148,14 @@ function Heatmap({ section, factor }: { section: Extract<ReportSection, { type: 
     <div>
       <div className="grid gap-1 text-xs" style={{ gridTemplateColumns: `42px repeat(${section.columns.length}, minmax(0, 1fr))` }}>
         <span />
-        {section.columns.map((column) => <span key={column} className="text-center text-zinc-300">{column}</span>)}
+        {section.columns.map((column, index) => <span key={`${column}-${index}`} className="text-center text-zinc-300">{column}</span>)}
         {section.rows.map((row, rowIndex) => (
-          <Fragment key={row}>
+          <Fragment key={`${row}-${rowIndex}`}>
             <span key={`${row}-label`} className="flex items-center text-zinc-300">{row}</span>
             {section.columns.map((column, columnIndex) => {
               const value = Math.min(100, Math.round(section.values[rowIndex][columnIndex] * factor));
               const color = value > 78 ? `rgb(${180 + value / 2}, ${120 - value / 5}, 24)` : value > 52 ? `rgb(${170 + value / 3}, ${210 - value / 3}, 18)` : `rgb(${30 + value}, ${80 + value * 1.2}, 28)`;
-              return <span key={`${row}-${column}`} className="h-6 rounded-sm border border-black/30" style={{ backgroundColor: color }} />;
+              return <span key={`${row}-${rowIndex}-${column}-${columnIndex}`} className="h-6 rounded-sm border border-black/30" style={{ backgroundColor: color }} />;
             })}
           </Fragment>
         ))}
@@ -174,7 +174,7 @@ function HorizontalBars({ labels, values, suffix = "" }: { labels: string[]; val
   return (
     <div className="space-y-4 py-3">
       {labels.map((label, index) => (
-        <div key={label} className="grid grid-cols-[minmax(96px,150px)_minmax(0,1fr)_52px] items-center gap-3 text-sm">
+        <div key={`${label}-${index}`} className="grid grid-cols-[minmax(96px,150px)_minmax(0,1fr)_52px] items-center gap-3 text-sm">
           <span className="truncate text-zinc-300">{label}</span>
           <span className="h-7 rounded bg-white/[0.035]"><span className="block h-full rounded bg-gradient-to-r from-[#6f9700] to-noogym-lime" style={{ width: `${(values[index] / max) * 100}%` }} /></span>
           <span className="text-right text-zinc-100">{Math.round(values[index])}{suffix}</span>
@@ -188,8 +188,8 @@ function Summary({ items }: { items: Extract<ReportSection, { type: "summary" }>
   const tone = { lime: "text-noogym-lime", yellow: "text-yellow-300", purple: "text-purple-300", blue: "text-sky-300", orange: "text-orange-300", red: "text-red-300", green: "text-green-300" };
   return (
     <div className="space-y-3">
-      {items.map((item) => (
-        <div key={item.label} className="flex items-center justify-between gap-4 rounded-md border border-white/10 bg-white/[0.025] px-4 py-3 text-sm">
+      {items.map((item, index) => (
+        <div key={`${item.label}-${index}`} className="flex items-center justify-between gap-4 rounded-md border border-white/10 bg-white/[0.025] px-4 py-3 text-sm">
           <span className="text-zinc-300">{item.label}</span>
           <span className={`text-right font-medium ${item.tone ? tone[item.tone] : "text-zinc-100"}`}>{item.value}{item.trend ? <span className="ml-3 text-xs text-noogym-lime">{item.trend}</span> : null}</span>
         </div>
@@ -201,8 +201,8 @@ function Summary({ items }: { items: Extract<ReportSection, { type: "summary" }>
 function Funnel({ section }: { section: Extract<ReportSection, { type: "funnel" }> }) {
   return (
     <div className="space-y-3">
-      {section.items.map((item) => (
-        <div key={item.label} className="grid grid-cols-[minmax(0,1fr)_64px] items-center gap-4 text-sm">
+      {section.items.map((item, index) => (
+        <div key={`${item.label}-${index}`} className="grid grid-cols-[minmax(0,1fr)_64px] items-center gap-4 text-sm">
           <span className="rounded bg-white/[0.06] px-3 py-2 text-zinc-200" style={{ width: `${item.percent}%` }}>{item.label}</span>
           <span className="text-right text-zinc-100">{item.value}</span>
         </div>

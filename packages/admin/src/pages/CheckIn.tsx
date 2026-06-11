@@ -1,5 +1,5 @@
-import { Calendar, ClipboardCheck, Download, Filter, History, RefreshCw, UserCheck } from "lucide-react";
-import { useMemo, useState } from "react";
+import { Calendar, ClipboardCheck, Download, History, RefreshCw, UserCheck } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import type { CheckinRecord } from "@noogym/types";
 import { NewCheckinModal } from "../components/modals/OperationalModals";
 import { PageHeader } from "../components/layout/PageHeader";
@@ -7,12 +7,12 @@ import { Avatar } from "../components/ui/Avatar";
 import { Button } from "@noogym/ui";
 import { Card } from "@noogym/ui";
 import { DropdownMenu } from "@noogym/ui";
-import { Input } from "@noogym/ui";
 import { LineChart } from "../components/ui/Charts";
 import { Modal } from "@noogym/ui";
 import { Select } from "@noogym/ui";
 import { StatusDot } from "../components/ui/StatusDot";
 import { Table } from "@noogym/ui";
+import { ListPagination, ListToolbar, paginateRows } from "../components/tables/ListControls";
 import { useCheckinsStore } from "../store/checkinsStore";
 import { toastInfo, toastSuccess } from "../store/toastStore";
 
@@ -87,6 +87,8 @@ export default function CheckIn() {
   const [query, setQuery] = useState("");
   const [type, setType] = useState("Todos os tipos");
   const [date, setDate] = useState(todayInputValue);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
   const checkins = useCheckinsStore((state) => state.checkins);
   const loadOnline = useCheckinsStore((state) => state.loadOnline);
 
@@ -96,6 +98,8 @@ export default function CheckIn() {
     const matchesDate = normalizeCheckinDate(checkin.dateTime) === date;
     return matchesQuery && matchesType && matchesDate;
   }), [checkins, date, query, type]);
+  const pageData = useMemo(() => paginateRows(filtered, page, pageSize), [filtered, page, pageSize]);
+  useEffect(() => setPage(1), [date, pageSize, query, type]);
   const chartValues = useMemo(() => chartBuckets(filtered), [filtered]);
 
   const resetFilters = () => {
@@ -138,18 +142,16 @@ export default function CheckIn() {
             </>
           }
         />
-        <div className="grid gap-3 md:grid-cols-[180px_180px_minmax(0,1fr)_120px]">
+        <ListToolbar query={query} onQueryChange={setQuery} queryPlaceholder="Buscar por cliente, BI ou codigo..." pageSize={pageSize} onPageSizeChange={setPageSize} onClear={resetFilters}>
           <label className="relative block">
             <Calendar className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
             <input className="h-10 w-full rounded-md border border-white/10 bg-black/20 pl-10 pr-3 text-sm text-white outline-none transition focus:border-noogym-lime/70" type="date" value={date} onChange={(event) => setDate(event.target.value)} />
           </label>
           <Select value={type} onChange={(event) => setType(event.target.value)}><option>Todos os tipos</option><option>Presencial</option><option>QR Code</option><option>App</option><option>Manual</option></Select>
-          <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar por cliente, BI ou codigo..." />
-          <Button icon={<Filter className="h-4 w-4" />} onClick={resetFilters}>Filtros</Button>
-        </div>
+        </ListToolbar>
         <Card className="mt-4 p-3 sm:p-4">
           <Table columns={["Cliente", "Codigo", "Entrada", "Tipo", "Acesso", "Observacao", "Status"]} containerClassName="max-h-[min(58dvh,620px)]">
-            {filtered.map((checkin) => (
+            {pageData.pageRows.map((checkin) => (
               <tr key={checkin.id} className="table-row">
                 <td className="px-4 py-3"><div className="flex min-w-52 items-center gap-3"><Avatar label={checkin.clientName.slice(0, 2)} /><span className="truncate">{checkin.clientName}</span></div></td>
                 <td className="max-w-56 truncate px-4 py-3" title={checkin.clientId}>{checkin.clientId}</td>
@@ -161,7 +163,7 @@ export default function CheckIn() {
               </tr>
             ))}
           </Table>
-          <p className="mt-4 text-sm text-zinc-400">Mostrando {filtered.length} de {checkins.length} check-ins em {formatInputDate(date)}</p>
+          <ListPagination page={pageData.page} totalPages={pageData.totalPages} totalItems={filtered.length} start={pageData.start} end={pageData.end} label={`check-ins em ${formatInputDate(date)}`} onPageChange={setPage} />
         </Card>
       </div>
       <aside className="grid min-w-0 content-start gap-3 xl:grid-cols-2 2xl:grid-cols-1">
@@ -176,14 +178,18 @@ export default function CheckIn() {
 
 function AccessHistoryModal({ open, checkins, onClose }: { open: boolean; checkins: CheckinRecord[]; onClose: () => void }) {
   const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
   const filtered = useMemo(() => checkins.filter((checkin) => `${checkin.clientName} ${checkin.clientId} ${checkin.type}`.toLowerCase().includes(query.toLowerCase())), [checkins, query]);
+  const pageData = useMemo(() => paginateRows(filtered, page, pageSize), [filtered, page, pageSize]);
+  useEffect(() => setPage(1), [pageSize, query]);
 
   return (
     <Modal open={open} title="Historico de acesso" description="Consulte os check-ins registrados por cliente, codigo ou tipo." size="lg" onClose={onClose}>
       <div className="space-y-4">
-        <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar no historico..." />
+        <ListToolbar query={query} onQueryChange={setQuery} queryPlaceholder="Buscar no historico..." pageSize={pageSize} onPageSizeChange={setPageSize} onClear={() => setQuery("")} />
         <Table columns={["Cliente", "Codigo", "Entrada", "Tipo", "Acesso", "Observacao"]} containerClassName="max-h-[58dvh]">
-          {filtered.map((checkin) => (
+          {pageData.pageRows.map((checkin) => (
             <tr key={checkin.id} className="table-row">
               <td className="px-4 py-3"><div className="flex items-center gap-3"><Avatar label={checkin.clientName.slice(0, 2)} /><span>{checkin.clientName}</span></div></td>
               <td className="px-4 py-3">{checkin.clientId}</td>
@@ -194,7 +200,7 @@ function AccessHistoryModal({ open, checkins, onClose }: { open: boolean; checki
             </tr>
           ))}
         </Table>
-        <p className="text-sm text-zinc-400">Mostrando {filtered.length} de {checkins.length} registros</p>
+        <ListPagination page={pageData.page} totalPages={pageData.totalPages} totalItems={filtered.length} start={pageData.start} end={pageData.end} label="registros" onPageChange={setPage} />
       </div>
     </Modal>
   );

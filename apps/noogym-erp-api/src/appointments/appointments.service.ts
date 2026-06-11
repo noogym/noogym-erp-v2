@@ -6,6 +6,7 @@ import {
 import { AppointmentStatus, Prisma } from '@prisma/client';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 import { getPagination, paginated } from '../common/utils/pagination';
+import { assertActiveMember } from '../members/member-status';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
 import { UpdateAppointmentDto } from './dto/update-appointment.dto';
@@ -113,18 +114,21 @@ export class AppointmentsService {
   ) {
     const checks: Promise<unknown>[] = [];
 
+    if (dto.memberId) {
+      const member = await this.prisma.member.findFirst({
+        where: { id: dto.memberId, organizationId },
+        select: { id: true, status: true },
+      });
+      if (!member) {
+        throw new NotFoundException('Related appointment entity not found');
+      }
+      assertActiveMember(member);
+    }
+
     if (dto.gymId) {
       checks.push(
         this.prisma.gym.findFirst({
           where: { id: dto.gymId, organizationId },
-          select: { id: true },
-        }),
-      );
-    }
-    if (dto.memberId) {
-      checks.push(
-        this.prisma.member.findFirst({
-          where: { id: dto.memberId, organizationId },
           select: { id: true },
         }),
       );

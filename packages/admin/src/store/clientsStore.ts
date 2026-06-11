@@ -4,6 +4,7 @@ import { clientFromApi, clientToDto, createResource, createSubscription, listRes
 import { readLocal, uid, writeLocal } from "../lib/storage";
 import { useAppStore } from "./appStore";
 import { useAuthStore } from "./authStore";
+import { useNotificationsStore } from "./notificationsStore";
 import type { ClientRecord } from "@noogym/types";
 
 const initialClients = mockClients.map((client) => ({ ...client, document: "000000000LA000" })) as ClientRecord[];
@@ -37,7 +38,8 @@ export const useClientsStore = create<ClientsState>((set, get) => ({
   loadOnline: async () => {
     const token = useAuthStore.getState().accessToken;
     if (!token) return;
-    const members = await listResource<Record<string, unknown>>("members", token);
+    const activeGymId = useAppStore.getState().activeGymId ?? undefined;
+    const members = await listResource<Record<string, unknown>>("members", token, { gymId: activeGymId });
     const clients = members.map(clientFromApi);
     persist(clients);
     set({ clients });
@@ -45,6 +47,7 @@ export const useClientsStore = create<ClientsState>((set, get) => ({
   addClient: (client) => {
     const created: ClientRecord = {
       id: client.id ?? uid("CLI"),
+      gymId: client.gymId ?? useAppStore.getState().activeGymId ?? undefined,
       name: client.name ?? "Novo cliente",
       phone: client.phone ?? "+244 900 000 000",
       email: client.email ?? "cliente@email.com",
@@ -74,6 +77,15 @@ export const useClientsStore = create<ClientsState>((set, get) => ({
     const clients = [created, ...get().clients];
     persist(clients);
     useAppStore.getState().addPendingSync();
+    useNotificationsStore.getState().addNotification({
+      sourceId: `event:clients:created:${created.id}`,
+      title: "Novo cliente cadastrado",
+      description: `${created.name} entrou na base de clientes.`,
+      category: "clients",
+      tone: "success",
+      route: "clientes",
+      actionLabel: "Ver cliente"
+    });
     set({ clients });
     const token = useAuthStore.getState().accessToken;
     if (useAppStore.getState().onlineOnly && token) {
@@ -102,6 +114,17 @@ export const useClientsStore = create<ClientsState>((set, get) => ({
     const clients = state.clients.map((client) => client.id === id ? { ...client, ...data } : client);
     persist(clients);
     useAppStore.getState().addPendingSync();
+    if (data.status && updatedClient?.status !== data.status) {
+      useNotificationsStore.getState().addNotification({
+        sourceId: `event:clients:status:${id}:${data.status}`,
+        title: "Status do cliente atualizado",
+        description: `${fallback.name} agora esta ${data.status}.`,
+        category: "clients",
+        tone: data.status === "Ativo" ? "success" : "warning",
+        route: "clientes",
+        actionLabel: "Ver clientes"
+      });
+    }
     const token = useAuthStore.getState().accessToken;
     if (useAppStore.getState().onlineOnly && token) {
       updateResource<Record<string, unknown>>("members", id, token, clientToDto(fallback))

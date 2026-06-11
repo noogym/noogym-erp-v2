@@ -6,6 +6,7 @@ import {
 import { Prisma, SubscriptionStatus } from '@prisma/client';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 import { getPagination, paginated } from '../common/utils/pagination';
+import { assertActiveMember } from '../members/member-status';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateSubscriptionDto } from './dto/create-subscription.dto';
 
@@ -61,6 +62,7 @@ export class SubscriptionsService {
     ]);
 
     if (!member) throw new NotFoundException('Member not found');
+    assertActiveMember(member);
     if (!plan) throw new NotFoundException('Plan not found');
     if (activeSubscription) {
       throw new BadRequestException(

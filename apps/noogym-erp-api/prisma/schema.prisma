@@ -140,6 +140,11 @@ enum SaleStatus {
   REFUNDED
 }
 
+enum CashSessionStatus {
+  OPEN
+  CLOSED
+}
+
 enum SaleType {
   NORMAL
   QUOTE
@@ -209,6 +214,20 @@ model Organization {
   gymClasses     GymClass[]
   stockMovements StockMovement[]
   planCategories PlanCategory[]
+  financeAccounts FinanceAccount[]
+  financeCategories FinanceCategory[]
+  cashSessions CashSession[]
+  cashClosings CashClosing[]
+  operationalSetting OperationalSetting?
+}
+
+model OperationalSetting {
+  id             String       @id @default(uuid())
+  organizationId String       @unique
+  settings       Json
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id])
 }
 
 model Gym {
@@ -236,6 +255,8 @@ model Gym {
   sales          Sale[]
   employees      Employee[]
   gymClasses     GymClass[]
+  plans          PlanGym[]
+  cashSessions   CashSession[]
 }
 
 model User {
@@ -257,6 +278,8 @@ model User {
   appointments    Appointment[] @relation("AppointmentProfessional")
   employeeProfile Employee?
   sales           Sale[]        @relation("SaleSeller")
+  openedCashSessions CashSession[] @relation("CashSessionOpenedBy")
+  closedCashClosings CashClosing[] @relation("CashClosingClosedBy")
 }
 
 model UserGym {
@@ -320,6 +343,19 @@ model Plan {
   updatedAt        DateTime       @updatedAt
   organization     Organization   @relation(fields: [organizationId], references: [id])
   subscriptions    Subscription[]
+  gyms             PlanGym[]
+}
+
+model PlanGym {
+  id        String   @id @default(uuid())
+  planId    String
+  gymId     String
+  createdAt DateTime @default(now())
+  plan      Plan     @relation(fields: [planId], references: [id], onDelete: Cascade)
+  gym       Gym      @relation(fields: [gymId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, gymId])
+  @@index([gymId])
 }
 
 model PlanCategory {
@@ -393,6 +429,93 @@ model Expense {
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
   organization   Organization   @relation(fields: [organizationId], references: [id])
+}
+
+model FinanceAccount {
+  id             String       @id @default(uuid())
+  organizationId String
+  name           String
+  bank           String?
+  type           String       @default("Corrente")
+  openingBalance Decimal      @default(0) @db.Decimal(12, 2)
+  balance        Decimal      @default(0) @db.Decimal(12, 2)
+  status         String       @default("ACTIVE")
+  isDefault      Boolean      @default(false)
+  color          String       @default("#B6FF00")
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  @@unique([organizationId, name])
+  @@index([organizationId, status])
+}
+
+model FinanceCategory {
+  id             String       @id @default(uuid())
+  organizationId String
+  kind           String
+  name           String
+  description    String?
+  color          String       @default("#B6FF00")
+  status         String       @default("ACTIVE")
+  displayOrder   Int          @default(1)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  @@unique([organizationId, kind, name])
+  @@index([organizationId, kind, status])
+}
+
+model CashSession {
+  id             String            @id @default(uuid())
+  organizationId String
+  gymId          String?
+  openedById     String?
+  status         CashSessionStatus @default(OPEN)
+  openingAmount  Decimal           @default(0) @db.Decimal(12, 2)
+  openedAt       DateTime          @default(now())
+  notes          String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  organization   Organization      @relation(fields: [organizationId], references: [id])
+  gym            Gym?              @relation(fields: [gymId], references: [id])
+  openedBy       User?             @relation("CashSessionOpenedBy", fields: [openedById], references: [id])
+  closing        CashClosing?
+
+  @@index([organizationId, status, openedAt])
+  @@index([gymId, status])
+}
+
+model CashClosing {
+  id                  String       @id @default(uuid())
+  organizationId      String
+  sessionId           String       @unique
+  closedById          String?
+  expectedCash        Decimal      @default(0) @db.Decimal(12, 2)
+  actualCash          Decimal      @default(0) @db.Decimal(12, 2)
+  expectedCard        Decimal      @default(0) @db.Decimal(12, 2)
+  actualCard          Decimal      @default(0) @db.Decimal(12, 2)
+  expectedTransfer    Decimal      @default(0) @db.Decimal(12, 2)
+  actualTransfer      Decimal      @default(0) @db.Decimal(12, 2)
+  expectedMulticaixa  Decimal      @default(0) @db.Decimal(12, 2)
+  actualMulticaixa    Decimal      @default(0) @db.Decimal(12, 2)
+  expectedPix         Decimal      @default(0) @db.Decimal(12, 2)
+  actualPix           Decimal      @default(0) @db.Decimal(12, 2)
+  expectedOther       Decimal      @default(0) @db.Decimal(12, 2)
+  actualOther         Decimal      @default(0) @db.Decimal(12, 2)
+  expectedTotal       Decimal      @default(0) @db.Decimal(12, 2)
+  actualTotal         Decimal      @default(0) @db.Decimal(12, 2)
+  difference          Decimal      @default(0) @db.Decimal(12, 2)
+  notes               String?
+  closedAt            DateTime     @default(now())
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+  organization        Organization @relation(fields: [organizationId], references: [id])
+  session             CashSession  @relation(fields: [sessionId], references: [id])
+  closedBy            User?        @relation("CashClosingClosedBy", fields: [closedById], references: [id])
+
+  @@index([organizationId, closedAt])
 }
 
 model Room {

@@ -6,6 +6,7 @@ import {
 import { ClassEnrollmentStatus, GymClassStatus, Prisma } from '@prisma/client';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 import { getPagination, paginated } from '../common/utils/pagination';
+import { assertActiveMember } from '../members/member-status';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   CreateClassEnrollmentDto,
@@ -112,9 +113,10 @@ export class ClassesService {
 
     const member = await this.prisma.member.findFirst({
       where: { id: dto.memberId, organizationId },
-      select: { id: true },
+      select: { id: true, status: true },
     });
     if (!member) throw new NotFoundException('Member not found');
+    assertActiveMember(member);
 
     const activeEnrollments = gymClass.enrollments.filter(
       (enrollment) =>

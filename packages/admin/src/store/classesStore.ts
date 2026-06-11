@@ -4,6 +4,7 @@ import { classFromApi, classToDto, createResource, listResource, updateResource 
 import { readLocal, uid, writeLocal } from "../lib/storage";
 import { useAppStore } from "./appStore";
 import { useAuthStore } from "./authStore";
+import { useNotificationsStore } from "./notificationsStore";
 import { toastInfo } from "./toastStore";
 import type { ClassRecord } from "@noogym/types";
 
@@ -25,13 +26,14 @@ export const useClassesStore = create<{
   loadOnline: async () => {
     const token = useAuthStore.getState().accessToken;
     if (!token) return;
-    const apiClasses = await listResource<Record<string, unknown>>("classes", token);
+    const activeGymId = useAppStore.getState().activeGymId ?? undefined;
+    const apiClasses = await listResource<Record<string, unknown>>("classes", token, { gymId: activeGymId });
     const classes = apiClasses.map(classFromApi);
     persist(classes);
     set({ classes });
   },
   addClass: (lesson) => set((state) => {
-    const created: ClassRecord = { name: "Nova aula", room: "Sala 1", category: "Cardio", instructor: "Joao Silva", time: "Hoje, 10:00", duration: "55 min", seats: 25, participants: 0, status: "Agendada", allowWaitlist: true, requiresCheckIn: false, color: "#B6FF00", ...lesson, id: uid("CLS") };
+    const created: ClassRecord = { name: "Nova aula", gymId: useAppStore.getState().activeGymId ?? undefined, room: "Sala 1", category: "Cardio", instructor: "Joao Silva", time: "Hoje, 10:00", duration: "55 min", seats: 25, participants: 0, status: "Agendada", allowWaitlist: true, requiresCheckIn: false, color: "#B6FF00", ...lesson, id: uid("CLS") };
     const classes = [created, ...state.classes];
     persist(classes);
     useAppStore.getState().addPendingSync();
@@ -75,8 +77,50 @@ export const useClassesStore = create<{
     if (!lesson) return;
     get().addClass({ ...lesson, id: uid("CLS"), name: `${lesson.name} Copia`, participants: 0, status: "Agendada" });
   },
-  cancelClass: (id) => get().updateClass(id, { status: "Cancelada" }),
-  startClass: (id) => get().updateClass(id, { status: "Em andamento" }),
-  closeClass: (id) => get().updateClass(id, { status: "Encerrada" }),
+  cancelClass: (id) => {
+    const lesson = get().classes.find((item) => item.id === id);
+    get().updateClass(id, { status: "Cancelada" });
+    if (lesson) {
+      useNotificationsStore.getState().addNotification({
+        sourceId: `event:classes:cancelled:${id}`,
+        title: "Aula cancelada",
+        description: `${lesson.name} foi cancelada.`,
+        category: "classes",
+        tone: "warning",
+        route: "aulas",
+        actionLabel: "Ver aulas"
+      });
+    }
+  },
+  startClass: (id) => {
+    const lesson = get().classes.find((item) => item.id === id);
+    get().updateClass(id, { status: "Em andamento" });
+    if (lesson) {
+      useNotificationsStore.getState().addNotification({
+        sourceId: `event:classes:started:${id}`,
+        title: "Aula iniciada",
+        description: `${lesson.name} esta em andamento.`,
+        category: "classes",
+        tone: "success",
+        route: "aulas",
+        actionLabel: "Ver aula"
+      });
+    }
+  },
+  closeClass: (id) => {
+    const lesson = get().classes.find((item) => item.id === id);
+    get().updateClass(id, { status: "Encerrada" });
+    if (lesson) {
+      useNotificationsStore.getState().addNotification({
+        sourceId: `event:classes:closed:${id}`,
+        title: "Aula encerrada",
+        description: `${lesson.name} foi encerrada.`,
+        category: "classes",
+        tone: "info",
+        route: "aulas",
+        actionLabel: "Ver aulas"
+      });
+    }
+  },
   updateParticipants: (id, participants) => get().updateClass(id, { participants })
 }));

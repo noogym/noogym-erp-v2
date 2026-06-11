@@ -25,15 +25,19 @@ type SyncState = "idle" | "syncing";
 
 interface AppState {
   activeRoute: RouteId;
+  activeGymId: string | null;
   theme: ThemeMode;
   onlineOnly: boolean;
   isOffline: boolean;
+  isGymDataLoading: boolean;
   syncState: SyncState;
   syncLabel: string;
   pendingSync: number;
   zoomFactor: number;
   isStatusPanelCollapsed: boolean;
   addPendingSync: (amount?: number) => void;
+  setActiveGymId: (gymId: string | null) => void;
+  setGymDataLoading: (isGymDataLoading: boolean) => void;
   setRoute: (route: RouteId) => void;
   setOnlineOnly: (onlineOnly: boolean) => void;
   decreaseZoom: () => void;
@@ -68,17 +72,35 @@ const persistZoomFactor = (zoomFactor: number) => {
   localStorage.setItem("noogym:desktop-zoom-factor", String(zoomFactor));
 };
 
+const getInitialActiveGymId = () => {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem("noogym:active-gym-id");
+};
+
+const persistActiveGymId = (gymId: string | null) => {
+  if (typeof window === "undefined") return;
+  if (gymId) localStorage.setItem("noogym:active-gym-id", gymId);
+  else localStorage.removeItem("noogym:active-gym-id");
+};
+
 export const useAppStore = create<AppState>((set) => ({
   activeRoute: "dashboard",
+  activeGymId: getInitialActiveGymId(),
   theme: getInitialTheme(),
   onlineOnly: false,
   isOffline: true,
+  isGymDataLoading: false,
   syncState: "idle",
   syncLabel: "Sincronizado: Hoje, 10:30",
   pendingSync: 12,
   zoomFactor: getInitialZoomFactor(),
   isStatusPanelCollapsed: true,
   addPendingSync: (amount = 1) => set((state) => ({ pendingSync: state.isOffline && !state.onlineOnly ? state.pendingSync + amount : state.pendingSync })),
+  setActiveGymId: (gymId) => {
+    persistActiveGymId(gymId);
+    set({ activeGymId: gymId });
+  },
+  setGymDataLoading: (isGymDataLoading) => set({ isGymDataLoading }),
   setRoute: (route) => set({ activeRoute: route }),
   setOnlineOnly: (onlineOnly) =>
     set((state) => ({

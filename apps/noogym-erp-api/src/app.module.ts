@@ -18,6 +18,7 @@ import { EmployeesModule } from './employees/employees.module';
 import { EntrypointsModule } from './entrypoints/entrypoints.module';
 import { ExercisesModule } from './exercises/exercises.module';
 import { ExpensesModule } from './expenses/expenses.module';
+import { FinanceModule } from './finance/finance.module';
 import { GymsModule } from './gyms/gyms.module';
 import { IntegrationsModule } from './integrations/integrations.module';
 import { MembersModule } from './members/members.module';
@@ -29,6 +30,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { ProductsModule } from './products/products.module';
 import { ReportsModule } from './reports/reports.module';
 import { SalesModule } from './sales/sales.module';
+import { SettingsModule } from './settings/settings.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import { UsersModule } from './users/users.module';
 import { WorkoutsModule } from './workouts/workouts.module';
@@ -57,10 +59,12 @@ import { WorkoutsModule } from './workouts/workouts.module';
     PaymentsModule,
     ProductsModule,
     SalesModule,
+    SettingsModule,
     EmployeesModule,
     ClassesModule,
     CheckinsModule,
     ExpensesModule,
+    FinanceModule,
     ExercisesModule,
     WorkoutsModule,
     AppointmentsModule,

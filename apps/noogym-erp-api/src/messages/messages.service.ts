@@ -6,6 +6,7 @@ import {
 import { Prisma } from '@prisma/client';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 import { getPagination, paginated } from '../common/utils/pagination';
+import { assertActiveMember } from '../members/member-status';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateMessageDto } from './dto/create-message.dto';
 import { ScheduleMessageDto } from './dto/schedule-message.dto';
@@ -86,13 +87,16 @@ export class MessagesService {
       throw new BadRequestException('Message recipient list has duplicates');
     }
 
-    const count = await this.prisma.member.count({
+    const members = await this.prisma.member.findMany({
       where: { organizationId, id: { in: uniqueMemberIds } },
+      select: { id: true, status: true },
     });
 
-    if (count !== uniqueMemberIds.length) {
+    if (members.length !== uniqueMemberIds.length) {
       throw new NotFoundException('One or more recipients were not found');
     }
+
+    members.forEach(assertActiveMember);
   }
 
   private async ensureMessage(organizationId: string, id: string) {

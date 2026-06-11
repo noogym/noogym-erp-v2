@@ -22,6 +22,8 @@ interface SettingsState {
   loadOnline: () => Promise<void>;
   saveOrganization: (data: OrganizationSettingsPayload) => Promise<void>;
   savePrimaryGym: (data: GymSettingsPayload) => Promise<void>;
+  saveGym: (id: string | null, data: GymSettingsPayload) => Promise<GymSettings | null>;
+  deactivateGym: (id: string) => Promise<GymSettings | null>;
 }
 
 const slugify = (value: string) => {
@@ -79,6 +81,36 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       const gym = current ? await updateGymSettings(token, current.id, body) : await createGymSettings(token, body);
       const gyms = current ? get().gyms.map((item) => item.id === current.id ? gym : item) : [gym, ...get().gyms];
       set({ gyms, isLoading: false });
+    } catch (error) {
+      set({ isLoading: false });
+      throw error;
+    }
+  },
+  saveGym: async (id, data) => {
+    const token = useAuthStore.getState().accessToken;
+    if (!token) return null;
+    const current = id ? get().gyms.find((gym) => gym.id === id) : undefined;
+    const name = data.name?.trim() || current?.name || get().organization?.name || "Unidade Central";
+    const body = { ...data, name, slug: data.slug?.trim() || current?.slug || slugify(name) };
+    set({ isLoading: true });
+    try {
+      const gym = id ? await updateGymSettings(token, id, body) : await createGymSettings(token, body);
+      const gyms = id ? get().gyms.map((item) => item.id === id ? gym : item) : [gym, ...get().gyms];
+      set({ gyms, isLoading: false });
+      return gym;
+    } catch (error) {
+      set({ isLoading: false });
+      throw error;
+    }
+  },
+  deactivateGym: async (id) => {
+    const token = useAuthStore.getState().accessToken;
+    if (!token) return null;
+    set({ isLoading: true });
+    try {
+      const gym = await updateGymSettings(token, id, { isActive: false });
+      set({ gyms: get().gyms.map((item) => item.id === id ? gym : item), isLoading: false });
+      return gym;
     } catch (error) {
       set({ isLoading: false });
       throw error;

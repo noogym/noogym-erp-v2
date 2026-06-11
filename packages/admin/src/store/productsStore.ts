@@ -4,6 +4,7 @@ import { createResource, listResource, productFromApi, productToDto, updateResou
 import { readLocal, uid, writeLocal } from "../lib/storage";
 import { useAppStore } from "./appStore";
 import { useAuthStore } from "./authStore";
+import { useNotificationsStore } from "./notificationsStore";
 import type { ProductCategoryRecord, ProductRecord, ProductStockMovementRecord } from "@noogym/types";
 
 const categoryColors = ["#B6FF00", "#38BDF8", "#A855F7", "#F59E0B", "#2DD4BF", "#FB7185", "#94A3B8"];
@@ -60,6 +61,20 @@ const movementFromStockChange = (product: ProductRecord, quantity: number, previ
   user: "Admin",
   dateTime: movementLabel()
 });
+const notifyStockIfNeeded = (product: ProductRecord) => {
+  if (product.status === "Inativo") return;
+  const minStock = product.minStock ?? 10;
+  if (product.stock > minStock) return;
+  useNotificationsStore.getState().addNotification({
+    sourceId: `event:products:stock:${product.id}`,
+    title: product.stock <= 0 ? "Produto sem estoque" : "Produto com estoque baixo",
+    description: `${product.name}: ${product.stock}/${minStock} ${product.unit ?? "un"}.`,
+    category: "products",
+    tone: product.stock <= 0 ? "danger" : "warning",
+    route: "produtos",
+    actionLabel: "Repor estoque"
+  });
+};
 
 export const useProductsStore = create<{
   products: ProductRecord[];
@@ -83,7 +98,8 @@ export const useProductsStore = create<{
   loadOnline: async () => {
     const token = useAuthStore.getState().accessToken;
     if (!token) return;
-    const apiProducts = await listResource<Record<string, unknown>>("products", token);
+    const activeGymId = useAppStore.getState().activeGymId ?? undefined;
+    const apiProducts = await listResource<Record<string, unknown>>("products", token, { gymId: activeGymId });
     const products = apiProducts.map(productFromApi);
     const categories = uniqueCategories([...get().categories, ...products.map((product, index) => categoryFromName(product.category, index))]);
     persist(products);
@@ -91,12 +107,13 @@ export const useProductsStore = create<{
     set({ products, categories });
   },
   addProduct: (product) => set((state) => {
-    const created: ProductRecord = { id: uid("PRD"), name: "Novo produto", category: "Suplementos", stock: 0, price: 0, cost: 0, emoji: "PRD", status: "Ativo", unit: "Unidade", minStock: 10, ...product };
+    const created: ProductRecord = { id: uid("PRD"), gymId: useAppStore.getState().activeGymId ?? undefined, name: "Novo produto", category: "Suplementos", stock: 0, price: 0, cost: 0, emoji: "PRD", status: "Ativo", unit: "Unidade", minStock: 10, ...product };
     const products = [created, ...state.products];
     const categories = state.categories.some((category) => normalize(category.name) === normalize(created.category)) ? state.categories : uniqueCategories([...state.categories, categoryFromName(created.category, state.categories.length)]);
     persist(products);
     persistCategories(categories);
     useAppStore.getState().addPendingSync();
+    notifyStockIfNeeded(created);
 
     const token = useAuthStore.getState().accessToken;
     if (useAppStore.getState().onlineOnly && token) {
@@ -117,6 +134,8 @@ export const useProductsStore = create<{
     const products = state.products.map((item) => item.id === id ? { ...item, ...product } : item);
     persist(products);
     useAppStore.getState().addPendingSync();
+    const updatedProduct = products.find((item) => item.id === id);
+    if (updatedProduct) notifyStockIfNeeded(updatedProduct);
 
     const token = useAuthStore.getState().accessToken;
     if (useAppStore.getState().onlineOnly && token) {
@@ -138,17 +157,21 @@ export const useProductsStore = create<{
     const rounded = Math.max(0, Math.round(quantity));
     if (!rounded && type !== "Ajuste") return state;
     let movement: ProductStockMovementRecord | undefined;
+    let updatedProduct: ProductRecord | undefined;
     const products = state.products.map((product) => {
       if (product.id !== id) return product;
       const previousStock = product.stock;
       const nextStock = type === "Entrada" ? previousStock + rounded : type === "Saida" ? Math.max(0, previousStock - rounded) : rounded;
       movement = movementFromStockChange(product, type === "Ajuste" ? Math.abs(nextStock - previousStock) : rounded, previousStock, nextStock, type, reason);
-      return { ...product, stock: nextStock };
+      const nextProduct = { ...product, stock: nextStock };
+      updatedProduct = nextProduct;
+      return nextProduct;
     });
     const movements = movement ? [movement, ...state.movements] : state.movements;
     persist(products);
     persistMovements(movements);
     useAppStore.getState().addPendingSync();
+    if (updatedProduct) notifyStockIfNeeded(updatedProduct);
     return { products, movements };
   }),
   importProducts: () => {

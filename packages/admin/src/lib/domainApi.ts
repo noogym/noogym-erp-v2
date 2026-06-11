@@ -17,8 +17,8 @@ type Entity = Record<string, unknown>;
 
 export type ResourceName = "members" | "plans" | "plan-categories" | "products" | "checkins" | "sales" | "classes" | "employees" | "workouts";
 
-export const listResource = async <T>(resource: ResourceName, token: string) => {
-  const response = await apiRequest<PaginatedResponse<T>>(apiPath(`/${resource}`, { limit: 100 }), { token });
+export const listResource = async <T>(resource: ResourceName, token: string, query?: Record<string, string | number | boolean | undefined>) => {
+  const response = await apiRequest<PaginatedResponse<T>>(apiPath(`/${resource}`, { limit: 100, ...query }), { token });
   return response.items;
 };
 
@@ -34,10 +34,10 @@ export const deleteResource = <T>(resource: ResourceName, id: string, token: str
 export const createSubscription = (token: string, body: { memberId: string; planId: string; startDate?: string; autoRenew?: boolean }) =>
   apiRequest<Entity>("/subscriptions", { method: "POST", token, body });
 
-export const listFinanceRecords = async (token: string) => {
+export const listFinanceRecords = async (token: string, query?: { startDate?: string; endDate?: string; method?: string; gymId?: string }) => {
   const [payments, expenses] = await Promise.all([
-    apiRequest<PaginatedResponse<Entity>>(apiPath("/payments", { limit: 100 }), { token }),
-    apiRequest<PaginatedResponse<Entity>>(apiPath("/expenses", { limit: 100 }), { token })
+    apiRequest<PaginatedResponse<Entity>>(apiPath("/payments", { limit: 100, ...query }), { token }),
+    apiRequest<PaginatedResponse<Entity>>(apiPath("/expenses", { limit: 100, ...query }), { token })
   ]);
 
   return [
@@ -60,6 +60,7 @@ export const clientFromApi = (member: Entity): ClientRecord => {
 
   return {
     id: asString(member.id),
+    gymId: asString(member.gymId ?? getEntity(member.gym)?.id, undefined),
     name: asString(member.name, "Cliente Noogym"),
     phone: asString(member.phone, "+244 900 000 000"),
     email: asString(member.email, "cliente@email.com"),
@@ -81,21 +82,27 @@ export const clientToDto = (client: Partial<ClientRecord>) => ({
   email: cleanEmail(client.email),
   phone: client.phone,
   documentNumber: client.document,
+  gymId: client.gymId,
   status: client.status === "Inativo" ? "INACTIVE" : "ACTIVE"
 });
 
-export const planFromApi = (plan: Entity): PlanRecord => ({
-  id: asString(plan.id),
-  name: asString(plan.name, "Plano"),
-  description: asString(plan.description, ""),
-  category: asString(plan.category, asBoolean(plan.includesClasses) ? "Aulas" : "Musculacao"),
-  price: `${formatNumber(plan.price)} Kz/${durationLabel(Number(plan.durationDays ?? 30)).toLowerCase()}`,
-  duration: durationLabel(Number(plan.durationDays ?? 30)),
-  type: asBoolean(plan.isPopular) ? "Popular" : "Recorrente",
-  clients: 0,
-  status: statusLabel(plan.status, { ACTIVE: "Ativo", INACTIVE: "Inativo" }),
-  color: asString(plan.color, "#B6FF00")
-});
+export const planFromApi = (plan: Entity): PlanRecord => {
+  const gymLinks = rows(plan.gyms);
+  return {
+    id: asString(plan.id),
+    name: asString(plan.name, "Plano"),
+    description: asString(plan.description, ""),
+    category: asString(plan.category, asBoolean(plan.includesClasses) ? "Aulas" : "Musculacao"),
+    price: `${formatNumber(plan.price)} Kz/${durationLabel(Number(plan.durationDays ?? 30)).toLowerCase()}`,
+    duration: durationLabel(Number(plan.durationDays ?? 30)),
+    type: asBoolean(plan.isPopular) ? "Popular" : "Recorrente",
+    clients: 0,
+    status: statusLabel(plan.status, { ACTIVE: "Ativo", INACTIVE: "Inativo" }),
+    color: asString(plan.color, "#B6FF00"),
+    gymIds: gymLinks.map((link) => asString(link.gymId ?? getEntity(link.gym)?.id, "")).filter(Boolean),
+    gymNames: gymLinks.map((link) => asString(getEntity(link.gym)?.name, "")).filter(Boolean)
+  };
+};
 
 export const planToDto = (plan: Partial<PlanRecord>) => ({
   name: plan.name ?? "Novo plano",
@@ -107,7 +114,8 @@ export const planToDto = (plan: Partial<PlanRecord>) => ({
   status: plan.status === "Inativo" ? "INACTIVE" : "ACTIVE",
   includesClasses: true,
   includesWorkouts: plan.category?.toLowerCase().includes("muscula") ?? false,
-  isPopular: plan.type === "Popular"
+  isPopular: plan.type === "Popular",
+  gymIds: plan.gymIds
 });
 
 export const planCategoryFromApi = (category: Entity): PlanCategoryRecord => ({
@@ -131,6 +139,7 @@ export const planCategoryToDto = (category: Partial<PlanCategoryRecord>) => ({
 
 export const productFromApi = (product: Entity): ProductRecord => ({
   id: asString(product.id),
+  gymId: asString(product.gymId ?? getEntity(product.gym)?.id, undefined),
   name: asString(product.name, "Produto"),
   category: asString(product.category, "Outros"),
   stock: asNumber(product.stock),
@@ -156,6 +165,7 @@ export const productToDto = (product: Partial<ProductRecord>) => ({
   minStock: product.minStock ?? 0,
   description: product.description,
   unit: product.unit ?? "Unidade",
+  gymId: product.gymId,
   label: product.emoji ?? "PRD",
   status: product.status === "Inativo" ? "INACTIVE" : "ACTIVE"
 });
@@ -165,6 +175,7 @@ export const checkinFromApi = (checkin: Entity): CheckinRecord => {
   const checkedAt = asDate(checkin.checkedAt);
   return {
     id: asString(checkin.id),
+    gymId: asString(checkin.gymId ?? getEntity(checkin.gym)?.id, undefined),
     clientName: asString(member?.name, "Cliente Noogym"),
     clientId: asString(checkin.memberId),
     type: methodLabel(checkin.method),
@@ -177,6 +188,7 @@ export const checkinFromApi = (checkin: Entity): CheckinRecord => {
 
 export const checkinToDto = (checkin: Partial<CheckinRecord>) => ({
   memberId: checkin.clientId ?? "",
+  gymId: checkin.gymId,
   method: methodValue(checkin.type),
   checkedAt: checkin.checkedAtIso,
   notes: checkin.observation
@@ -184,6 +196,7 @@ export const checkinToDto = (checkin: Partial<CheckinRecord>) => ({
 
 export const saleFromApi = (sale: Entity): SaleRecord => ({
   id: asString(sale.id),
+  gymId: asString(sale.gymId ?? getEntity(sale.gym)?.id, undefined),
   total: asNumber(sale.total),
   subtotal: asNumber(sale.subtotal),
   discountAmount: asNumber(sale.discountAmount),
@@ -204,6 +217,7 @@ export const saleToDto = (sale: Partial<SaleRecord>, items: SaleItemRecord[] = [
   memberId: sale.memberId,
   customerName: sale.customer,
   sellerName: sale.seller ?? "Admin",
+  gymId: sale.gymId,
   type: saleTypeValue(sale.type),
   status: sale.type === "Orcamento" || sale.type === "Orçamento" ? "DRAFT" : "COMPLETED",
   paymentMethod: paymentMethodValue(sale.paymentMethod),
@@ -235,6 +249,7 @@ function saleItemFromApi(item: Entity): SaleItemRecord {
 
 export const classFromApi = (lesson: Entity): ClassRecord => ({
   id: asString(lesson.id),
+  gymId: asString(lesson.gymId ?? getEntity(lesson.gym)?.id, undefined),
   name: asString(lesson.name, "Aula"),
   room: asString(getEntity(lesson.room)?.name, "Sala 1"),
   category: asString(lesson.category, "Cardio"),
@@ -256,6 +271,7 @@ export const classFromApi = (lesson: Entity): ClassRecord => ({
 export const classToDto = (lesson: Partial<ClassRecord>) => ({
   name: lesson.name ?? "Nova aula",
   category: lesson.category ?? "Cardio",
+  gymId: lesson.gymId,
   description: lesson.description,
   equipment: lesson.equipment,
   startAt: lesson.startAtIso,
@@ -350,6 +366,7 @@ export const workoutToDto = (workout: Partial<WorkoutRecord>) => ({
 function paymentToFinanceRecord(payment: Entity): FinanceRecord {
   return {
     id: asString(payment.id),
+    gymId: asString(getEntity(payment.member)?.gymId ?? getEntity(getEntity(payment.sale)?.gym)?.id ?? getEntity(payment.sale)?.gymId, undefined),
     kind: "Receita",
     category: "Receitas",
     value: asNumber(payment.amount),
@@ -362,6 +379,7 @@ function paymentToFinanceRecord(payment: Entity): FinanceRecord {
 function expenseToFinanceRecord(expense: Entity): FinanceRecord {
   return {
     id: asString(expense.id),
+    gymId: asString(expense.gymId, undefined),
     kind: "Despesa",
     category: asString(expense.category, "Operacional"),
     value: asNumber(expense.amount),

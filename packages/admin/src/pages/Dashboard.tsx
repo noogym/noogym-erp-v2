@@ -10,10 +10,13 @@ import { Input } from "@noogym/ui";
 import { MetricCard } from "@noogym/ui";
 import { Tabs } from "@noogym/ui";
 import { formatKz as money } from "@noogym/core";
+import { canAccessRoute } from "../lib/permissions";
 import { useAppStore } from "../store/appStore";
+import { useAuthStore } from "../store/authStore";
 import { useCheckinsStore } from "../store/checkinsStore";
 import { useClassesStore } from "../store/classesStore";
 import { useClientsStore } from "../store/clientsStore";
+import { useEmployeesStore } from "../store/employeesStore";
 import { useFinanceStore } from "../store/financeStore";
 import { usePlansStore } from "../store/plansStore";
 import { useProductsStore } from "../store/productsStore";
@@ -64,13 +67,20 @@ export default function Dashboard() {
   const [manualOpen, setManualOpen] = useState(false);
   const [qrOpen, setQrOpen] = useState(false);
   const setRoute = useAppStore((state) => state.setRoute);
+  const user = useAuthStore((state) => state.user);
   const clients = useClientsStore((state) => state.clients);
   const classes = useClassesStore((state) => state.classes);
+  const employees = useEmployeesStore((state) => state.employees);
+  const roles = useEmployeesStore((state) => state.roles);
   const checkins = useCheckinsStore((state) => state.checkins);
   const plans = usePlansStore((state) => state.plans);
   const products = useProductsStore((state) => state.products);
   const sales = useSalesStore((state) => state.sales);
   const financeRecords = useFinanceStore((state) => state.records);
+  const canUseCheckin = canAccessRoute("checkin", user, employees, roles);
+  const canUseSales = canAccessRoute("vendas", user, employees, roles);
+  const canViewPlans = canAccessRoute("planos", user, employees, roles);
+  const canViewFinance = canAccessRoute("financas", user, employees, roles);
   const today = startOfDay(new Date());
   const yesterday = new Date(today.getTime() - dayMs);
   const activeClients = useMemo(() => clients.filter((client) => client.status === "Ativo"), [clients]);
@@ -109,9 +119,9 @@ export default function Dashboard() {
     });
   }, [clientsWithPlan, plans]);
   const activities = useMemo(() => [
-    ...checkins.slice(0, 4).map((checkin) => ({ title: "Check-in realizado", subject: checkin.clientName, time: checkin.dateTime, amount: "" })),
-    ...sales.slice(0, 3).map((sale) => ({ title: "Venda registrada", subject: sale.customer ?? sale.type, time: sale.dateTime, amount: money(sale.total) }))
-  ].sort((a, b) => timeMinutes(b.time) - timeMinutes(a.time)).slice(0, 5), [checkins, sales]);
+    ...(canUseCheckin ? checkins.slice(0, 4).map((checkin) => ({ title: "Check-in realizado", subject: checkin.clientName, time: checkin.dateTime, amount: "" })) : []),
+    ...(canUseSales ? sales.slice(0, 3).map((sale) => ({ title: "Venda registrada", subject: sale.customer ?? sale.type, time: sale.dateTime, amount: money(sale.total) })) : [])
+  ].sort((a, b) => timeMinutes(b.time) - timeMinutes(a.time)).slice(0, 5), [canUseCheckin, canUseSales, checkins, sales]);
   const dashboardDate = new Intl.DateTimeFormat("pt-AO", { day: "2-digit", month: "long", year: "numeric" }).format(new Date());
   const quickSaleItems = tab === "Produtos"
     ? products.slice(0, 5).map((product) => ({ name: product.name, price: money(product.price), detail: `${product.stock} un` }))
@@ -144,25 +154,25 @@ export default function Dashboard() {
         </div>
 
         <div className="dashboard-metric-grid">
-          <MetricCard title="Check-ins hoje" value={String(todayCheckins)} change={changeVs(todayCheckins, yesterdayCheckins, "vs ontem")} icon={<ClipboardCheck className="h-5 w-5" />} />
+          {canUseCheckin ? <MetricCard title="Check-ins hoje" value={String(todayCheckins)} change={changeVs(todayCheckins, yesterdayCheckins, "vs ontem")} icon={<ClipboardCheck className="h-5 w-5" />} /> : null}
           <MetricCard title="Clientes ativos" value={String(activeClients.length)} change={`${clients.length} clientes cadastrados`} icon={<UsersRound className="h-5 w-5" />} tone="yellow" />
-          <MetricCard title="Receita hoje" value={money(todayRevenue)} change={changeVs(todayRevenue, yesterdayRevenue, "vs ontem")} icon={<CreditCard className="h-5 w-5" />} tone="yellow" />
-          <MetricCard title="Planos ativos" value={String(activePlans.length)} change={`${plans.length} planos cadastrados`} icon={<CheckCircle2 className="h-5 w-5" />} tone="blue" />
+          {canViewFinance || canUseSales ? <MetricCard title="Receita hoje" value={money(todayRevenue)} change={changeVs(todayRevenue, yesterdayRevenue, "vs ontem")} icon={<CreditCard className="h-5 w-5" />} tone="yellow" /> : null}
+          {canViewPlans ? <MetricCard title="Planos ativos" value={String(activePlans.length)} change={`${plans.length} planos cadastrados`} icon={<CheckCircle2 className="h-5 w-5" />} tone="blue" /> : null}
           <MetricCard title="Aulas hoje" value={String(todayClasses.length)} change={nextClass ? `Próxima: ${nextClass.time.replace("Hoje, ", "")}` : "Sem aulas hoje"} icon={<Calendar className="h-5 w-5" />} tone="purple" />
         </div>
 
         <div className="dashboard-chart-grid mt-4">
-          <Card className="min-h-[280px] p-4">
+          {canUseCheckin ? <Card className="min-h-[280px] p-4">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <h2 className="min-w-0 font-semibold">Check-ins nos últimos 7 dias</h2>
               <Button className="h-8 shrink-0 px-3">Últimos 7 dias</Button>
             </div>
             <LineChart values={checkinSeries} labels={checkinLabels} />
-          </Card>
-          <Card className="min-h-[280px] p-4">
+          </Card> : null}
+          {canViewPlans ? <Card className="min-h-[280px] p-4">
             <h2 className="mb-4 font-semibold">Distribuição de planos</h2>
             <DonutChart center={String(clientsWithPlan.length)} items={planDistribution} />
-          </Card>
+          </Card> : null}
         </div>
 
         <div className="dashboard-lists-grid mt-4">
@@ -196,8 +206,8 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <aside className="dashboard-side">
-        <Card className="p-4">
+      {canUseCheckin || canUseSales ? <aside className="dashboard-side">
+        {canUseCheckin ? <Card className="p-4">
           <h2 className="mb-4 text-lg font-semibold">Check-in rápido</h2>
           <Input placeholder="Buscar cliente (nome, telefone ou ID)" />
           <Tabs tabs={["QR Code", "Biometria", "Código"]} active={checkinTab} onChange={setCheckinTab} />
@@ -224,8 +234,8 @@ export default function Dashboard() {
             <Button onClick={handleQuickCheckin}>{checkinTab === "QR Code" ? "Escanear QR Code" : checkinTab === "Biometria" ? "Iniciar leitura" : "Validar código"}</Button>
             <Button onClick={() => setManualOpen(true)}>Check-in manual</Button>
           </div>
-        </Card>
-        <Card className="p-4">
+        </Card> : null}
+        {canUseSales ? <Card className="p-4">
           <h2 className="mb-4 text-lg font-semibold">Venda rápida (POS)</h2>
           <Tabs tabs={["Planos", "Produtos", "Serviços", "Aulas"]} active={tab} onChange={setTab} />
           <div className="mt-3 space-y-2">
@@ -241,10 +251,10 @@ export default function Dashboard() {
             ))}
           </div>
           <Button className="mt-4 w-full" variant="primary" icon={<ShoppingCart className="h-5 w-5" />} onClick={() => setRoute("vendas")}>Abrir PDV</Button>
-        </Card>
-      </aside>
-      <ManualCheckinModal open={manualOpen} onClose={() => setManualOpen(false)} />
-      <QrScannerModal open={qrOpen} onClose={() => setQrOpen(false)} />
+        </Card> : null}
+      </aside> : null}
+      {canUseCheckin ? <ManualCheckinModal open={manualOpen} onClose={() => setManualOpen(false)} /> : null}
+      {canUseCheckin ? <QrScannerModal open={qrOpen} onClose={() => setQrOpen(false)} /> : null}
     </div>
   );
 }
