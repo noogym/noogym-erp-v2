@@ -3,8 +3,10 @@ import { Button } from "@noogym/ui";
 import { ChevronDown, ChevronUp, LogOut, Wifi, WifiOff } from "lucide-react";
 import { NoogymLogo } from "../brand/NoogymLogo";
 import { navItems } from "../../routes/nav";
+import { canAccessRoute, effectiveRole } from "../../lib/permissions";
 import { useAppStore } from "../../store/appStore";
 import { useAuthStore } from "../../store/authStore";
+import { useEmployeesStore } from "../../store/employeesStore";
 
 export function Sidebar() {
   const activeRoute = useAppStore((state) => state.activeRoute);
@@ -14,7 +16,11 @@ export function Sidebar() {
   const toggleStatusPanel = useAppStore((state) => state.toggleStatusPanel);
   const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
+  const employees = useEmployeesStore((state) => state.employees);
+  const roles = useEmployeesStore((state) => state.roles);
   const StatusIcon = onlineOnly ? Wifi : WifiOff;
+  const visibleNavItems = navItems.filter((item) => canAccessRoute(item.id, user, employees, roles));
+  const roleLabel = effectiveRole(user, employees);
 
   return (
     <aside className="admin-sidebar flex min-h-0 shrink-0 flex-col border-b border-white/10 bg-black/25 p-2 lg:h-full lg:w-[248px] lg:border-b-0 lg:border-r lg:p-3">
@@ -27,7 +33,7 @@ export function Sidebar() {
         <div className="flex h-10 w-10 items-center justify-center rounded-full border border-noogym-lime text-noogym-lime">N</div>
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium">{user?.name ?? "Admin"}</p>
-          <p className="truncate text-xs text-zinc-400">{user?.role ?? "Administrador"}</p>
+          <p className="truncate text-xs text-zinc-400">{roleLabel}</p>
         </div>
         <button
           type="button"
@@ -41,7 +47,7 @@ export function Sidebar() {
       </div>
 
       <nav className="flex min-h-0 gap-1 overflow-x-auto pb-1 lg:block lg:flex-1 lg:space-y-1 lg:overflow-y-auto lg:pb-0 lg:pr-1">
-        {navItems.map((item) => {
+        {visibleNavItems.map((item) => {
           const Icon = item.icon;
           const active = activeRoute === item.id;
           return (

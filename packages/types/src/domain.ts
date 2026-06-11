@@ -1,5 +1,6 @@
 export interface ClientRecord {
   id: string;
+  gymId?: string;
   name: string;
   phone: string;
   email: string;
@@ -53,6 +54,7 @@ export interface PlanCategoryRecord {
 
 export interface ProductRecord {
   id: string;
+  gymId?: string;
   name: string;
   category: string;
   stock: number;
@@ -92,6 +94,7 @@ export interface ProductStockMovementRecord {
 
 export interface CheckinRecord {
   id: string;
+  gymId?: string;
   clientName: string;
   clientId: string;
   type: string;
@@ -103,6 +106,7 @@ export interface CheckinRecord {
 
 export interface SaleRecord {
   id: string;
+  gymId?: string;
   total: number;
   customer?: string;
   memberId?: string;
@@ -131,6 +135,7 @@ export interface SaleItemRecord {
 
 export interface ClassRecord {
   id: string;
+  gymId?: string;
   name: string;
   room: string;
   category: string;
@@ -238,6 +243,7 @@ export interface EmployeeActivityRecord {
 
 export interface FinanceRecord {
   id: string;
+  gymId?: string;
   kind: "Receita" | "Despesa";
   category: string;
   value: number;

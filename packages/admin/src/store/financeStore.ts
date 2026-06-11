@@ -102,28 +102,31 @@ export const useFinanceStore = create<{
   cashSessions: [],
   loadOnline: async (filters = {}) => {
     const token = useAuthStore.getState().accessToken;
+    const activeGymId = useAppStore.getState().activeGymId ?? undefined;
+    const scopedFilters = { ...filters, gymId: filters.gymId ?? activeGymId };
     if (!token) {
-      set({ activeFilters: filters, remoteDashboard: null, currentCashSession: null, cashSessions: [] });
+      set({ activeFilters: scopedFilters, remoteDashboard: null, currentCashSession: null, cashSessions: [] });
       return;
     }
     const [records, accounts, categories, remoteDashboard, currentCashSession, cashSessions] = await Promise.all([
-      listFinanceRecords(token, filters),
+      listFinanceRecords(token, scopedFilters),
       getFinanceAccounts(token),
       getFinanceCategories(token),
-      getFinanceSummary(token, filters),
-      getCurrentCashSession(token),
+      getFinanceSummary(token, scopedFilters),
+      getCurrentCashSession(token, scopedFilters.gymId),
       listCashSessions(token)
     ]);
     persist(records);
     persistAccounts(accounts);
     persistCategories(categories);
-    set({ records, accounts, categories, remoteDashboard, currentCashSession, cashSessions, activeFilters: filters });
+    set({ records, accounts, categories, remoteDashboard, currentCashSession, cashSessions, activeFilters: scopedFilters });
   },
   loadCashSessions: async () => {
     const token = useAuthStore.getState().accessToken;
     if (!token) return;
+    const activeGymId = useAppStore.getState().activeGymId ?? undefined;
     const [currentCashSession, cashSessions] = await Promise.all([
-      getCurrentCashSession(token),
+      getCurrentCashSession(token, activeGymId),
       listCashSessions(token)
     ]);
     set({ currentCashSession, cashSessions });
@@ -149,7 +152,7 @@ export const useFinanceStore = create<{
   },
   addRevenue: (record) => set((state) => {
     const target = accountSnapshot(state.accounts, record.accountId);
-    const created: FinanceRecord = { id: uid("FIN"), kind: "Receita", category: "Mensalidades", value: 0, date: "Hoje", status: "Recebido", ...target, method: "Dinheiro", ...record };
+    const created: FinanceRecord = { id: uid("FIN"), gymId: useAppStore.getState().activeGymId ?? undefined, kind: "Receita", category: "Mensalidades", value: 0, date: "Hoje", status: "Recebido", ...target, method: "Dinheiro", ...record };
     const records = [created, ...state.records];
     const accounts = applyRecordToAccounts(state.accounts, created);
     persist(records);
@@ -172,7 +175,7 @@ export const useFinanceStore = create<{
   }),
   addExpense: (record) => set((state) => {
     const target = accountSnapshot(state.accounts, record.accountId);
-    const created: FinanceRecord = { id: uid("FIN"), kind: "Despesa", category: "Operacional", value: 0, date: "Hoje", status: "Pendente", ...target, method: "Transferencia", ...record };
+    const created: FinanceRecord = { id: uid("FIN"), gymId: useAppStore.getState().activeGymId ?? undefined, kind: "Despesa", category: "Operacional", value: 0, date: "Hoje", status: "Pendente", ...target, method: "Transferencia", ...record };
     const records = [created, ...state.records];
     const accounts = applyRecordToAccounts(state.accounts, created);
     persist(records);

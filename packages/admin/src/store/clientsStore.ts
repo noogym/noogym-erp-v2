@@ -38,7 +38,8 @@ export const useClientsStore = create<ClientsState>((set, get) => ({
   loadOnline: async () => {
     const token = useAuthStore.getState().accessToken;
     if (!token) return;
-    const members = await listResource<Record<string, unknown>>("members", token);
+    const activeGymId = useAppStore.getState().activeGymId ?? undefined;
+    const members = await listResource<Record<string, unknown>>("members", token, { gymId: activeGymId });
     const clients = members.map(clientFromApi);
     persist(clients);
     set({ clients });
@@ -46,6 +47,7 @@ export const useClientsStore = create<ClientsState>((set, get) => ({
   addClient: (client) => {
     const created: ClientRecord = {
       id: client.id ?? uid("CLI"),
+      gymId: client.gymId ?? useAppStore.getState().activeGymId ?? undefined,
       name: client.name ?? "Novo cliente",
       phone: client.phone ?? "+244 900 000 000",
       email: client.email ?? "cliente@email.com",

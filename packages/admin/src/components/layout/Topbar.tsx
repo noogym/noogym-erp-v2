@@ -5,10 +5,13 @@ import { MAX_ZOOM_FACTOR, MIN_ZOOM_FACTOR, useAppStore } from "../../store/appSt
 import { useAuthStore } from "../../store/authStore";
 import { useClassesStore } from "../../store/classesStore";
 import { useClientsStore } from "../../store/clientsStore";
+import { allowedGymsForUser, canAccessRoute, canSwitchGym } from "../../lib/permissions";
+import { useEmployeesStore } from "../../store/employeesStore";
 import { useFinanceStore } from "../../store/financeStore";
 import { useNotificationsStore } from "../../store/notificationsStore";
 import type { NotificationCategory, NotificationInput, NotificationRecord } from "../../store/notificationsStore";
 import { useProductsStore } from "../../store/productsStore";
+import { useSettingsStore } from "../../store/settingsStore";
 
 const iconByCategory: Record<NotificationCategory, LucideIcon> = {
   system: ShieldCheck,
@@ -52,13 +55,16 @@ const namesPreview = (names: string[]) => {
 export function Topbar() {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const notificationsRef = useRef<HTMLDivElement>(null);
+  const activeGymId = useAppStore((state) => state.activeGymId);
   const decreaseZoom = useAppStore((state) => state.decreaseZoom);
   const increaseZoom = useAppStore((state) => state.increaseZoom);
   const isOffline = useAppStore((state) => state.isOffline);
+  const isGymDataLoading = useAppStore((state) => state.isGymDataLoading);
   const onlineOnly = useAppStore((state) => state.onlineOnly);
   const pendingSync = useAppStore((state) => state.pendingSync);
   const resetZoom = useAppStore((state) => state.resetZoom);
   const setRoute = useAppStore((state) => state.setRoute);
+  const setActiveGymId = useAppStore((state) => state.setActiveGymId);
   const syncLabel = useAppStore((state) => state.syncLabel);
   const syncNow = useAppStore((state) => state.syncNow);
   const theme = useAppStore((state) => state.theme);
@@ -67,6 +73,8 @@ export function Topbar() {
   const user = useAuthStore((state) => state.user);
   const classes = useClassesStore((state) => state.classes);
   const clients = useClientsStore((state) => state.clients);
+  const employees = useEmployeesStore((state) => state.employees);
+  const roles = useEmployeesStore((state) => state.roles);
   const financeRecords = useFinanceStore((state) => state.records);
   const notifications = useNotificationsStore((state) => state.notifications);
   const markAllAsRead = useNotificationsStore((state) => state.markAllAsRead);
@@ -74,10 +82,16 @@ export function Topbar() {
   const replaceAutomaticNotifications = useNotificationsStore((state) => state.replaceAutomaticNotifications);
   const clearRead = useNotificationsStore((state) => state.clearRead);
   const products = useProductsStore((state) => state.products);
+  const gyms = useSettingsStore((state) => state.gyms);
   const windowControls = typeof window !== "undefined" ? window.noogym?.windowControls : undefined;
   const zoomControls = typeof window !== "undefined" ? window.noogym?.zoomControls : undefined;
   const isOnline = onlineOnly || !isOffline;
   const zoomPercent = Math.round(zoomFactor * 100);
+  const allowedGyms = useMemo(() => allowedGymsForUser(user, employees, gyms), [employees, gyms, user]);
+  const fallbackGymName = allowedGyms[0]?.name ?? user?.gyms?.[0]?.name ?? user?.gym ?? "Noogym Fitness Center";
+  const activeGym = allowedGyms.find((gym) => gym.id === activeGymId) ?? allowedGyms[0];
+  const activeGymValue = activeGym?.id ?? "";
+  const canChangeGym = canSwitchGym(user, employees, gyms);
   const automaticNotifications = useMemo<NotificationInput[]>(() => {
     const generated: NotificationInput[] = [];
     const activeClients = clients.filter((client) => client.status === "Ativo");
@@ -191,9 +205,10 @@ export function Topbar() {
       });
     }
 
-    return generated;
-  }, [classes, clients, financeRecords, isOnline, pendingSync, products]);
-  const unreadCount = notifications.filter((notification) => !notification.readAt).length;
+    return generated.filter((notification) => !notification.route || canAccessRoute(notification.route, user, employees, roles));
+  }, [classes, clients, employees, financeRecords, isOnline, pendingSync, products, roles, user]);
+  const visibleNotifications = notifications.filter((notification) => !notification.route || canAccessRoute(notification.route, user, employees, roles));
+  const unreadCount = visibleNotifications.filter((notification) => !notification.readAt).length;
 
   useEffect(() => {
     if (zoomControls) {
@@ -216,9 +231,16 @@ export function Topbar() {
     replaceAutomaticNotifications(automaticNotifications);
   }, [automaticNotifications, replaceAutomaticNotifications]);
 
+  useEffect(() => {
+    if (!allowedGyms.length) return;
+    if (activeGymId && allowedGyms.some((gym) => gym.id === activeGymId)) return;
+    setActiveGymId(allowedGyms[0].id);
+  }, [activeGymId, allowedGyms, setActiveGymId]);
+
   const openNotification = (notification: NotificationRecord) => {
     markAsRead(notification.id);
     setNotificationsOpen(false);
+    if (notification.route && !canAccessRoute(notification.route, user, employees, roles)) return;
     if (notification.actionType === "sync") {
       void syncNow();
       return;
@@ -229,10 +251,23 @@ export function Topbar() {
   return (
     <header className="drag-region flex min-h-16 shrink-0 flex-wrap items-center justify-between gap-3 border-b border-white/10 bg-black/20 px-3 py-3 lg:h-[72px] lg:flex-nowrap lg:px-5 lg:py-0">
       <div className="hidden w-[260px] lg:block" />
-      <button className="no-drag order-3 flex h-11 min-w-0 basis-full items-center justify-between rounded-lg border border-white/10 bg-white/[0.035] px-4 text-left text-sm lg:order-none lg:min-w-[320px] lg:basis-auto xl:min-w-[380px]">
-        <span className="truncate">{user?.gym ?? "Noogym Fitness Center - Unidade Central"}</span>
-        <ChevronDown className="h-4 w-4 text-zinc-400" />
-      </button>
+      <div className="no-drag relative order-3 flex h-11 min-w-0 basis-full items-center rounded-lg border border-white/10 bg-white/[0.035] text-sm lg:order-none lg:min-w-[320px] lg:basis-auto xl:min-w-[380px]">
+        {allowedGyms.length ? (
+          <select
+            className="h-full w-full min-w-0 appearance-none rounded-lg bg-transparent px-4 pr-10 outline-none disabled:cursor-not-allowed disabled:text-zinc-300"
+            value={activeGymValue}
+            onChange={(event) => setActiveGymId(event.target.value || null)}
+            disabled={!canChangeGym || isGymDataLoading}
+            aria-label="Unidade ativa"
+            title={isGymDataLoading ? "A carregar dados da unidade" : canChangeGym ? "Trocar unidade" : "Unidade fixa para este perfil"}
+          >
+            {allowedGyms.map((gym) => <option key={gym.id} value={gym.id}>{gym.name}</option>)}
+          </select>
+        ) : (
+          <span className="truncate px-4 pr-10">{fallbackGymName}</span>
+        )}
+        <ChevronDown className="pointer-events-none absolute right-4 h-4 w-4 text-zinc-400" />
+      </div>
       <div className="no-drag flex min-w-0 flex-1 items-center justify-end gap-2 text-sm lg:flex-none lg:gap-4">
         <button
           className="flex h-10 shrink-0 items-center gap-2 rounded-full border border-white/10 bg-white/[0.035] px-3 transition hover:bg-white/[0.07] sm:px-4"
@@ -280,7 +315,7 @@ export function Topbar() {
                 </div>
               </div>
               <div className="max-h-80 overflow-auto p-2">
-                {notifications.map((notification) => {
+                {visibleNotifications.map((notification) => {
                   const Icon = iconByCategory[notification.category];
                   return (
                     <button
@@ -303,7 +338,7 @@ export function Topbar() {
                     </button>
                   );
                 })}
-                {!notifications.length ? (
+                {!visibleNotifications.length ? (
                   <div className="rounded-md border border-white/10 p-4 text-sm text-zinc-400">Sem notificacoes no momento.</div>
                 ) : null}
               </div>

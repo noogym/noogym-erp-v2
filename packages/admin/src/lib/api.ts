@@ -18,6 +18,9 @@ export interface ApiAuthUser {
   name: string;
   email: string;
   role: string;
+  employeeRole?: string;
+  permissions?: string[];
+  gyms?: Array<{ id: string; name: string }>;
   organizationId: string;
   organizationName?: string;
 }

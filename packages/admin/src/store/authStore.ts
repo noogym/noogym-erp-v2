@@ -5,6 +5,9 @@ export interface AuthUser {
   id?: string;
   name: string;
   role: string;
+  employeeRole?: string;
+  permissions?: string[];
+  gyms?: Array<{ id: string; name: string }>;
   gym: string;
   email?: string;
   organizationId?: string;
@@ -92,7 +95,10 @@ const roleLabel = (role: string) => {
 const fromApiUser = (user: ApiAuthUser): AuthUser => ({
   id: user.id,
   name: user.name,
-  role: roleLabel(user.role),
+  role: user.employeeRole ?? roleLabel(user.role),
+  employeeRole: user.employeeRole,
+  permissions: user.permissions,
+  gyms: user.gyms,
   gym: user.organizationName ?? "Noogym Fitness Center",
   email: user.email,
   organizationId: user.organizationId

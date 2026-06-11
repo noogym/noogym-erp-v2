@@ -98,7 +98,8 @@ export const useProductsStore = create<{
   loadOnline: async () => {
     const token = useAuthStore.getState().accessToken;
     if (!token) return;
-    const apiProducts = await listResource<Record<string, unknown>>("products", token);
+    const activeGymId = useAppStore.getState().activeGymId ?? undefined;
+    const apiProducts = await listResource<Record<string, unknown>>("products", token, { gymId: activeGymId });
     const products = apiProducts.map(productFromApi);
     const categories = uniqueCategories([...get().categories, ...products.map((product, index) => categoryFromName(product.category, index))]);
     persist(products);
@@ -106,7 +107,7 @@ export const useProductsStore = create<{
     set({ products, categories });
   },
   addProduct: (product) => set((state) => {
-    const created: ProductRecord = { id: uid("PRD"), name: "Novo produto", category: "Suplementos", stock: 0, price: 0, cost: 0, emoji: "PRD", status: "Ativo", unit: "Unidade", minStock: 10, ...product };
+    const created: ProductRecord = { id: uid("PRD"), gymId: useAppStore.getState().activeGymId ?? undefined, name: "Novo produto", category: "Suplementos", stock: 0, price: 0, cost: 0, emoji: "PRD", status: "Ativo", unit: "Unidade", minStock: 10, ...product };
     const products = [created, ...state.products];
     const categories = state.categories.some((category) => normalize(category.name) === normalize(created.category)) ? state.categories : uniqueCategories([...state.categories, categoryFromName(created.category, state.categories.length)]);
     persist(products);

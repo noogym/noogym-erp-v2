@@ -5,6 +5,7 @@ import { useAppStore } from "./appStore";
 import { useAuthStore } from "./authStore";
 import { useClientsStore } from "./clientsStore";
 import { useNotificationsStore } from "./notificationsStore";
+import { useOperationalSettingsStore } from "./operationalSettingsStore";
 import type { CheckinRecord } from "@noogym/types";
 
 const initial: CheckinRecord[] = [
@@ -18,6 +19,32 @@ const isMissingSubscriptionError = (error: unknown) =>
   error instanceof Error && error.message.includes("valid active subscription");
 const isActiveSubscriptionError = (error: unknown) =>
   error instanceof Error && error.message.includes("already has an active subscription");
+const methodEnabled = (type: string) => {
+  const checkin = useOperationalSettingsStore.getState().settings.checkin;
+  const normalized = type.toLowerCase();
+  if (normalized.includes("qr") || normalized.includes("app")) return checkin.qrCode;
+  if (normalized.includes("biometr")) return checkin.biometric;
+  return checkin.manual;
+};
+const isWithinAccessWindow = (date: Date) => {
+  const checkin = useOperationalSettingsStore.getState().settings.checkin;
+  const start = timeToMinutes(checkin.accessStart, 0);
+  const end = timeToMinutes(checkin.accessEnd, 24 * 60 - 1);
+  const tolerance = checkin.toleranceMinutes;
+  const current = date.getHours() * 60 + date.getMinutes();
+  const allowedStart = Math.max(0, start - tolerance);
+  const allowedEnd = Math.min(24 * 60 - 1, end + tolerance);
+  return allowedStart <= allowedEnd ? current >= allowedStart && current <= allowedEnd : current >= allowedStart || current <= allowedEnd;
+};
+const timeToMinutes = (value: string, fallback: number) => {
+  const [hours, minutes] = value.split(":").map(Number);
+  return Number.isFinite(hours) && Number.isFinite(minutes) ? hours * 60 + minutes : fallback;
+};
+const sameDay = (value: string | undefined, date: Date) => {
+  if (!value) return false;
+  const parsed = new Date(value);
+  return Number.isFinite(parsed.getTime()) && parsed.toDateString() === date.toDateString();
+};
 const syncClientLastCheckins = (checkins: CheckinRecord[]) => {
   const latestByClient = new Map<string, string>();
 
@@ -41,7 +68,8 @@ export const useCheckinsStore = create<{
   loadOnline: async () => {
     const token = useAuthStore.getState().accessToken;
     if (!token) return;
-    const apiCheckins = await listResource<Record<string, unknown>>("checkins", token);
+    const activeGymId = useAppStore.getState().activeGymId ?? undefined;
+    const apiCheckins = await listResource<Record<string, unknown>>("checkins", token, { gymId: activeGymId });
     const checkins = apiCheckins.map(checkinFromApi);
     persist(checkins);
     syncClientLastCheckins(checkins);
@@ -52,9 +80,22 @@ export const useCheckinsStore = create<{
     if (client && client.status !== "Ativo") {
       return false;
     }
+    const settings = useOperationalSettingsStore.getState().settings.checkin;
+    const checkedAt = checkin.checkedAtIso ? new Date(checkin.checkedAtIso) : new Date();
+    const type = checkin.type ?? "Manual";
+
+    if (!methodEnabled(type) || !isWithinAccessWindow(checkedAt)) {
+      return false;
+    }
+
+    const clientCheckinsToday = get().checkins.filter((item) => item.clientId === checkin.clientId && sameDay(item.checkedAtIso, checkedAt)).length;
+    if (settings.dailyLimit > 0 && clientCheckinsToday >= settings.dailyLimit) {
+      return false;
+    }
 
     const record: CheckinRecord = {
       id: uid("CHK"),
+      gymId: checkin.gymId ?? useAppStore.getState().activeGymId ?? undefined,
       clientName: checkin.clientName ?? "Cliente Noogym",
       clientId: checkin.clientId ?? "CLI-000",
       type: checkin.type ?? "Manual",

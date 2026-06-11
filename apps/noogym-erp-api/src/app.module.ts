@@ -30,6 +30,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { ProductsModule } from './products/products.module';
 import { ReportsModule } from './reports/reports.module';
 import { SalesModule } from './sales/sales.module';
+import { SettingsModule } from './settings/settings.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import { UsersModule } from './users/users.module';
 import { WorkoutsModule } from './workouts/workouts.module';
@@ -58,6 +59,7 @@ import { WorkoutsModule } from './workouts/workouts.module';
     PaymentsModule,
     ProductsModule,
     SalesModule,
+    SettingsModule,
     EmployeesModule,
     ClassesModule,
     CheckinsModule,

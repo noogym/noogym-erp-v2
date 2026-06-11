@@ -10,11 +10,13 @@ import {
   Globe2,
   KeyRound,
   Link2,
+  Plus,
   Printer,
   QrCode,
   RefreshCw,
   Save,
   ShieldCheck,
+  Trash2,
   UploadCloud,
   Users,
   Wifi
@@ -23,6 +25,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Badge, Button, Card, FormInput, FormSelect, FormSwitch, FormTextarea, Tabs } from "@noogym/ui";
 import { NoogymLogo } from "../components/brand/NoogymLogo";
 import { PageHeader } from "../components/layout/PageHeader";
+import { ConfirmModal } from "../components/modals/ConfirmModal";
 import { useAppStore } from "../store/appStore";
 import { useOperationalSettingsStore, type OperationalSettings } from "../store/operationalSettingsStore";
 import { useSettingsStore } from "../store/settingsStore";
@@ -44,7 +47,17 @@ const configTabs = [
 
 type ConfigTab = (typeof configTabs)[number];
 
-const saveToast = () => toastSuccess("Configuracoes salvas", "As alteracoes foram guardadas neste equipamento.");
+function useSaveOperationalSettings() {
+  const saveOnline = useOperationalSettingsStore((state) => state.saveOnline);
+  const isSaving = useOperationalSettingsStore((state) => state.isSaving);
+
+  const saveOperational = (title = "Configuracoes salvas", message = "As alteracoes foram guardadas na API.") =>
+    saveOnline()
+      .then(() => toastSuccess(title, message))
+      .catch((error) => toastInfo("Nao foi possivel salvar", error instanceof Error ? error.message : "Verifique a API e tente novamente."));
+
+  return { isSaving, saveOperational };
+}
 
 export default function Configuracoes() {
   const [tab, setTab] = useState<ConfigTab>("Geral");
@@ -56,13 +69,15 @@ export default function Configuracoes() {
   const users = useSettingsStore((state) => state.users);
   const isLoading = useSettingsStore((state) => state.isLoading);
   const loadOnline = useSettingsStore((state) => state.loadOnline);
+  const loadOperationalSettings = useOperationalSettingsStore((state) => state.loadOnline);
   const primaryGym = gyms[0];
+  const { isSaving, saveOperational } = useSaveOperationalSettings();
 
   useEffect(() => {
-    loadOnline().catch((error) => {
+    Promise.all([loadOnline(), loadOperationalSettings()]).catch((error) => {
       toastInfo("Configuracoes locais", error instanceof Error ? error.message : "Nao foi possivel carregar configuracoes da API.");
     });
-  }, [loadOnline]);
+  }, [loadOnline, loadOperationalSettings]);
 
   const counters = useMemo(() => [
     { label: "Unidades", value: String(gyms.length || organization?._count?.gyms || 1), hint: primaryGym?.name ?? "Unidade principal", icon: Building2 },
@@ -83,8 +98,8 @@ export default function Configuracoes() {
             <Button icon={<RefreshCw className={`h-4 w-4 ${syncState === "syncing" ? "animate-spin" : ""}`} />} onClick={() => syncNow()}>
               Sincronizar
             </Button>
-            <Button variant="primary" icon={<Save className="h-4 w-4" />} onClick={saveToast}>
-              Guardar estado
+            <Button variant="primary" disabled={isSaving} icon={<Save className="h-4 w-4" />} onClick={() => saveOperational()}>
+              {isSaving ? "Guardando..." : "Guardar estado"}
             </Button>
           </div>
         </div>
@@ -148,7 +163,8 @@ function GeneralTab({ organization, primaryGym }: { organization: OrganizationSe
   const setTheme = useAppStore((state) => state.setTheme);
   const settings = useOperationalSettingsStore((state) => state.settings);
   const updateSection = useOperationalSettingsStore((state) => state.updateSection);
-  const resetOperationalSettings = useOperationalSettingsStore((state) => state.resetOperationalSettings);
+  const resetOperationalSettingsOnline = useOperationalSettingsStore((state) => state.resetOperationalSettingsOnline);
+  const isSavingOperational = useOperationalSettingsStore((state) => state.isSaving);
   const saveOrganization = useSettingsStore((state) => state.saveOrganization);
   const isLoading = useSettingsStore((state) => state.isLoading);
   const [form, setForm] = useState(() => organizationForm(organization));
@@ -209,8 +225,8 @@ function GeneralTab({ organization, primaryGym }: { organization: OrganizationSe
             <FormSwitch label="Atualizacoes automaticas" checked={settings.preferences.autoUpdates} onChange={(autoUpdates) => updateSection("preferences", { autoUpdates })} />
           </div>
           <div className="mt-4 flex justify-end">
-            <Button onClick={() => { resetOperationalSettings(); toastSuccess("Padroes restaurados"); }}>
-              Restaurar padroes operacionais
+            <Button disabled={isSavingOperational} onClick={() => resetOperationalSettingsOnline().then(() => toastSuccess("Padroes restaurados", "Configuracoes operacionais repostas na API.")).catch((error) => toastInfo("Nao foi possivel restaurar", error instanceof Error ? error.message : "Verifique a API e tente novamente."))}>
+              {isSavingOperational ? "Restaurando..." : "Restaurar padroes operacionais"}
             </Button>
           </div>
         </Card>
@@ -242,17 +258,28 @@ function GeneralTab({ organization, primaryGym }: { organization: OrganizationSe
 }
 
 function GymTab({ organization, gyms, primaryGym }: { organization: OrganizationSettings | null; gyms: GymSettings[]; primaryGym?: GymSettings }) {
-  const savePrimaryGym = useSettingsStore((state) => state.savePrimaryGym);
+  const saveGym = useSettingsStore((state) => state.saveGym);
+  const deactivateGym = useSettingsStore((state) => state.deactivateGym);
   const isLoading = useSettingsStore((state) => state.isLoading);
+  const gymHours = useOperationalSettingsStore((state) => state.settings.gymHours);
+  const updateSection = useOperationalSettingsStore((state) => state.updateSection);
+  const { isSaving, saveOperational } = useSaveOperationalSettings();
+  const [formMode, setFormMode] = useState<"edit" | "create">("edit");
+  const [editingGymId, setEditingGymId] = useState<string | null>(primaryGym?.id ?? null);
+  const [gymToDeactivate, setGymToDeactivate] = useState<GymSettings | null>(null);
+  const [gymToReactivate, setGymToReactivate] = useState<GymSettings | null>(null);
   const [form, setForm] = useState(() => gymForm(organization, primaryGym));
-  const [weekStart, setWeekStart] = useState("06:00");
-  const [weekEnd, setWeekEnd] = useState("22:00");
-  const [saturdayStart, setSaturdayStart] = useState("07:00");
-  const [saturdayEnd, setSaturdayEnd] = useState("18:00");
+  const displayGyms = gyms.length ? gyms : [primaryGym ?? mockGym(organization)].filter(Boolean);
+  const editingGym = editingGymId ? gyms.find((gym) => gym.id === editingGymId) : undefined;
 
   useEffect(() => {
-    setForm(gymForm(organization, primaryGym));
-  }, [organization, primaryGym]);
+    if (formMode === "edit" && !editingGymId && primaryGym?.id) setEditingGymId(primaryGym.id);
+  }, [editingGymId, formMode, primaryGym?.id]);
+
+  useEffect(() => {
+    if (formMode === "create") return;
+    setForm(gymForm(organization, editingGym ?? primaryGym));
+  }, [editingGym, formMode, organization, primaryGym]);
 
   const save = () => {
     if (!form.name.trim()) {
@@ -260,7 +287,7 @@ function GymTab({ organization, gyms, primaryGym }: { organization: Organization
       return;
     }
 
-    savePrimaryGym({
+    saveGym(formMode === "edit" ? editingGym?.id ?? null : null, {
       name: form.name,
       slug: form.slug,
       email: optional(form.email),
@@ -272,15 +299,79 @@ function GymTab({ organization, gyms, primaryGym }: { organization: Organization
       logoUrl: optional(form.logoUrl),
       isActive: form.isActive
     })
-      .then(() => toastSuccess("Unidade atualizada", "Os dados da academia foram guardados."))
+      .then((gym) => {
+        if (gym) {
+          setEditingGymId(gym.id);
+          setFormMode("edit");
+        }
+        toastSuccess(formMode === "create" ? "Unidade criada" : "Unidade atualizada", "Os dados da academia foram guardados na API.");
+      })
       .catch((error) => toastInfo("Nao foi possivel salvar", error instanceof Error ? error.message : "Verifique a API e tente novamente."));
   };
 
+  const startNewGym = () => {
+    setFormMode("create");
+    setEditingGymId(null);
+    setForm(newGymForm());
+  };
+
+  const editGym = (gym: GymSettings) => {
+    setFormMode("edit");
+    setEditingGymId(gym.id);
+    setForm(gymForm(organization, gym));
+  };
+
+  const requestDeactivateGym = (gym: GymSettings) => {
+    if (gym.isActive === false) {
+      toastInfo("Unidade ja inativa", `${gym.name} ja esta desativada.`);
+      return;
+    }
+
+    if (gyms.length <= 1) {
+      toastInfo("Unidade obrigatoria", "A organizacao precisa manter pelo menos uma unidade cadastrada.");
+      return;
+    }
+
+    setGymToDeactivate(gym);
+  };
+
+  const confirmReactivateGym = () => {
+    if (!gymToReactivate) return;
+
+    saveGym(gymToReactivate.id, { isActive: true })
+      .then((gym) => {
+        toastSuccess("Unidade reativada", `${gym?.name ?? gymToReactivate.name} voltou a aparecer nas operacoes.`);
+        setGymToReactivate(null);
+      })
+      .catch((error) => toastInfo("Nao foi possivel reativar", error instanceof Error ? error.message : "Verifique a API e tente novamente."));
+  };
+
+  const confirmDeactivateGym = () => {
+    if (!gymToDeactivate) return;
+
+    deactivateGym(gymToDeactivate.id)
+      .then(() => {
+        toastSuccess("Unidade desativada", `${gymToDeactivate.name} ficou inativa e o historico foi preservado.`);
+        if (editingGymId === gymToDeactivate.id) {
+          const nextGym = gyms.find((item) => item.id !== gymToDeactivate.id && item.isActive !== false);
+          setFormMode("edit");
+          setEditingGymId(nextGym?.id ?? null);
+          setForm(gymForm(organization, nextGym));
+        }
+        setGymToDeactivate(null);
+      })
+      .catch((error) => toastInfo("Nao foi possivel desativar", error instanceof Error ? error.message : "Verifique a API e tente novamente."));
+  };
+
   return (
+    <>
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
       <div className="space-y-4">
         <Card className="p-5">
-          <SectionTitle icon={Building2} title="Unidade principal" description="Dados operacionais da academia que aparecem em relatorios, check-in e recibos." />
+          <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+            <SectionTitle icon={Building2} title={formMode === "create" ? "Nova unidade" : "Editar unidade"} description="Dados operacionais da academia que aparecem em relatorios, check-in e recibos." />
+            <Button variant={formMode === "create" ? "primary" : "secondary"} icon={<Plus className="h-4 w-4" />} onClick={startNewGym}>Nova unidade</Button>
+          </div>
           <div className="grid gap-3 md:grid-cols-2">
             <FormInput label="Nome da unidade" requiredMark value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
             <FormInput label="Slug da unidade" requiredMark value={form.slug} onChange={(event) => setForm({ ...form, slug: event.target.value })} />
@@ -293,7 +384,7 @@ function GymTab({ organization, gyms, primaryGym }: { organization: Organization
           </div>
           <div className="mt-4 flex justify-end">
             <Button variant="primary" disabled={isLoading} icon={<Save className="h-4 w-4" />} onClick={save}>
-              {isLoading ? "Salvando..." : "Salvar unidade"}
+              {isLoading ? "Salvando..." : formMode === "create" ? "Criar unidade" : "Salvar unidade"}
             </Button>
           </div>
         </Card>
@@ -301,13 +392,15 @@ function GymTab({ organization, gyms, primaryGym }: { organization: Organization
         <Card className="p-5">
           <SectionTitle icon={CalendarClock} title="Horarios de funcionamento" description="Referencia operacional para aulas, check-in e atendimento." />
           <div className="grid gap-3 md:grid-cols-4">
-            <FormInput label="Seg-Sex abre" type="time" value={weekStart} onChange={(event) => setWeekStart(event.target.value)} />
-            <FormInput label="Seg-Sex fecha" type="time" value={weekEnd} onChange={(event) => setWeekEnd(event.target.value)} />
-            <FormInput label="Sabado abre" type="time" value={saturdayStart} onChange={(event) => setSaturdayStart(event.target.value)} />
-            <FormInput label="Sabado fecha" type="time" value={saturdayEnd} onChange={(event) => setSaturdayEnd(event.target.value)} />
+            <FormInput label="Seg-Sex abre" type="time" value={gymHours.weekdaysStart} onChange={(event) => updateSection("gymHours", { weekdaysStart: event.target.value })} />
+            <FormInput label="Seg-Sex fecha" type="time" value={gymHours.weekdaysEnd} onChange={(event) => updateSection("gymHours", { weekdaysEnd: event.target.value })} />
+            <FormInput label="Sabado abre" type="time" value={gymHours.saturdayStart} onChange={(event) => updateSection("gymHours", { saturdayStart: event.target.value })} />
+            <FormInput label="Sabado fecha" type="time" value={gymHours.saturdayEnd} onChange={(event) => updateSection("gymHours", { saturdayEnd: event.target.value })} />
           </div>
           <div className="mt-4 flex justify-end">
-            <Button onClick={saveToast}>Guardar horarios</Button>
+            <Button disabled={isSaving} onClick={() => saveOperational("Horarios salvos", "Os horarios foram guardados na API.")}>
+              {isSaving ? "Guardando..." : "Guardar horarios"}
+            </Button>
           </div>
         </Card>
       </div>
@@ -315,7 +408,7 @@ function GymTab({ organization, gyms, primaryGym }: { organization: Organization
       <Card className="p-5">
         <SectionTitle icon={Globe2} title="Unidades cadastradas" description="Lista das academias vinculadas a organizacao." />
         <div className="space-y-3">
-          {(gyms.length ? gyms : [primaryGym ?? mockGym(organization)]).filter(Boolean).map((gym) => (
+          {displayGyms.map((gym) => (
             <div key={gym.id} className="rounded-md border border-white/10 bg-white/[0.03] p-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -325,11 +418,58 @@ function GymTab({ organization, gyms, primaryGym }: { organization: Organization
                 <Badge>{gym.isActive === false ? "Inativa" : "Ativa"}</Badge>
               </div>
               <p className="mt-3 text-sm text-zinc-400">{gym.address ?? "Endereco nao informado"}</p>
+              <div className="mt-3 flex flex-wrap justify-end gap-2">
+                <Button onClick={() => editGym(gym)}>Editar</Button>
+                {gym.isActive === false ? (
+                  <Button onClick={() => setGymToReactivate(gym)}>
+                    Reativar
+                  </Button>
+                ) : (
+                  <Button
+                    icon={<Trash2 className="h-4 w-4" />}
+                    onClick={() => requestDeactivateGym(gym)}
+                  >
+                    Remover
+                  </Button>
+                )}
+              </div>
             </div>
           ))}
         </div>
       </Card>
     </div>
+    <ConfirmModal
+      open={Boolean(gymToDeactivate)}
+      title="Desativar unidade"
+      message={`Deseja desativar ${gymToDeactivate?.name ?? "esta unidade"}? Ela deixara de aparecer nas operacoes principais, mas o historico continuara disponivel em relatorios e auditoria.`}
+      confirmLabel="Desativar unidade"
+      danger
+      details={gymToDeactivate ? (
+        <div className="space-y-2 text-sm text-zinc-300">
+          <p><span className="text-zinc-400">Unidade:</span> {gymToDeactivate.name}</p>
+          <p><span className="text-zinc-400">Endereco:</span> {gymToDeactivate.address ?? "Nao informado"}</p>
+          <p><span className="text-zinc-400">Cidade:</span> {gymToDeactivate.city ?? "Nao informado"}</p>
+        </div>
+      ) : null}
+      onClose={() => setGymToDeactivate(null)}
+      onConfirm={confirmDeactivateGym}
+    />
+    <ConfirmModal
+      open={Boolean(gymToReactivate)}
+      title="Reativar unidade"
+      message={`Deseja reativar ${gymToReactivate?.name ?? "esta unidade"}? Ela voltara a aparecer nas operacoes e na troca de unidade para os usuarios com permissao.`}
+      confirmLabel="Reativar unidade"
+      details={gymToReactivate ? (
+        <div className="space-y-2 text-sm text-zinc-300">
+          <p><span className="text-zinc-400">Unidade:</span> {gymToReactivate.name}</p>
+          <p><span className="text-zinc-400">Endereco:</span> {gymToReactivate.address ?? "Nao informado"}</p>
+          <p><span className="text-zinc-400">Cidade:</span> {gymToReactivate.city ?? "Nao informado"}</p>
+        </div>
+      ) : null}
+      onClose={() => setGymToReactivate(null)}
+      onConfirm={confirmReactivateGym}
+    />
+    </>
   );
 }
 
@@ -337,6 +477,7 @@ function FinanceTab() {
   const settings = useOperationalSettingsStore((state) => state.settings);
   const updateSection = useOperationalSettingsStore((state) => state.updateSection);
   const updatePaymentMethod = useOperationalSettingsStore((state) => state.updatePaymentMethod);
+  const { isSaving, saveOperational } = useSaveOperationalSettings();
   const finance = settings.finance;
 
   return (
@@ -352,7 +493,9 @@ function FinanceTab() {
           <FormTextarea className="md:col-span-3" label="Rodape do recibo" value={finance.receiptFooter} onChange={(event) => updateSection("finance", { receiptFooter: event.target.value })} />
         </div>
         <div className="mt-4 flex justify-end">
-          <Button variant="primary" icon={<Save className="h-4 w-4" />} onClick={saveToast}>Salvar financeiro</Button>
+          <Button variant="primary" disabled={isSaving} icon={<Save className="h-4 w-4" />} onClick={() => saveOperational("Financeiro salvo", "As regras financeiras foram guardadas na API.")}>
+            {isSaving ? "Salvando..." : "Salvar financeiro"}
+          </Button>
         </div>
       </Card>
 
@@ -422,6 +565,7 @@ function FinanceTab() {
 function PrintingTab() {
   const printing = useOperationalSettingsStore((state) => state.settings.printing);
   const updateSection = useOperationalSettingsStore((state) => state.updateSection);
+  const { isSaving, saveOperational } = useSaveOperationalSettings();
   const [printers, setPrinters] = useState<Array<{ id: string; name: string; connectionType: string; isDefault?: boolean }>>([]);
   const [isTesting, setIsTesting] = useState(false);
   const [isOpeningDrawer, setIsOpeningDrawer] = useState(false);
@@ -518,7 +662,9 @@ function PrintingTab() {
           ) : null}
 
           <div className="mt-4 flex flex-wrap justify-end gap-2">
-            <Button onClick={saveToast}>Salvar impressora</Button>
+            <Button disabled={isSaving} onClick={() => saveOperational("Impressora salva", "A configuracao de impressao foi guardada na API.")}>
+              {isSaving ? "Salvando..." : "Salvar impressora"}
+            </Button>
             <Button variant="primary" disabled={isTesting} icon={<Printer className="h-4 w-4" />} onClick={testPrint}>
               {isTesting ? "Testando..." : "Testar impressao"}
             </Button>
@@ -586,6 +732,7 @@ function PrintingTab() {
 function ContractsTab() {
   const contracts = useOperationalSettingsStore((state) => state.settings.contracts);
   const updateSection = useOperationalSettingsStore((state) => state.updateSection);
+  const { isSaving, saveOperational } = useSaveOperationalSettings();
 
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
@@ -601,7 +748,9 @@ function ContractsTab() {
           <FormTextarea className="md:col-span-3" label="Modelo padrao de contrato" value={contracts.defaultContractModel} onChange={(event) => updateSection("contracts", { defaultContractModel: event.target.value })} />
         </div>
         <div className="mt-4 flex justify-end">
-          <Button variant="primary" icon={<Save className="h-4 w-4" />} onClick={saveToast}>Salvar regras</Button>
+          <Button variant="primary" disabled={isSaving} icon={<Save className="h-4 w-4" />} onClick={() => saveOperational("Regras salvas", "Planos e contratos foram guardados na API.")}>
+            {isSaving ? "Salvando..." : "Salvar regras"}
+          </Button>
         </div>
       </Card>
       <Card className="p-5">
@@ -620,6 +769,7 @@ function ContractsTab() {
 function CheckinTab() {
   const checkin = useOperationalSettingsStore((state) => state.settings.checkin);
   const updateSection = useOperationalSettingsStore((state) => state.updateSection);
+  const { isSaving, saveOperational } = useSaveOperationalSettings();
   const accessMethods = [
     { key: "manual", label: "Manual", description: "Recepcao registra entrada do cliente." },
     { key: "qrCode", label: "QR Code", description: "Cliente usa codigo pelo app ou cartao." },
@@ -653,7 +803,9 @@ function CheckinTab() {
           <FormSwitch label="Permitir check-in avulso" checked={checkin.allowGuestCheckin} onChange={(allowGuestCheckin) => updateSection("checkin", { allowGuestCheckin })} />
         </div>
         <div className="mt-4 flex justify-end">
-          <Button variant="primary" icon={<Save className="h-4 w-4" />} onClick={saveToast}>Salvar check-in</Button>
+          <Button variant="primary" disabled={isSaving} icon={<Save className="h-4 w-4" />} onClick={() => saveOperational("Check-in salvo", "As regras de acesso foram guardadas na API.")}>
+            {isSaving ? "Salvando..." : "Salvar check-in"}
+          </Button>
         </div>
       </Card>
 
@@ -673,6 +825,7 @@ function CheckinTab() {
 function NotificationsTab() {
   const notifications = useOperationalSettingsStore((state) => state.settings.notifications);
   const updateSection = useOperationalSettingsStore((state) => state.updateSection);
+  const { isSaving, saveOperational } = useSaveOperationalSettings();
 
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
@@ -690,7 +843,9 @@ function NotificationsTab() {
           <FormSwitch label="Alerta de check-in" checked={notifications.checkinAlert} onChange={(checkinAlert) => updateSection("notifications", { checkinAlert })} />
         </div>
         <div className="mt-4 flex justify-end">
-          <Button variant="primary" icon={<Save className="h-4 w-4" />} onClick={saveToast}>Salvar notificacoes</Button>
+          <Button variant="primary" disabled={isSaving} icon={<Save className="h-4 w-4" />} onClick={() => saveOperational("Notificacoes salvas", "Os canais e automacoes foram guardados na API.")}>
+            {isSaving ? "Salvando..." : "Salvar notificacoes"}
+          </Button>
         </div>
       </Card>
 
@@ -768,6 +923,7 @@ function UsersTab({ users }: { users: Array<{ id: string; name: string; email: s
 function IntegrationsTab() {
   const integrations = useOperationalSettingsStore((state) => state.settings.integrations);
   const updateSection = useOperationalSettingsStore((state) => state.updateSection);
+  const { isSaving, saveOperational } = useSaveOperationalSettings();
 
   return (
     <div className="grid gap-4 xl:grid-cols-2">
@@ -782,7 +938,9 @@ function IntegrationsTab() {
           <FormInput label="Webhook URL" value={integrations.webhookUrl} onChange={(event) => updateSection("integrations", { webhookUrl: event.target.value })} />
         </div>
         <div className="mt-4 flex justify-end">
-          <Button variant="primary" icon={<Save className="h-4 w-4" />} onClick={saveToast}>Salvar integracoes</Button>
+          <Button variant="primary" disabled={isSaving} icon={<Save className="h-4 w-4" />} onClick={() => saveOperational("Integracoes salvas", "Os conectores foram guardados na API.")}>
+            {isSaving ? "Salvando..." : "Salvar integracoes"}
+          </Button>
         </div>
       </Card>
 
@@ -804,6 +962,7 @@ function BackupTab() {
   const backup = useOperationalSettingsStore((state) => state.settings.backup);
   const updateSection = useOperationalSettingsStore((state) => state.updateSection);
   const runBackup = useOperationalSettingsStore((state) => state.runBackup);
+  const { isSaving, saveOperational } = useSaveOperationalSettings();
 
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
@@ -819,7 +978,17 @@ function BackupTab() {
         <div className="mt-4 flex flex-wrap justify-end gap-2">
           <Button icon={<Download className="h-4 w-4" />} onClick={() => toastSuccess("Exportacao preparada", `Formato selecionado: ${backup.exportFormat}.`)}>Exportar dados</Button>
           <Button icon={<UploadCloud className="h-4 w-4" />} onClick={() => toastInfo("Restaurar backup", "Selecao de ficheiro sera ligada ao modulo de backup da API.")}>Restaurar</Button>
-          <Button variant="primary" icon={<Database className="h-4 w-4" />} onClick={() => { runBackup(); toastSuccess("Backup executado", "O estado do ultimo backup foi atualizado."); }}>Executar backup</Button>
+          <Button
+            variant="primary"
+            disabled={isSaving}
+            icon={<Database className="h-4 w-4" />}
+            onClick={() => {
+              runBackup();
+              saveOperational("Backup executado", "O estado do ultimo backup foi guardado na API.");
+            }}
+          >
+            {isSaving ? "Executando..." : "Executar backup"}
+          </Button>
         </div>
       </Card>
 
@@ -901,6 +1070,21 @@ function gymForm(organization: OrganizationSettings | null, gym?: GymSettings) {
     country: gym?.country ?? "Angola",
     logoUrl: gym?.logoUrl ?? "",
     isActive: gym?.isActive ?? true
+  };
+}
+
+function newGymForm() {
+  return {
+    name: "",
+    slug: "",
+    email: "",
+    phone: "",
+    address: "",
+    city: "Luanda",
+    province: "Luanda",
+    country: "Angola",
+    logoUrl: "",
+    isActive: true
   };
 }
 

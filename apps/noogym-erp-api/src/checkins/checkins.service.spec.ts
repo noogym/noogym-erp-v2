@@ -21,13 +21,30 @@ describe('CheckinsService', () => {
         findFirst: jest.fn(),
       },
       checkIn: {
+        count: jest.fn(),
         create: jest.fn(),
       },
+    };
+    const settingsService = {
+      getOperational: jest.fn().mockResolvedValue({
+        checkin: {
+          manual: true,
+          qrCode: true,
+          biometric: false,
+          turnstile: false,
+          blockExpiredPlan: true,
+          dailyLimit: 1,
+          toleranceMinutes: 10,
+          accessStart: '00:00',
+          accessEnd: '23:59',
+        },
+      }),
     };
 
     return {
       prisma,
-      service: new CheckinsService(prisma as any),
+      settingsService,
+      service: new CheckinsService(prisma as any, settingsService as any),
     };
   }
 
@@ -39,6 +56,7 @@ describe('CheckinsService', () => {
       gymId: 'gym-1',
     });
     prisma.subscription.findFirst.mockResolvedValue({ id: 'subscription-1' });
+    prisma.checkIn.count.mockResolvedValue(0);
     prisma.checkIn.create.mockResolvedValue({ id: 'checkin-1' });
 
     await service.create(organizationId, dto);
@@ -83,6 +101,7 @@ describe('CheckinsService', () => {
       id: 'member-1',
       status: MemberStatus.ACTIVE,
     });
+    prisma.checkIn.count.mockResolvedValue(0);
     prisma.subscription.findFirst.mockResolvedValue(null);
 
     await expect(service.create(organizationId, dto)).rejects.toBeInstanceOf(
@@ -97,6 +116,7 @@ describe('CheckinsService', () => {
       status: MemberStatus.ACTIVE,
       gymId: 'gym-1',
     });
+    prisma.checkIn.count.mockResolvedValue(0);
     prisma.subscription.findFirst.mockResolvedValue({ id: 'subscription-1' });
     prisma.gym.findFirst.mockResolvedValue(null);
 

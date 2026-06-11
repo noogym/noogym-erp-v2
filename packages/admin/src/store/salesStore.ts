@@ -24,7 +24,8 @@ export const useSalesStore = create<{
   loadOnline: async () => {
     const token = useAuthStore.getState().accessToken;
     if (!token) return;
-    const apiSales = await listResource<Record<string, unknown>>("sales", token);
+    const activeGymId = useAppStore.getState().activeGymId ?? undefined;
+    const apiSales = await listResource<Record<string, unknown>>("sales", token, { gymId: activeGymId });
     const sales = apiSales.map(saleFromApi);
     persist(sales);
     set({ sales, revenue: sales.reduce((sum, sale) => sum + sale.total, 0) });
@@ -32,6 +33,7 @@ export const useSalesStore = create<{
   addSale: (sale, items = []) => set((state) => {
     const record: SaleRecord = {
       id: uid("SALE"),
+      gymId: sale.gymId ?? useAppStore.getState().activeGymId ?? undefined,
       total: sale.total ?? 0,
       subtotal: sale.subtotal ?? sale.total ?? 0,
       discountAmount: sale.discountAmount ?? 0,

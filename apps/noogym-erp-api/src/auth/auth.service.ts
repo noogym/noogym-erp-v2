@@ -54,7 +54,11 @@ export class AuthService {
           passwordHash,
           role: 'OWNER',
         },
-        include: { organization: true },
+        include: {
+          organization: true,
+          employeeProfile: true,
+          gyms: { include: { gym: true } },
+        },
       });
     });
 
@@ -64,7 +68,11 @@ export class AuthService {
   async login(dto: LoginDto) {
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
-      include: { organization: true },
+      include: {
+        organization: true,
+        employeeProfile: true,
+        gyms: { include: { gym: true } },
+      },
     });
 
     if (!user?.passwordHash) {
@@ -101,6 +109,17 @@ export class AuthService {
         avatarUrl: true,
         lastLoginAt: true,
         organization: true,
+        employeeProfile: {
+          select: {
+            role: true,
+            status: true,
+          },
+        },
+        gyms: {
+          include: {
+            gym: true,
+          },
+        },
       },
     });
   }
@@ -126,6 +145,16 @@ export class AuthService {
     organization?: {
       name: string;
     };
+    employeeProfile?: {
+      role: string;
+      status: string;
+    } | null;
+    gyms?: Array<{
+      gym: {
+        id: string;
+        name: string;
+      };
+    }>;
   }) {
     const payload = {
       sub: user.id,
@@ -141,6 +170,11 @@ export class AuthService {
         name: user.name,
         email: user.email,
         role: user.role,
+        employeeRole: user.employeeProfile?.role,
+        gyms: user.gyms?.map((item) => ({
+          id: item.gym.id,
+          name: item.gym.name,
+        })),
         organizationId: user.organizationId,
         organizationName: user.organization?.name,
       },

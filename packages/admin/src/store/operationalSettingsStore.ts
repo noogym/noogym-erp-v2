@@ -1,4 +1,6 @@
 import { create } from "zustand";
+import { getOperationalSettings, resetOperationalSettingsApi, updateOperationalSettings } from "../lib/settingsApi";
+import { useAuthStore } from "./authStore";
 
 export interface PaymentMethodSetting {
   id: string;
@@ -13,6 +15,12 @@ export interface OperationalSettings {
     sounds: boolean;
     confirmations: boolean;
     autoUpdates: boolean;
+  };
+  gymHours: {
+    weekdaysStart: string;
+    weekdaysEnd: string;
+    saturdayStart: string;
+    saturdayEnd: string;
   };
   finance: {
     currency: string;
@@ -90,19 +98,30 @@ export interface OperationalSettings {
 
 interface OperationalSettingsState {
   settings: OperationalSettings;
+  isLoading: boolean;
+  isSaving: boolean;
+  loadOnline: () => Promise<void>;
+  saveOnline: () => Promise<void>;
   updateSection: <Key extends keyof OperationalSettings>(section: Key, data: Partial<OperationalSettings[Key]>) => void;
   updatePaymentMethod: (id: string, data: Partial<PaymentMethodSetting>) => void;
   runBackup: () => void;
   resetOperationalSettings: () => void;
+  resetOperationalSettingsOnline: () => Promise<void>;
 }
 
 const storageKey = "noogym:operational-settings";
 
-const defaultSettings: OperationalSettings = {
+export const defaultSettings: OperationalSettings = {
   preferences: {
     sounds: true,
     confirmations: true,
     autoUpdates: false
+  },
+  gymHours: {
+    weekdaysStart: "06:00",
+    weekdaysEnd: "22:00",
+    saturdayStart: "07:00",
+    saturdayEnd: "18:00"
   },
   finance: {
     currency: "AOA",
@@ -190,6 +209,7 @@ const mergeSettings = (stored: unknown): OperationalSettings => {
 
   return {
     preferences: { ...defaultSettings.preferences, ...partial.preferences },
+    gymHours: { ...defaultSettings.gymHours, ...partial.gymHours },
     finance: {
       ...defaultSettings.finance,
       ...partial.finance,
@@ -219,8 +239,36 @@ const persistSettings = (settings: OperationalSettings) => {
   localStorage.setItem(storageKey, JSON.stringify(settings));
 };
 
-export const useOperationalSettingsStore = create<OperationalSettingsState>((set) => ({
+export const useOperationalSettingsStore = create<OperationalSettingsState>((set, get) => ({
   settings: loadSettings(),
+  isLoading: false,
+  isSaving: false,
+  loadOnline: async () => {
+    const token = useAuthStore.getState().accessToken;
+    if (!token) return;
+    set({ isLoading: true });
+    try {
+      const settings = mergeSettings(await getOperationalSettings(token));
+      persistSettings(settings);
+      set({ settings, isLoading: false });
+    } catch (error) {
+      set({ isLoading: false });
+      throw error;
+    }
+  },
+  saveOnline: async () => {
+    const token = useAuthStore.getState().accessToken;
+    if (!token) return;
+    set({ isSaving: true });
+    try {
+      const settings = mergeSettings(await updateOperationalSettings(token, mergeSettings(get().settings)));
+      persistSettings(settings);
+      set({ settings, isSaving: false });
+    } catch (error) {
+      set({ isSaving: false });
+      throw error;
+    }
+  },
   updateSection: (section, data) =>
     set((state) => {
       const settings = {
@@ -260,5 +308,22 @@ export const useOperationalSettingsStore = create<OperationalSettingsState>((set
   resetOperationalSettings: () => {
     persistSettings(defaultSettings);
     set({ settings: defaultSettings });
+  },
+  resetOperationalSettingsOnline: async () => {
+    const token = useAuthStore.getState().accessToken;
+    if (!token) {
+      persistSettings(defaultSettings);
+      set({ settings: defaultSettings });
+      return;
+    }
+    set({ isSaving: true });
+    try {
+      const settings = mergeSettings(await resetOperationalSettingsApi(token));
+      persistSettings(settings);
+      set({ settings, isSaving: false });
+    } catch (error) {
+      set({ isSaving: false });
+      throw error;
+    }
   }
 }));

@@ -7,6 +7,7 @@ export interface FinanceSummaryFilters {
   startDate?: string;
   endDate?: string;
   method?: string;
+  gymId?: string;
 }
 
 export interface CashAmounts {
@@ -103,8 +104,8 @@ export const updateFinanceCategory = (token: string, id: string, category: Parti
 export const deleteFinanceCategory = (token: string, id: string) =>
   apiRequest<ApiFinanceCategory>(`/finance/categories/${id}`, { method: "DELETE", token });
 
-export const getCurrentCashSession = (token: string) =>
-  apiRequest<CashSessionRecord | null>("/finance/cash-sessions/current", { token });
+export const getCurrentCashSession = (token: string, gymId?: string) =>
+  apiRequest<CashSessionRecord | null>(apiPath("/finance/cash-sessions/current", { gymId }), { token });
 
 export const listCashSessions = (token: string) =>
   apiRequest<CashSessionRecord[]>("/finance/cash-sessions", { token });

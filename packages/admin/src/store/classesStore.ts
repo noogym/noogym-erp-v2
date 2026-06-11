@@ -26,13 +26,14 @@ export const useClassesStore = create<{
   loadOnline: async () => {
     const token = useAuthStore.getState().accessToken;
     if (!token) return;
-    const apiClasses = await listResource<Record<string, unknown>>("classes", token);
+    const activeGymId = useAppStore.getState().activeGymId ?? undefined;
+    const apiClasses = await listResource<Record<string, unknown>>("classes", token, { gymId: activeGymId });
     const classes = apiClasses.map(classFromApi);
     persist(classes);
     set({ classes });
   },
   addClass: (lesson) => set((state) => {
-    const created: ClassRecord = { name: "Nova aula", room: "Sala 1", category: "Cardio", instructor: "Joao Silva", time: "Hoje, 10:00", duration: "55 min", seats: 25, participants: 0, status: "Agendada", allowWaitlist: true, requiresCheckIn: false, color: "#B6FF00", ...lesson, id: uid("CLS") };
+    const created: ClassRecord = { name: "Nova aula", gymId: useAppStore.getState().activeGymId ?? undefined, room: "Sala 1", category: "Cardio", instructor: "Joao Silva", time: "Hoje, 10:00", duration: "55 min", seats: 25, participants: 0, status: "Agendada", allowWaitlist: true, requiresCheckIn: false, color: "#B6FF00", ...lesson, id: uid("CLS") };
     const classes = [created, ...state.classes];
     persist(classes);
     useAppStore.getState().addPendingSync();

@@ -23,19 +23,65 @@ async function main() {
     },
   });
 
-  const gym = await prisma.gym.upsert({
-    where: { id: 'demo-gym-main' },
-    update: {},
-    create: {
+  const testGyms = [
+    {
       id: 'demo-gym-main',
-      organizationId: organization.id,
       name: 'Noogym Central',
       slug: 'central',
       city: 'Luanda',
       province: 'Luanda',
       address: 'Rua Demo, Luanda',
+      phone: '+244 923 000 100',
+      email: 'central@noogym.com',
     },
-  });
+    {
+      id: 'demo-gym-talatona',
+      name: 'Noogym Talatona',
+      slug: 'talatona',
+      city: 'Talatona',
+      province: 'Luanda',
+      address: 'Avenida Samora Machel, Talatona',
+      phone: '+244 923 000 200',
+      email: 'talatona@noogym.com',
+    },
+    {
+      id: 'demo-gym-benfica',
+      name: 'Noogym Benfica',
+      slug: 'benfica',
+      city: 'Benfica',
+      province: 'Luanda',
+      address: 'Estrada de Benfica, Luanda',
+      phone: '+244 923 000 300',
+      email: 'benfica@noogym.com',
+    },
+  ];
+
+  const gyms = await Promise.all(
+    testGyms.map((item) =>
+      prisma.gym.upsert({
+        where: { id: item.id },
+        update: {
+          organizationId: organization.id,
+          name: item.name,
+          slug: item.slug,
+          city: item.city,
+          province: item.province,
+          address: item.address,
+          phone: item.phone,
+          email: item.email,
+          country: 'Angola',
+          isActive: true,
+        },
+        create: {
+          ...item,
+          organizationId: organization.id,
+          country: 'Angola',
+          isActive: true,
+        },
+      }),
+    ),
+  );
+  const [gym, talatonaGym, benficaGym] = gyms;
 
   const admin = await prisma.user.upsert({
     where: { email: 'admin@noogym.com' },
@@ -52,6 +98,14 @@ async function main() {
     },
   });
 
+  for (const unit of gyms) {
+    await prisma.userGym.upsert({
+      where: { userId_gymId: { userId: admin.id, gymId: unit.id } },
+      update: {},
+      create: { userId: admin.id, gymId: unit.id },
+    });
+  }
+
   const testUsers = [
     {
       name: 'Administrador Teste',
@@ -61,6 +115,7 @@ async function main() {
       department: 'Administrativo',
       phone: '+244 923 100 001',
       salary: 650000,
+      gymIds: gyms.map((unit) => unit.id),
     },
     {
       name: 'Gerente Teste',
@@ -70,6 +125,7 @@ async function main() {
       department: 'Gestao',
       phone: '+244 923 100 002',
       salary: 520000,
+      gymIds: gyms.map((unit) => unit.id),
     },
     {
       name: 'Recepcionista Teste',
@@ -79,6 +135,7 @@ async function main() {
       department: 'Atendimento',
       phone: '+244 923 100 003',
       salary: 220000,
+      gymIds: [gym.id],
     },
     {
       name: 'Personal Trainer Teste',
@@ -88,6 +145,7 @@ async function main() {
       department: 'Tecnico',
       phone: '+244 923 100 004',
       salary: 350000,
+      gymIds: [gym.id, talatonaGym.id],
     },
     {
       name: 'Instrutor de Aulas Teste',
@@ -97,6 +155,7 @@ async function main() {
       department: 'Aulas',
       phone: '+244 923 100 005',
       salary: 300000,
+      gymIds: [talatonaGym.id, benficaGym.id],
     },
   ];
 
@@ -120,17 +179,19 @@ async function main() {
       },
     });
 
-    await prisma.userGym.upsert({
-      where: { userId_gymId: { userId: user.id, gymId: gym.id } },
-      update: {},
-      create: { userId: user.id, gymId: gym.id },
-    });
+    for (const gymId of testUser.gymIds) {
+      await prisma.userGym.upsert({
+        where: { userId_gymId: { userId: user.id, gymId } },
+        update: {},
+        create: { userId: user.id, gymId },
+      });
+    }
 
     await prisma.employee.upsert({
       where: { userId: user.id },
       update: {
         organizationId: organization.id,
-        gymId: gym.id,
+        gymId: testUser.gymIds[0],
         name: testUser.name,
         role: testUser.employeeRole,
         department: testUser.department,
@@ -140,7 +201,7 @@ async function main() {
       },
       create: {
         organizationId: organization.id,
-        gymId: gym.id,
+        gymId: testUser.gymIds[0],
         userId: user.id,
         name: testUser.name,
         role: testUser.employeeRole,
