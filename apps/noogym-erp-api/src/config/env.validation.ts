@@ -28,6 +28,12 @@ export function validateEnv(config: Record<string, unknown>) {
     config.JWT_EXPIRES_IN = '1d';
   }
 
+  const authProvider = String(config.AUTH_PROVIDER ?? 'local').toLowerCase();
+  if (!['local', 'wso2'].includes(authProvider)) {
+    throw new Error('AUTH_PROVIDER must be either local or wso2');
+  }
+  config.AUTH_PROVIDER = authProvider;
+
   if (!config.THROTTLE_TTL_MS) {
     config.THROTTLE_TTL_MS = '60000';
   }
