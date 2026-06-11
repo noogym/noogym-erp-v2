@@ -45,8 +45,16 @@ Campos que devem mudar em producao:
 - `CORS_ORIGINS`
 - `NEXT_PUBLIC_NOOGYM_API_URL`
 
-No Coolify, configure o dominio do servico `web-admin` para a porta interna `3000`.
-Se publicar a API separadamente, configure o dominio do servico `api` para a porta interna `3333`.
+No Coolify, configure o dominio no servico correto e inclua a porta interna do container no campo de dominio:
+
+```txt
+web-admin -> https://demo.noogym.com:3000
+api       -> https://api.demo.noogym.com:3333
+```
+
+O `:3000` e o `:3333` dizem ao proxy do Coolify para qual porta interna do container ele deve encaminhar o trafego. O utilizador continua acessando normalmente `https://demo.noogym.com`, sem escrever a porta no navegador.
+
+Se o Coolify mostrar `502 Bad Gateway` mesmo com o container iniciado, verifique se o servico `web-admin` esta `healthy`. Os healthchecks da API e do web usam `CMD` com argumentos separados para evitar problemas de aspas no Linux. Depois de alterar healthcheck ou dominio, faca `Stop` e `Deploy/Start` no Coolify para recriar o estado do container.
 
 Exemplo para dominio real:
 
