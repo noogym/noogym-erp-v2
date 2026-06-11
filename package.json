@@ -20,8 +20,13 @@
     "build": "turbo build",
     "build:desktop": "turbo build --filter=@noogym/desktop",
     "build:web": "turbo build --filter=@noogym/web-admin",
+    "docker:api:build": "docker build -f apps/noogym-erp-api/Dockerfile -t noogym-api .",
+    "docker:api:run": "docker run --env-file deploy.env -p 3333:3333 noogym-api",
     "docker:web:build": "docker build -f apps/web-admin/Dockerfile -t noogym-web-admin .",
     "docker:web:run": "docker run -p 3000:3000 noogym-web-admin",
+    "docker:compose:up": "docker compose up -d --build",
+    "docker:compose:down": "docker compose down",
+    "docker:compose:logs": "docker compose logs -f",
     "lint": "turbo lint",
     "typecheck": "turbo typecheck"
   },

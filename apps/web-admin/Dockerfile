@@ -19,6 +19,9 @@ RUN pnpm install --frozen-lockfile --filter noogym --filter @noogym/web-admin...
 
 FROM deps AS builder
 
+ARG NEXT_PUBLIC_NOOGYM_API_URL=http://localhost:3333
+ENV NEXT_PUBLIC_NOOGYM_API_URL=$NEXT_PUBLIC_NOOGYM_API_URL
+
 RUN pnpm turbo build --filter=@noogym/web-admin
 
 FROM node:20-alpine AS runner
