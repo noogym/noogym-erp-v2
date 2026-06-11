@@ -40,6 +40,8 @@ export interface PlanRecord {
   status: string;
   color?: string;
   accessDays?: string[];
+  gymIds?: string[];
+  gymNames?: string[];
 }
 
 export interface PlanCategoryRecord {

@@ -31,7 +31,9 @@ const mergeSyncedPlan = (synced: PlanRecord, fallback: PlanRecord): PlanRecord =
   ...fallback,
   ...synced,
   accessDays: fallback.accessDays,
-  clients: fallback.clients
+  clients: fallback.clients,
+  gymIds: synced.gymIds ?? fallback.gymIds,
+  gymNames: synced.gymNames ?? fallback.gymNames
 });
 const mergeSyncedCategory = (synced: PlanCategory, fallback: PlanCategory): PlanCategory => ({
   ...fallback,
@@ -84,8 +86,9 @@ export const usePlansStore = create<{
   loadOnline: async () => {
     const token = useAuthStore.getState().accessToken;
     if (!token) return;
+    const activeGymId = useAppStore.getState().activeGymId ?? undefined;
     const [apiPlans, apiCategories] = await Promise.all([
-      listResource<Record<string, unknown>>("plans", token),
+      listResource<Record<string, unknown>>("plans", token, { gymId: activeGymId }),
       listResource<Record<string, unknown>>("plan-categories", token)
     ]);
     const plans = apiPlans.map(planFromApi);
@@ -112,6 +115,7 @@ export const usePlansStore = create<{
     set({ plans, categories, categoryDetails });
   },
   addPlan: (plan) => set((state) => {
+    const activeGymId = useAppStore.getState().activeGymId;
     const created: PlanRecord = {
       id: uid("PLN"),
       name: "Novo plano",
@@ -123,6 +127,7 @@ export const usePlansStore = create<{
       clients: 0,
       status: "Ativo",
       color: planColor(state.plans.length),
+      gymIds: activeGymId ? [activeGymId] : [],
       ...plan
     };
     const plans = [created, ...state.plans];

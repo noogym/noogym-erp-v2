@@ -22,6 +22,7 @@ import { usePlansStore } from "../../store/plansStore";
 import { useProductsStore } from "../../store/productsStore";
 import { useSalesStore } from "../../store/salesStore";
 import { useSettingsStore } from "../../store/settingsStore";
+import { useAppStore } from "../../store/appStore";
 import { useWorkoutsStore } from "../../store/workoutsStore";
 import { useAuthStore } from "../../store/authStore";
 import { toastInfo, toastSuccess } from "../../store/toastStore";
@@ -31,6 +32,8 @@ import type { PlanCategory, PlanCategoryInput } from "../../store/plansStore";
 const today = "Hoje, 10:30";
 const planWeekDays = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sab", "Dom"];
 const defaultPlanWeekDays = ["Seg", "Ter", "Qua", "Qui", "Sex"];
+type PlanAvailabilityMode = "all" | "current" | "selected";
+const planAvailableForGym = (plan: PlanRecord, gymId?: string | null) => !gymId || !plan.gymIds?.length || plan.gymIds.includes(gymId);
 
 const dateTimeInputValue = () => {
   const now = new Date();
@@ -268,6 +271,7 @@ export function NewClientModal({ open, client, onClose }: { open: boolean; clien
   const addClient = useClientsStore((state) => state.addClient);
   const updateClient = useClientsStore((state) => state.updateClient);
   const plans = usePlansStore((state) => state.plans);
+  const activeGymId = useAppStore((state) => state.activeGymId);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -286,7 +290,7 @@ export function NewClientModal({ open, client, onClose }: { open: boolean; clien
   const [observations, setObservations] = useState("");
   const [status, setStatus] = useState("Ativo");
   const [selectedPlanId, setSelectedPlanId] = useState("");
-  const activePlans = useMemo(() => plans.filter((plan) => plan.status !== "Inativo"), [plans]);
+  const activePlans = useMemo(() => plans.filter((plan) => plan.status !== "Inativo" && planAvailableForGym(plan, activeGymId)), [activeGymId, plans]);
   const selectedPlan = activePlans.find((plan) => plan.id === selectedPlanId);
   const maxBirthDate = new Date().toISOString().slice(0, 10);
   const isEditing = Boolean(client);
@@ -522,6 +526,8 @@ export function PlanFormModal({ open, plan, onClose }: { open: boolean; plan?: P
   const addPlan = usePlansStore((state) => state.addPlan);
   const updatePlan = usePlansStore((state) => state.updatePlan);
   const categories = usePlansStore((state) => state.categories);
+  const gyms = useSettingsStore((state) => state.gyms);
+  const activeGymId = useAppStore((state) => state.activeGymId);
   const [name, setName] = useState("");
   const [category, setCategory] = useState("Musculação");
   const [type, setType] = useState("Recorrente");
@@ -533,6 +539,10 @@ export function PlanFormModal({ open, plan, onClose }: { open: boolean; plan?: P
   const [autoRenew, setAutoRenew] = useState(true);
   const [color, setColor] = useState("#B6FF00");
   const [accessDays, setAccessDays] = useState<string[]>(defaultPlanWeekDays);
+  const [availabilityMode, setAvailabilityMode] = useState<PlanAvailabilityMode>("all");
+  const [selectedGymIds, setSelectedGymIds] = useState<string[]>([]);
+  const activeGyms = useMemo(() => gyms.filter((gym) => gym.isActive !== false), [gyms]);
+  const activeGymName = activeGyms.find((gym) => gym.id === activeGymId)?.name;
 
   useEffect(() => {
     if (!open) return;
@@ -547,7 +557,15 @@ export function PlanFormModal({ open, plan, onClose }: { open: boolean; plan?: P
     setAutoRenew(true);
     setColor(plan?.color ?? "#B6FF00");
     setAccessDays(plan?.accessDays?.length ? plan.accessDays : defaultPlanWeekDays);
-  }, [categories, open, plan]);
+    if (plan) {
+      const planGymIds = plan.gymIds ?? [];
+      setSelectedGymIds(planGymIds);
+      setAvailabilityMode(!planGymIds.length ? "all" : activeGymId && planGymIds.length === 1 && planGymIds[0] === activeGymId ? "current" : "selected");
+    } else {
+      setSelectedGymIds(activeGymId ? [activeGymId] : []);
+      setAvailabilityMode(activeGymId ? "current" : "all");
+    }
+  }, [activeGymId, categories, open, plan]);
 
   const save = () => {
     const parsedPrice = parseNumericInput(normalPrice);
@@ -557,6 +575,11 @@ export function PlanFormModal({ open, plan, onClose }: { open: boolean; plan?: P
     }
     if (parsedPrice <= 0) {
       toastInfo("Preco invalido", "Informe o preco normal do plano.");
+      return;
+    }
+    const gymIds = availabilityMode === "all" ? [] : availabilityMode === "current" && activeGymId ? [activeGymId] : selectedGymIds;
+    if (availabilityMode !== "all" && !gymIds.length) {
+      toastInfo("Unidade obrigatoria", "Selecione pelo menos uma unidade para disponibilizar o plano.");
       return;
     }
 
@@ -569,7 +592,8 @@ export function PlanFormModal({ open, plan, onClose }: { open: boolean; plan?: P
       type,
       status: active ? "Ativo" : "Inativo",
       color,
-      accessDays
+      accessDays,
+      gymIds
     };
 
     if (plan) updatePlan(plan.id, payload);
@@ -581,10 +605,32 @@ export function PlanFormModal({ open, plan, onClose }: { open: boolean; plan?: P
     <Modal open={open} title={plan ? "Editar plano" : "Novo plano"} description="Preencha as informações do plano." size="xl" onClose={onClose} footer={<><Button onClick={onClose}>Cancelar</Button><Button variant="primary" onClick={save}>{plan ? "Salvar alterações" : "Salvar plano"}</Button></>}>
       <div className="space-y-5">
         <Section title="1. Informacoes basicas"><div className="grid grid-cols-3 gap-3"><FormInput label="Nome do plano" requiredMark value={name} onChange={(event) => setName(event.target.value)} /><FormSelect label="Categoria" requiredMark options={categories.length ? categories : ["Musculação"]} value={category} onChange={(event) => setCategory(event.target.value)} /><FormSelect label="Tipo de plano" requiredMark options={["Recorrente", "Avulso", "Pré-pago", "Corporativo"]} value={type} onChange={(event) => setType(event.target.value)} /></div><FormTextarea label="Descricao" value={description} onChange={(event) => setDescription(event.target.value)} /></Section>
-        <Section title="2. Preco e duracao"><div className="grid grid-cols-4 gap-3"><FormInput label="Preco normal (Kz)" requiredMark type="number" min="0" value={normalPrice} onChange={(event) => setNormalPrice(event.target.value)} /><FormInput label="Preco promocional (Kz)" type="number" min="0" /><FormSelect label="Duracao" requiredMark options={["Mensal", "Trimestral", "Semestral", "Anual"]} value={duration} onChange={(event) => setDuration(event.target.value)} /><FormSelect label="Periodo de cobranca" requiredMark options={["Mensal", "Trimestral", "Anual"]} value={duration === "Semestral" ? "Mensal" : duration} onChange={(event) => setDuration(event.target.value)} /><FormInput label="Taxa de matricula (Kz)" defaultValue="0" /><FormSelect label="Dia do vencimento" options={["1", "5", "10", "15", "20", "30"]} /></div></Section>
-        <Section title="3. Acesso e limitações"><div className="grid grid-cols-3 gap-3"><FormSelect label="Acesso à academia" options={["Livre", "Limitado", "Não incluso"]} /><FormSelect label="Acesso a aulas" options={["Todas", "Limitadas", "Não incluso"]} /><FormSelect label="Acesso a treinos" options={["Sim", "Não"]} /></div><div className="grid gap-3 lg:grid-cols-[1fr_300px]"><div className="space-y-2"><div className="flex items-center justify-between gap-3"><span className="text-sm text-zinc-200">Dias por semana</span><span className="text-xs text-zinc-400">{accessDays.length ? accessDays.join(", ") : "Nenhum dia selecionado"}</span></div><div className="grid grid-cols-7 gap-2">{planWeekDays.map((day) => { const selected = accessDays.includes(day); return <button key={day} type="button" className={`h-10 rounded-md border text-sm font-medium transition ${selected ? "border-noogym-lime bg-noogym-lime text-black" : "border-white/10 bg-black/20 text-zinc-300 hover:border-noogym-lime/60"}`} onClick={() => setAccessDays((days) => selected ? days.filter((item) => item !== day) : [...days, day])}>{day}</button>; })}</div><div className="flex flex-wrap gap-2"><button type="button" className="rounded-md border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-zinc-200" onClick={() => setAccessDays(defaultPlanWeekDays)}>Dias úteis</button><button type="button" className="rounded-md border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-zinc-200" onClick={() => setAccessDays(planWeekDays)}>Todos os dias</button><button type="button" className="rounded-md border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-zinc-200" onClick={() => setAccessDays([])}>Limpar</button></div></div><FormSelect label="Horário de acesso" options={["Horário livre", "Manhã", "Tarde", "Noite"]} /></div><FormSwitch label="Permitir congelamento do plano" checked={true} onChange={() => undefined} /></Section>
-        <Section title="4. Configuracoes adicionais"><div className="grid grid-cols-3 gap-3"><FormSwitch label="Plano ativo" checked={active} onChange={setActive} /><FormSwitch label="Exibir no app do aluno" checked={showInApp} onChange={setShowInApp} /><FormSwitch label="Permitir renovacao automatica" checked={autoRenew} onChange={setAutoRenew} /></div></Section>
-        <Section title="5. Imagem e cor do plano"><div className="grid grid-cols-[1fr_260px] gap-3"><FileUpload label="Clique para enviar ou arraste a imagem aqui" /><div className="space-y-3"><div className="flex items-center justify-between gap-3 text-sm"><span>Cor do plano</span><span className="inline-flex items-center gap-2 text-zinc-300"><span className="h-3 w-3 rounded-full" style={{ backgroundColor: color }} />{color}</span></div><ColorPicker value={color} onChange={setColor} /></div></div></Section>
+        <Section title="2. Disponibilidade por unidade">
+          <div className="grid gap-2 md:grid-cols-3">
+            {[
+              { id: "all" as const, label: "Todas as unidades", description: "Plano global da organizacao." },
+              { id: "current" as const, label: activeGymName ?? "Unidade atual", description: "Disponivel apenas na unidade selecionada." },
+              { id: "selected" as const, label: "Selecionar unidades", description: "Escolha uma ou mais unidades." }
+            ].map((option) => (
+              <button key={option.id} type="button" disabled={option.id === "current" && !activeGymId} onClick={() => setAvailabilityMode(option.id)} className={`min-h-20 rounded-md border p-3 text-left text-sm transition disabled:cursor-not-allowed disabled:opacity-50 ${availabilityMode === option.id ? "border-noogym-lime bg-noogym-lime/12 text-white" : "border-white/10 bg-white/[0.03] text-zinc-300 hover:border-white/20"}`}>
+                <span className="block font-semibold">{option.label}</span>
+                <span className="mt-1 block text-xs text-zinc-400">{option.description}</span>
+              </button>
+            ))}
+          </div>
+          {availabilityMode === "selected" ? (
+            <div className="grid gap-2 md:grid-cols-2">
+              {activeGyms.map((gym) => (
+                <FormCheckbox key={gym.id} label={gym.name} description={`${gym.city ?? "Unidade"}${gym.province ? ` - ${gym.province}` : ""}`} checked={selectedGymIds.includes(gym.id)} onChange={(event) => setSelectedGymIds((ids) => event.target.checked ? [...ids, gym.id] : ids.filter((id) => id !== gym.id))} />
+              ))}
+            </div>
+          ) : null}
+          <p className="text-xs text-zinc-400">Planos globais aparecem em todas as unidades. Planos por unidade aparecem apenas quando essa unidade estiver selecionada.</p>
+        </Section>
+        <Section title="3. Preco e duracao"><div className="grid grid-cols-4 gap-3"><FormInput label="Preco normal (Kz)" requiredMark type="number" min="0" value={normalPrice} onChange={(event) => setNormalPrice(event.target.value)} /><FormInput label="Preco promocional (Kz)" type="number" min="0" /><FormSelect label="Duracao" requiredMark options={["Mensal", "Trimestral", "Semestral", "Anual"]} value={duration} onChange={(event) => setDuration(event.target.value)} /><FormSelect label="Periodo de cobranca" requiredMark options={["Mensal", "Trimestral", "Anual"]} value={duration === "Semestral" ? "Mensal" : duration} onChange={(event) => setDuration(event.target.value)} /><FormInput label="Taxa de matricula (Kz)" defaultValue="0" /><FormSelect label="Dia do vencimento" options={["1", "5", "10", "15", "20", "30"]} /></div></Section>
+        <Section title="4. Acesso e limitações"><div className="grid grid-cols-3 gap-3"><FormSelect label="Acesso à academia" options={["Livre", "Limitado", "Não incluso"]} /><FormSelect label="Acesso a aulas" options={["Todas", "Limitadas", "Não incluso"]} /><FormSelect label="Acesso a treinos" options={["Sim", "Não"]} /></div><div className="grid gap-3 lg:grid-cols-[1fr_300px]"><div className="space-y-2"><div className="flex items-center justify-between gap-3"><span className="text-sm text-zinc-200">Dias por semana</span><span className="text-xs text-zinc-400">{accessDays.length ? accessDays.join(", ") : "Nenhum dia selecionado"}</span></div><div className="grid grid-cols-7 gap-2">{planWeekDays.map((day) => { const selected = accessDays.includes(day); return <button key={day} type="button" className={`h-10 rounded-md border text-sm font-medium transition ${selected ? "border-noogym-lime bg-noogym-lime text-black" : "border-white/10 bg-black/20 text-zinc-300 hover:border-noogym-lime/60"}`} onClick={() => setAccessDays((days) => selected ? days.filter((item) => item !== day) : [...days, day])}>{day}</button>; })}</div><div className="flex flex-wrap gap-2"><button type="button" className="rounded-md border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-zinc-200" onClick={() => setAccessDays(defaultPlanWeekDays)}>Dias úteis</button><button type="button" className="rounded-md border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-zinc-200" onClick={() => setAccessDays(planWeekDays)}>Todos os dias</button><button type="button" className="rounded-md border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-zinc-200" onClick={() => setAccessDays([])}>Limpar</button></div></div><FormSelect label="Horário de acesso" options={["Horário livre", "Manhã", "Tarde", "Noite"]} /></div><FormSwitch label="Permitir congelamento do plano" checked={true} onChange={() => undefined} /></Section>
+        <Section title="5. Configuracoes adicionais"><div className="grid grid-cols-3 gap-3"><FormSwitch label="Plano ativo" checked={active} onChange={setActive} /><FormSwitch label="Exibir no app do aluno" checked={showInApp} onChange={setShowInApp} /><FormSwitch label="Permitir renovacao automatica" checked={autoRenew} onChange={setAutoRenew} /></div></Section>
+        <Section title="6. Imagem e cor do plano"><div className="grid grid-cols-[1fr_260px] gap-3"><FileUpload label="Clique para enviar ou arraste a imagem aqui" /><div className="space-y-3"><div className="flex items-center justify-between gap-3 text-sm"><span>Cor do plano</span><span className="inline-flex items-center gap-2 text-zinc-300"><span className="h-3 w-3 rounded-full" style={{ backgroundColor: color }} />{color}</span></div><ColorPicker value={color} onChange={setColor} /></div></div></Section>
       </div>
     </Modal>
   );

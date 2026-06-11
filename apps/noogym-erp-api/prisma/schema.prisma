@@ -255,6 +255,7 @@ model Gym {
   sales          Sale[]
   employees      Employee[]
   gymClasses     GymClass[]
+  plans          PlanGym[]
   cashSessions   CashSession[]
 }
 
@@ -342,6 +343,19 @@ model Plan {
   updatedAt        DateTime       @updatedAt
   organization     Organization   @relation(fields: [organizationId], references: [id])
   subscriptions    Subscription[]
+  gyms             PlanGym[]
+}
+
+model PlanGym {
+  id        String   @id @default(uuid())
+  planId    String
+  gymId     String
+  createdAt DateTime @default(now())
+  plan      Plan     @relation(fields: [planId], references: [id], onDelete: Cascade)
+  gym       Gym      @relation(fields: [gymId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, gymId])
+  @@index([gymId])
 }
 
 model PlanCategory {

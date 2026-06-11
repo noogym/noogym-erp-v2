@@ -86,18 +86,23 @@ export const clientToDto = (client: Partial<ClientRecord>) => ({
   status: client.status === "Inativo" ? "INACTIVE" : "ACTIVE"
 });
 
-export const planFromApi = (plan: Entity): PlanRecord => ({
-  id: asString(plan.id),
-  name: asString(plan.name, "Plano"),
-  description: asString(plan.description, ""),
-  category: asString(plan.category, asBoolean(plan.includesClasses) ? "Aulas" : "Musculacao"),
-  price: `${formatNumber(plan.price)} Kz/${durationLabel(Number(plan.durationDays ?? 30)).toLowerCase()}`,
-  duration: durationLabel(Number(plan.durationDays ?? 30)),
-  type: asBoolean(plan.isPopular) ? "Popular" : "Recorrente",
-  clients: 0,
-  status: statusLabel(plan.status, { ACTIVE: "Ativo", INACTIVE: "Inativo" }),
-  color: asString(plan.color, "#B6FF00")
-});
+export const planFromApi = (plan: Entity): PlanRecord => {
+  const gymLinks = rows(plan.gyms);
+  return {
+    id: asString(plan.id),
+    name: asString(plan.name, "Plano"),
+    description: asString(plan.description, ""),
+    category: asString(plan.category, asBoolean(plan.includesClasses) ? "Aulas" : "Musculacao"),
+    price: `${formatNumber(plan.price)} Kz/${durationLabel(Number(plan.durationDays ?? 30)).toLowerCase()}`,
+    duration: durationLabel(Number(plan.durationDays ?? 30)),
+    type: asBoolean(plan.isPopular) ? "Popular" : "Recorrente",
+    clients: 0,
+    status: statusLabel(plan.status, { ACTIVE: "Ativo", INACTIVE: "Inativo" }),
+    color: asString(plan.color, "#B6FF00"),
+    gymIds: gymLinks.map((link) => asString(link.gymId ?? getEntity(link.gym)?.id, "")).filter(Boolean),
+    gymNames: gymLinks.map((link) => asString(getEntity(link.gym)?.name, "")).filter(Boolean)
+  };
+};
 
 export const planToDto = (plan: Partial<PlanRecord>) => ({
   name: plan.name ?? "Novo plano",
@@ -109,7 +114,8 @@ export const planToDto = (plan: Partial<PlanRecord>) => ({
   status: plan.status === "Inativo" ? "INACTIVE" : "ACTIVE",
   includesClasses: true,
   includesWorkouts: plan.category?.toLowerCase().includes("muscula") ?? false,
-  isPopular: plan.type === "Popular"
+  isPopular: plan.type === "Popular",
+  gymIds: plan.gymIds
 });
 
 export const planCategoryFromApi = (category: Entity): PlanCategoryRecord => ({

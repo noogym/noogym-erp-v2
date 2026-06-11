@@ -14,7 +14,9 @@ import { Table } from "@noogym/ui";
 import { Tabs } from "@noogym/ui";
 import { ListPagination, ListToolbar, paginateRows } from "../components/tables/ListControls";
 import { useClientsStore } from "../store/clientsStore";
+import { useAppStore } from "../store/appStore";
 import { usePlansStore } from "../store/plansStore";
+import { useSettingsStore } from "../store/settingsStore";
 import { toastSuccess } from "../store/toastStore";
 import type { PlanRecord } from "@noogym/types";
 import type { PlanCategory, PlanCategoryInput } from "../store/plansStore";
@@ -28,6 +30,12 @@ const durationDivisor = (duration: string) => {
   return 1;
 };
 const money = (value: number) => `${Math.round(value).toLocaleString("pt-AO")} Kz`;
+const planAvailableForGym = (plan: PlanRecord, gymId?: string | null) => !gymId || !plan.gymIds?.length || plan.gymIds.includes(gymId);
+const availabilityLabel = (plan: PlanRecord, gyms: Array<{ id: string; name: string }>) => {
+  if (!plan.gymIds?.length) return "Todas";
+  if (plan.gymIds.length === 1) return gyms.find((gym) => gym.id === plan.gymIds?.[0])?.name ?? plan.gymNames?.[0] ?? "1 unidade";
+  return `${plan.gymIds.length} unidades`;
+};
 
 export default function Planos() {
   const [tab, setTab] = useState("Planos ativos");
@@ -47,7 +55,11 @@ export default function Planos() {
   const toggleCategoryStatus = usePlansStore((state) => state.toggleCategoryStatus);
   const duplicatePlan = usePlansStore((state) => state.duplicatePlan);
   const deactivatePlan = usePlansStore((state) => state.deactivatePlan);
+  const activeGymId = useAppStore((state) => state.activeGymId);
+  const gyms = useSettingsStore((state) => state.gyms);
   const clients = useClientsStore((state) => state.clients);
+  const activeGymName = gyms.find((gym) => gym.id === activeGymId)?.name;
+  const scopedPlans = useMemo(() => plans.filter((plan) => planAvailableForGym(plan, activeGymId)), [activeGymId, plans]);
   const clientCountByPlan = useMemo(() => {
     const counts = new Map<string, number>();
     clients.forEach((client) => {
@@ -56,10 +68,10 @@ export default function Planos() {
     });
     return counts;
   }, [clients]);
-  const plansWithClientCount = useMemo(() => plans.map((plan) => ({
+  const plansWithClientCount = useMemo(() => scopedPlans.map((plan) => ({
     ...plan,
     clients: clientCountByPlan.get(plan.id) ?? clientCountByPlan.get(plan.name) ?? plan.clients ?? 0
-  })), [clientCountByPlan, plans]);
+  })), [clientCountByPlan, scopedPlans]);
   const types = useMemo(() => Array.from(new Set(plansWithClientCount.map((plan) => plan.type))).sort(), [plansWithClientCount]);
   const visiblePlans = useMemo(() => plansWithClientCount.filter((plan) => {
     const matchesTab = tab === "Planos inativos" ? plan.status === "Inativo" : tab === "Categorias" ? true : plan.status !== "Inativo";
@@ -85,7 +97,8 @@ export default function Planos() {
   useEffect(() => setPage(1), [pageSize, query, statusFilter, tab, typeFilter]);
   const metrics = useMemo(() => {
     const activePlans = plansWithClientCount.filter((plan) => plan.status === "Ativo");
-    const clientsInPlans = clients.filter((client) => client.plan && client.plan !== "Sem plano").length;
+    const activePlanKeys = new Set(activePlans.flatMap((plan) => [plan.id, plan.name]));
+    const clientsInPlans = clients.filter((client) => (client.planId && activePlanKeys.has(client.planId)) || (client.plan && activePlanKeys.has(client.plan))).length;
     const recurringRevenue = activePlans.reduce((sum, plan) => sum + (parseMoney(plan.price) / durationDivisor(plan.duration)) * (plan.clients ?? 0), 0);
     const ticketAverage = clientsInPlans ? recurringRevenue / clientsInPlans : 0;
     return { activePlans: activePlans.length, recurringRevenue, clientsInPlans, ticketAverage };
@@ -112,7 +125,7 @@ export default function Planos() {
   return (
     <div className="page-grid">
       <div className="panel p-6">
-        <PageHeader title="Planos" subtitle="Gerencie os planos da sua academia." actions={<><Button icon={<Grid2X2 className="h-4 w-4" />} onClick={() => setModal("category")}>Categorias</Button><Button variant="primary" icon={<Plus className="h-4 w-4" />} onClick={() => { setSelected(undefined); setModal("new"); }}>Novo plano</Button></>} />
+        <PageHeader title="Planos" subtitle={activeGymName ? `Planos disponiveis em ${activeGymName}.` : "Gerencie os planos da sua academia."} actions={<><Button icon={<Grid2X2 className="h-4 w-4" />} onClick={() => setModal("category")}>Categorias</Button><Button variant="primary" icon={<Plus className="h-4 w-4" />} onClick={() => { setSelected(undefined); setModal("new"); }}>Novo plano</Button></>} />
         <Tabs tabs={["Planos ativos", "Planos inativos", "Categorias"]} active={tab} onChange={setTab} />
         <div className="mt-5">
           <ListToolbar query={query} onQueryChange={setQuery} queryPlaceholder={tab === "Categorias" ? "Buscar por categoria..." : "Buscar por nome do plano..."} pageSize={pageSize} onPageSizeChange={setPageSize} onClear={() => { setQuery(""); setTypeFilter("Todos os tipos"); setStatusFilter("Todos"); }}>
@@ -151,7 +164,7 @@ export default function Planos() {
               ))}
             </Table>
           ) : (
-            <Table columns={["Plano", "Categoria", "Preço", "Duração", "Tipo", "Clientes", "Status", "Ações"]} containerClassName="max-h-[430px]">
+            <Table columns={["Plano", "Categoria", "Preço", "Duração", "Tipo", "Clientes", "Disponibilidade", "Status", "Ações"]} containerClassName="max-h-[430px]">
               {planPageData.pageRows.map((plan) => (
                 <tr key={plan.id} className="table-row">
                   <td className="px-4 py-3"><div className="flex items-start gap-3"><span className="mt-1.5 h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: plan.color ?? "#B6FF00" }} /><div><p>{plan.name}</p><p className="text-xs text-zinc-400">{plan.description}</p></div></div></td>
@@ -160,6 +173,7 @@ export default function Planos() {
                   <td className="px-4 py-3">{plan.duration}</td>
                   <td className="px-4 py-3">{plan.type}</td>
                   <td className="px-4 py-3">{plan.clients || "-"}</td>
+                  <td className="px-4 py-3"><Badge>{availabilityLabel(plan, gyms)}</Badge></td>
                   <td className="px-4 py-3"><StatusDot label={plan.status} tone={plan.status === "Ativo" ? "lime" : "red"} /></td>
                   <td className="px-4 py-3"><div className="flex gap-3"><button onClick={() => { setSelected(plan); setModal("edit"); }}><Pencil className="h-4 w-4" /></button><button onClick={() => { duplicatePlan(plan.id); toastSuccess("Plano duplicado com sucesso"); }}><Copy className="h-4 w-4" /></button><button className="text-red-300" onClick={() => { setSelected(plan); setModal("deactivate"); }}>Desativar</button></div></td>
                 </tr>

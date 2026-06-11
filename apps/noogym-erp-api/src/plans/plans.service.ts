@@ -14,6 +14,14 @@ export class PlansService {
     const { page, limit, skip, take } = getPagination(query.page, query.limit);
     const where: Prisma.PlanWhereInput = {
       organizationId,
+      ...(query.gymId
+        ? {
+            OR: [
+              { gyms: { none: {} } },
+              { gyms: { some: { gymId: query.gymId } } },
+            ],
+          }
+        : {}),
       ...(query.search
         ? { name: { contains: query.search } }
         : {}),
@@ -24,6 +32,7 @@ export class PlansService {
         skip,
         take,
         orderBy: { createdAt: 'desc' },
+        include: this.planInclude(),
       }),
       this.prisma.plan.count({ where }),
     ]);
@@ -31,14 +40,43 @@ export class PlansService {
     return paginated(items, total, page, limit);
   }
 
-  create(organizationId: string, dto: CreatePlanDto) {
-    return this.prisma.plan.create({ data: { ...dto, organizationId } });
+  async create(organizationId: string, dto: CreatePlanDto) {
+    const { gymIds, ...data } = dto;
+    await this.ensureGyms(organizationId, gymIds ?? []);
+
+    return this.prisma.plan.create({
+      data: {
+        ...data,
+        organizationId,
+        gyms: gymIds?.length
+          ? { create: gymIds.map((gymId) => ({ gymId })) }
+          : undefined,
+      },
+      include: this.planInclude(),
+    });
   }
 
   async update(organizationId: string, id: string, dto: UpdatePlanDto) {
     await this.ensureExists(organizationId, id);
+    const { gymIds, ...data } = dto;
+    await this.ensureGyms(organizationId, gymIds ?? []);
 
-    return this.prisma.plan.update({ where: { id }, data: dto });
+    return this.prisma.$transaction(async (tx) => {
+      if (gymIds) {
+        await tx.planGym.deleteMany({ where: { planId: id } });
+        if (gymIds.length) {
+          await tx.planGym.createMany({
+            data: gymIds.map((gymId) => ({ planId: id, gymId })),
+          });
+        }
+      }
+
+      return tx.plan.update({
+        where: { id },
+        data,
+        include: this.planInclude(),
+      });
+    });
   }
 
   async remove(organizationId: string, id: string) {
@@ -56,5 +94,25 @@ export class PlansService {
     if (!exists) {
       throw new NotFoundException('Plan not found');
     }
+  }
+
+  private async ensureGyms(organizationId: string, gymIds: string[]) {
+    if (!gymIds.length) return;
+    const uniqueGymIds = [...new Set(gymIds)];
+    const count = await this.prisma.gym.count({
+      where: { organizationId, id: { in: uniqueGymIds } },
+    });
+
+    if (count !== uniqueGymIds.length) {
+      throw new NotFoundException('One or more gyms were not found');
+    }
+  }
+
+  private planInclude() {
+    return {
+      gyms: {
+        include: { gym: true },
+      },
+    };
   }
 }

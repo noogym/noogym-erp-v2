@@ -2,9 +2,11 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { PlanStatus } from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
+  ArrayUnique,
   IsBoolean,
   IsEnum,
   IsInt,
+  IsArray,
   IsNumber,
   IsOptional,
   IsString,
@@ -59,4 +61,10 @@ export class CreatePlanDto {
   @IsOptional()
   @IsBoolean()
   isPopular?: boolean;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @IsString({ each: true })
+  gymIds?: string[];
 }
