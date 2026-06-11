@@ -5,7 +5,12 @@ export const metadata: Metadata = {
   title: "Noogym Web Admin",
   description: "Administracao SaaS Noogym para ginasios em Angola",
   icons: {
-    icon: "/icon.png"
+    icon: [
+      { url: "/favicon.ico", sizes: "any" },
+      { url: "/icon.png", type: "image/png" }
+    ],
+    shortcut: "/favicon.ico",
+    apple: "/icon.png"
   }
 };
 

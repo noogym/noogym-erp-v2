@@ -38,6 +38,7 @@ RUN addgroup --system --gid 1001 nodejs \
 
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web-admin/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web-admin/.next/static ./apps/web-admin/.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/apps/web-admin/public ./apps/web-admin/public
 
 USER nextjs
 
