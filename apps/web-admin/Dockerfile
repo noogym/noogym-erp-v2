@@ -22,7 +22,7 @@ FROM deps AS builder
 ARG NEXT_PUBLIC_NOOGYM_API_URL=http://localhost:3333
 ENV NEXT_PUBLIC_NOOGYM_API_URL=$NEXT_PUBLIC_NOOGYM_API_URL
 
-RUN pnpm turbo build --filter=@noogym/web-admin
+RUN pnpm --filter @noogym/web-admin build
 
 FROM node:20-alpine AS runner
 
