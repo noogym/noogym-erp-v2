@@ -37,7 +37,8 @@ services:
       DATABASE_RETRY_DELAY_MS: '${DATABASE_RETRY_DELAY_MS:-2000}'
       JWT_SECRET: '${JWT_SECRET:-change-this-secret-before-production-please}'
       JWT_EXPIRES_IN: '${JWT_EXPIRES_IN:-1d}'
-      CORS_ORIGINS: '${CORS_ORIGINS:-https://demo.noogym.com}'
+      # 🔥 CORRIGIDO: Agora aceita requisições vindas do admin.noogym.com (Mata o erro de CORS)
+      CORS_ORIGINS: '${CORS_ORIGINS:-https://admin.noogym.com}'
       THROTTLE_TTL_MS: '${THROTTLE_TTL_MS:-60000}'
       THROTTLE_LIMIT: '${THROTTLE_LIMIT:-120}'
       RUN_MIGRATIONS: '${RUN_MIGRATIONS:-true}'
@@ -58,6 +59,7 @@ services:
     build:
       context: .
       dockerfile: apps/web-admin/Dockerfile
+      # 🔥 CORRIGIDO: Injeta a URL correta da API no processo de compilação do Next.js
       args:
         NEXT_PUBLIC_NOOGYM_API_URL: '${NEXT_PUBLIC_NOOGYM_API_URL:-https://apiv1.noogym.com}'
     image: noogym-web-admin
