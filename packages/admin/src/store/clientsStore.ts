@@ -1,15 +1,40 @@
 import { create } from "zustand";
 import { clients as mockClients } from "../data/mock";
-import { clientFromApi, clientToDto, createResource, createSubscription, listResource, updateResource } from "../lib/domainApi";
-import { readLocal, uid, writeLocal } from "../lib/storage";
+import {
+  clientFromApi,
+  clientToDto,
+  createResource,
+  createSubscription,
+  listResource,
+  updateResource,
+} from "../lib/domainApi";
+import {
+  isApiDataSource,
+  localCollection,
+  resolveAdminDataSource,
+} from "../lib/dataSource";
+import { uid } from "../lib/storage";
 import { useAppStore } from "./appStore";
 import { useAuthStore } from "./authStore";
 import { useNotificationsStore } from "./notificationsStore";
 import type { ClientRecord } from "@noogym/types";
 
-const initialClients = mockClients.map((client) => ({ ...client, document: "000000000LA000" })) as ClientRecord[];
-const hasPlan = (client: Partial<ClientRecord>) => Boolean(client.plan && client.plan !== "Sem plano");
-const mergeSyncedClient = (synced: ClientRecord, fallback: ClientRecord, keepFallbackPlan = false): ClientRecord => {
+const seedClients = () =>
+  mockClients.map((client) => ({
+    ...client,
+    document: "000000000LA000",
+  })) as ClientRecord[];
+const localClients = localCollection<ClientRecord[]>(
+  "noogym:clients",
+  seedClients,
+);
+const hasPlan = (client: Partial<ClientRecord>) =>
+  Boolean(client.plan && client.plan !== "Sem plano");
+const mergeSyncedClient = (
+  synced: ClientRecord,
+  fallback: ClientRecord,
+  keepFallbackPlan = false,
+): ClientRecord => {
   if (!keepFallbackPlan && hasPlan(synced)) return { ...fallback, ...synced };
 
   return {
@@ -17,7 +42,7 @@ const mergeSyncedClient = (synced: ClientRecord, fallback: ClientRecord, keepFal
     ...synced,
     plan: fallback.plan,
     planId: fallback.planId,
-    planTone: fallback.planTone
+    planTone: fallback.planTone,
   };
 };
 
@@ -31,15 +56,28 @@ interface ClientsState {
   importClients: () => void;
 }
 
-const persist = (clients: ClientRecord[]) => writeLocal("noogym:clients", clients);
+const persist = localClients.write;
+const currentClientsDataSource = () =>
+  resolveAdminDataSource({
+    onlineOnly: useAppStore.getState().onlineOnly,
+    token: useAuthStore.getState().accessToken,
+    activeGymId: useAppStore.getState().activeGymId,
+  });
 
 export const useClientsStore = create<ClientsState>((set, get) => ({
-  clients: readLocal("noogym:clients", initialClients),
+  clients: localClients.read(),
   loadOnline: async () => {
-    const token = useAuthStore.getState().accessToken;
-    if (!token) return;
-    const activeGymId = useAppStore.getState().activeGymId ?? undefined;
-    const members = await listResource<Record<string, unknown>>("members", token, { gymId: activeGymId });
+    const source = currentClientsDataSource();
+    if (!isApiDataSource(source)) {
+      set({ clients: localClients.read() });
+      return;
+    }
+
+    const members = await listResource<Record<string, unknown>>(
+      "members",
+      source.token,
+      { gymId: source.activeGymId },
+    );
     const clients = members.map(clientFromApi);
     persist(clients);
     set({ clients });
@@ -59,7 +97,13 @@ export const useClientsStore = create<ClientsState>((set, get) => ({
       expires: client.expires ?? "20/06/2024",
       birthday: client.birthday ?? "20 Mai",
       birthDate: client.birthDate,
-      avatar: client.avatar ?? (client.name ?? "NC").split(" ").map((part) => part[0]).join("").slice(0, 2),
+      avatar:
+        client.avatar ??
+        (client.name ?? "NC")
+          .split(" ")
+          .map((part) => part[0])
+          .join("")
+          .slice(0, 2),
       document: client.document ?? "000000000LA000",
       createdAt: client.createdAt ?? new Date().toISOString(),
       gender: client.gender,
@@ -72,7 +116,7 @@ export const useClientsStore = create<ClientsState>((set, get) => ({
       profession: client.profession,
       source: client.source,
       goal: client.goal,
-      observations: client.observations
+      observations: client.observations,
     };
     const clients = [created, ...get().clients];
     persist(clients);
@@ -84,23 +128,37 @@ export const useClientsStore = create<ClientsState>((set, get) => ({
       category: "clients",
       tone: "success",
       route: "clientes",
-      actionLabel: "Ver cliente"
+      actionLabel: "Ver cliente",
     });
     set({ clients });
-    const token = useAuthStore.getState().accessToken;
-    if (useAppStore.getState().onlineOnly && token) {
-      createResource<Record<string, unknown>>("members", token, clientToDto(created))
+    const source = currentClientsDataSource();
+    if (isApiDataSource(source)) {
+      createResource<Record<string, unknown>>(
+        "members",
+        source.token,
+        clientToDto(created),
+      )
         .then(async (member) => {
           let synced = clientFromApi(member);
           if (created.planId) {
             try {
-              const subscription = await createSubscription(token, { memberId: String(member.id), planId: created.planId });
-              synced = clientFromApi({ ...(subscription.member as Record<string, unknown>), subscriptions: [subscription] });
+              const subscription = await createSubscription(source.token, {
+                memberId: String(member.id),
+                planId: created.planId,
+              });
+              synced = clientFromApi({
+                ...(subscription.member as Record<string, unknown>),
+                subscriptions: [subscription],
+              });
             } catch (error) {
               console.error(error);
             }
           }
-          const nextClients = get().clients.map((item) => item.id === created.id ? mergeSyncedClient(synced, created, Boolean(created.planId)) : item);
+          const nextClients = get().clients.map((item) =>
+            item.id === created.id
+              ? mergeSyncedClient(synced, created, Boolean(created.planId))
+              : item,
+          );
           persist(nextClients);
           set({ clients: nextClients });
         })
@@ -108,56 +166,104 @@ export const useClientsStore = create<ClientsState>((set, get) => ({
     }
     return created;
   },
-  updateClient: (id, data) => set((state) => {
-    const updatedClient = state.clients.find((client) => client.id === id);
-    const fallback = { ...updatedClient, ...data } as ClientRecord;
-    const clients = state.clients.map((client) => client.id === id ? { ...client, ...data } : client);
-    persist(clients);
-    useAppStore.getState().addPendingSync();
-    if (data.status && updatedClient?.status !== data.status) {
-      useNotificationsStore.getState().addNotification({
-        sourceId: `event:clients:status:${id}:${data.status}`,
-        title: "Status do cliente atualizado",
-        description: `${fallback.name} agora esta ${data.status}.`,
-        category: "clients",
-        tone: data.status === "Ativo" ? "success" : "warning",
-        route: "clientes",
-        actionLabel: "Ver clientes"
-      });
-    }
-    const token = useAuthStore.getState().accessToken;
-    if (useAppStore.getState().onlineOnly && token) {
-      updateResource<Record<string, unknown>>("members", id, token, clientToDto(fallback))
-        .then(async (member) => {
-          let synced = clientFromApi(member);
-          if (fallback.planId && (data.plan !== undefined || data.planId !== undefined)) {
-            try {
-              const subscription = await createSubscription(token, { memberId: id, planId: fallback.planId });
-              synced = clientFromApi({ ...(subscription.member as Record<string, unknown>), subscriptions: [subscription] });
-            } catch (error) {
-              console.error(error);
+  updateClient: (id, data) =>
+    set((state) => {
+      const updatedClient = state.clients.find((client) => client.id === id);
+      const fallback = { ...updatedClient, ...data } as ClientRecord;
+      const clients = state.clients.map((client) =>
+        client.id === id ? { ...client, ...data } : client,
+      );
+      persist(clients);
+      useAppStore.getState().addPendingSync();
+      if (data.status && updatedClient?.status !== data.status) {
+        useNotificationsStore.getState().addNotification({
+          sourceId: `event:clients:status:${id}:${data.status}`,
+          title: "Status do cliente atualizado",
+          description: `${fallback.name} agora esta ${data.status}.`,
+          category: "clients",
+          tone: data.status === "Ativo" ? "success" : "warning",
+          route: "clientes",
+          actionLabel: "Ver clientes",
+        });
+      }
+      const source = currentClientsDataSource();
+      if (isApiDataSource(source)) {
+        updateResource<Record<string, unknown>>(
+          "members",
+          id,
+          source.token,
+          clientToDto(fallback),
+        )
+          .then(async (member) => {
+            let synced = clientFromApi(member);
+            if (
+              fallback.planId &&
+              (data.plan !== undefined || data.planId !== undefined)
+            ) {
+              try {
+                const subscription = await createSubscription(source.token, {
+                  memberId: id,
+                  planId: fallback.planId,
+                });
+                synced = clientFromApi({
+                  ...(subscription.member as Record<string, unknown>),
+                  subscriptions: [subscription],
+                });
+              } catch (error) {
+                console.error(error);
+              }
             }
-          }
-          const nextClients = get().clients.map((client) => client.id === id ? mergeSyncedClient(synced, fallback, Boolean(data.plan !== undefined || data.planId !== undefined)) : client);
-          persist(nextClients);
-          set({ clients: nextClients });
-        })
-        .catch(console.error);
-    }
-    return { clients };
-  }),
-  updateLastCheckin: (id, lastCheckin) => set((state) => {
-    const clients = state.clients.map((client) => client.id === id ? { ...client, lastCheckin } : client);
-    persist(clients);
-    return { clients };
-  }),
+            const nextClients = get().clients.map((client) =>
+              client.id === id
+                ? mergeSyncedClient(
+                    synced,
+                    fallback,
+                    Boolean(
+                      data.plan !== undefined || data.planId !== undefined,
+                    ),
+                  )
+                : client,
+            );
+            persist(nextClients);
+            set({ clients: nextClients });
+          })
+          .catch(console.error);
+      }
+      return { clients };
+    }),
+  updateLastCheckin: (id, lastCheckin) =>
+    set((state) => {
+      const clients = state.clients.map((client) =>
+        client.id === id ? { ...client, lastCheckin } : client,
+      );
+      persist(clients);
+      return { clients };
+    }),
   deactivateClient: (id) => get().updateClient(id, { status: "Inativo" }),
   importClients: () => {
     const imported = [
-      { name: "Teresa Manuel", email: "teresa.manuel@email.com", phone: "+244 924 111 222", plan: "Plano Gold", document: "00991122LA044" },
-      { name: "Bento Cassoma", email: "bento.cassoma@email.com", phone: "+244 925 333 444", plan: "Plano Basic", document: "00993344LA055" },
-      { name: "Lurdes Antunes", email: "lurdes.antunes@email.com", phone: "+244 926 555 666", plan: "Plano Premium Mensal", document: "00995566LA066" }
+      {
+        name: "Teresa Manuel",
+        email: "teresa.manuel@email.com",
+        phone: "+244 924 111 222",
+        plan: "Plano Gold",
+        document: "00991122LA044",
+      },
+      {
+        name: "Bento Cassoma",
+        email: "bento.cassoma@email.com",
+        phone: "+244 925 333 444",
+        plan: "Plano Basic",
+        document: "00993344LA055",
+      },
+      {
+        name: "Lurdes Antunes",
+        email: "lurdes.antunes@email.com",
+        phone: "+244 926 555 666",
+        plan: "Plano Premium Mensal",
+        document: "00995566LA066",
+      },
     ];
     imported.forEach((client) => get().addClient(client));
-  }
+  },
 }));

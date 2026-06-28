@@ -204,6 +204,8 @@ O `web-admin` e o wrapper Next.js sobre `@noogym/admin`, portanto expoe as mesma
 
 No web-admin, a sessao pode usar o BFF Next em `/api/auth/*` para guardar o refresh token em cookie `HttpOnly`, `Secure` e `SameSite`, evitando que ele fique acessivel a JavaScript. O armazenamento em `localStorage` permanece apenas como compatibilidade para fluxos desktop/local-first ou ambientes sem esse BFF.
 
+Nos stores de `packages/admin`, a fronteira entre API e simulacao local-first deve ser explicita. Use `resolveAdminDataSource` para decidir entre `api` e `local-first`, e encapsule seeds/mocks em colecoes locais nomeadas. Assim, mocks e `localStorage` continuam disponiveis para desktop/offline, mas nao ficam misturados com o caminho SaaS como se fossem a fonte principal.
+
 ## Backend ERP API
 
 O `noogym-erp-api` e o backend NestJS do Noogym ERP. Ele organiza a regra de negocio server-side em modulos de Auth, Organizations, Gyms, Users, Members, Plans, Subscriptions, Payments, Products, Sales, Employees, Classes, Expenses, Check-ins, Exercises, Workouts, Appointments, Messages, Reports, Integrations e Audit Logs.
