@@ -1,5 +1,13 @@
 import { create } from "zustand";
-import { loginWithApi, registerWithApi, type ApiAuthUser, type RegisterPayload } from "../lib/api";
+import {
+  isHttpOnlyAuthEnabled,
+  loginWithApi,
+  logoutWithApi,
+  refreshWithApi,
+  registerWithApi,
+  type ApiAuthUser,
+  type RegisterPayload,
+} from "../lib/api";
 
 export interface AuthUser {
   id?: string;
@@ -16,15 +24,18 @@ export interface AuthUser {
 interface AuthSession {
   user: AuthUser;
   accessToken?: string;
+  refreshToken?: string;
   authenticatedAt: string;
 }
 
 interface AuthState {
   user: AuthUser | null;
   accessToken: string | null;
+  refreshToken: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
+  refreshSession: () => Promise<void>;
   loginMock: () => void;
   register: (data: {
     name: string;
@@ -42,7 +53,7 @@ const AUTH_STORAGE_KEY = "noogym:auth";
 const defaultUser: AuthUser = {
   name: "Admin",
   role: "Administrador",
-  gym: "Noogym Fitness Center - Unidade Central"
+  gym: "Noogym Fitness Center - Unidade Central",
 };
 
 const getStoredSession = (): AuthSession | null => {
@@ -53,12 +64,14 @@ const getStoredSession = (): AuthSession | null => {
     if (!stored) return null;
 
     const session = JSON.parse(stored) as Partial<AuthSession>;
-    if (!session.user?.name || !session.user.role || !session.user.gym) return null;
+    if (!session.user?.name || !session.user.role || !session.user.gym)
+      return null;
 
     return {
       user: session.user,
-      accessToken: session.accessToken,
-      authenticatedAt: session.authenticatedAt ?? new Date().toISOString()
+      accessToken: isHttpOnlyAuthEnabled() ? undefined : session.accessToken,
+      refreshToken: isHttpOnlyAuthEnabled() ? undefined : session.refreshToken,
+      authenticatedAt: session.authenticatedAt ?? new Date().toISOString(),
     };
   } catch {
     localStorage.removeItem(AUTH_STORAGE_KEY);
@@ -66,11 +79,16 @@ const getStoredSession = (): AuthSession | null => {
   }
 };
 
-const saveSession = (user: AuthUser, accessToken?: string) => {
+const saveSession = (
+  user: AuthUser,
+  accessToken?: string,
+  refreshToken?: string,
+) => {
   const session: AuthSession = {
     user,
-    accessToken,
-    authenticatedAt: new Date().toISOString()
+    accessToken: isHttpOnlyAuthEnabled() ? undefined : accessToken,
+    refreshToken: isHttpOnlyAuthEnabled() ? undefined : refreshToken,
+    authenticatedAt: new Date().toISOString(),
   };
 
   localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
@@ -86,7 +104,7 @@ const roleLabel = (role: string) => {
     RECEPTIONIST: "Recepcionista",
     FINANCE: "Financeiro",
     NUTRITIONIST: "Nutricionista",
-    STAFF: "Funcionario"
+    STAFF: "Funcionario",
   };
 
   return labels[role] ?? role;
@@ -101,7 +119,7 @@ const fromApiUser = (user: ApiAuthUser): AuthUser => ({
   gyms: user.gyms,
   gym: user.organizationName ?? "Noogym Fitness Center",
   email: user.email,
-  organizationId: user.organizationId
+  organizationId: user.organizationId,
 });
 
 const slugify = (value: string) => {
@@ -127,7 +145,7 @@ const buildRegisterPayload = (data: {
   password: data.password,
   phone: data.phone?.trim() || undefined,
   organizationName: data.organizationName.trim(),
-  organizationSlug: slugify(data.organizationName)
+  organizationSlug: slugify(data.organizationName),
 });
 
 const initialSession = getStoredSession();
@@ -135,6 +153,7 @@ const initialSession = getStoredSession();
 export const useAuthStore = create<AuthState>((set) => ({
   user: initialSession?.user ?? null,
   accessToken: initialSession?.accessToken ?? null,
+  refreshToken: initialSession?.refreshToken ?? null,
   isAuthenticated: Boolean(initialSession),
   isLoading: false,
   login: async (email, password) => {
@@ -142,24 +161,75 @@ export const useAuthStore = create<AuthState>((set) => ({
     try {
       const session = await loginWithApi({ email: email.trim(), password });
       const user = fromApiUser(session.user);
-      saveSession(user, session.accessToken);
-      set({ user, accessToken: session.accessToken, isAuthenticated: true, isLoading: false });
+      saveSession(user, session.accessToken, session.refreshToken);
+      set({
+        user,
+        accessToken: session.accessToken,
+        refreshToken: session.refreshToken,
+        isAuthenticated: true,
+        isLoading: false,
+      });
     } catch (error) {
       set({ isLoading: false });
       throw error;
     }
   },
+  refreshSession: async () => {
+    const refreshToken = useAuthStore.getState().refreshToken;
+    if (!refreshToken && !isHttpOnlyAuthEnabled()) {
+      localStorage.removeItem(AUTH_STORAGE_KEY);
+      set({
+        user: null,
+        accessToken: null,
+        refreshToken: null,
+        isAuthenticated: false,
+      });
+      return;
+    }
+
+    try {
+      const session = await refreshWithApi(refreshToken ?? undefined);
+      const user = fromApiUser(session.user);
+      saveSession(user, session.accessToken, session.refreshToken);
+      set({
+        user,
+        accessToken: session.accessToken,
+        refreshToken: session.refreshToken,
+        isAuthenticated: true,
+      });
+    } catch (error) {
+      localStorage.removeItem(AUTH_STORAGE_KEY);
+      set({
+        user: null,
+        accessToken: null,
+        refreshToken: null,
+        isAuthenticated: false,
+      });
+      throw error;
+    }
+  },
   loginMock: () => {
     saveSession(defaultUser);
-    set({ user: defaultUser, accessToken: null, isAuthenticated: true });
+    set({
+      user: defaultUser,
+      accessToken: null,
+      refreshToken: null,
+      isAuthenticated: true,
+    });
   },
   register: async (data) => {
     set({ isLoading: true });
     try {
       const session = await registerWithApi(buildRegisterPayload(data));
       const user = fromApiUser(session.user);
-      saveSession(user, session.accessToken);
-      set({ user, accessToken: session.accessToken, isAuthenticated: true, isLoading: false });
+      saveSession(user, session.accessToken, session.refreshToken);
+      set({
+        user,
+        accessToken: session.accessToken,
+        refreshToken: session.refreshToken,
+        isAuthenticated: true,
+        isLoading: false,
+      });
     } catch (error) {
       set({ isLoading: false });
       throw error;
@@ -168,10 +238,19 @@ export const useAuthStore = create<AuthState>((set) => ({
   registerMock: (name) => {
     const user = { ...defaultUser, name: name?.trim() || defaultUser.name };
     saveSession(user);
-    set({ user, accessToken: null, isAuthenticated: true });
+    set({ user, accessToken: null, refreshToken: null, isAuthenticated: true });
   },
   logout: () => {
+    const refreshToken = useAuthStore.getState().refreshToken;
+    if (refreshToken || isHttpOnlyAuthEnabled()) {
+      void logoutWithApi(refreshToken ?? undefined).catch(() => undefined);
+    }
     localStorage.removeItem(AUTH_STORAGE_KEY);
-    set({ user: null, accessToken: null, isAuthenticated: false });
-  }
+    set({
+      user: null,
+      accessToken: null,
+      refreshToken: null,
+      isAuthenticated: false,
+    });
+  },
 }));

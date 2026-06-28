@@ -30,6 +30,7 @@ import ForgotPassword from "./pages/auth/ForgotPassword";
 import Login from "./pages/auth/Login";
 import Register from "./pages/auth/Register";
 import { ToastViewport } from "./components/ui/Toast";
+import { isHttpOnlyAuthEnabled } from "./lib/api";
 import { canAccessRoute, firstAllowedRoute } from "./lib/permissions";
 import { navItems } from "./routes/nav";
 
@@ -45,13 +46,16 @@ const pages = {
   funcionarios: Funcionarios,
   relatorios: Relatorios,
   financas: Financas,
-  configuracoes: Configuracoes
+  configuracoes: Configuracoes,
 };
 
 type AuthRoute = "login" | "register" | "forgot-password";
 
 const authRouteFromValue = (value: string): AuthRoute | null => {
-  const normalized = value.toLowerCase().replace(/^#?\/?/, "").split(/[/?#]/)[0];
+  const normalized = value
+    .toLowerCase()
+    .replace(/^#?\/?/, "")
+    .split(/[/?#]/)[0];
   if (normalized === "register") return "register";
   if (normalized === "forgot-password") return "forgot-password";
   if (normalized === "login") return "login";
@@ -72,10 +76,16 @@ const getAuthRoute = (): AuthRoute => {
 
 const isAuthPath = () => {
   if (typeof window === "undefined") return false;
-  return Boolean(authRouteFromValue(window.location.hash) ?? authRouteFromValue(window.location.pathname));
+  return Boolean(
+    authRouteFromValue(window.location.hash) ??
+    authRouteFromValue(window.location.pathname),
+  );
 };
 
-const updateAuthUrl = (route: AuthRoute, method: "pushState" | "replaceState") => {
+const updateAuthUrl = (
+  route: AuthRoute,
+  method: "pushState" | "replaceState",
+) => {
   if (typeof window === "undefined") return;
 
   try {
@@ -124,6 +134,7 @@ export default function App({ onlineOnly = false }: AdminAppProps) {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const user = useAuthStore((state) => state.user);
   const accessToken = useAuthStore((state) => state.accessToken);
+  const refreshSession = useAuthStore((state) => state.refreshSession);
   const loadClients = useClientsStore((state) => state.loadOnline);
   const loadPlans = usePlansStore((state) => state.loadOnline);
   const loadProducts = useProductsStore((state) => state.loadOnline);
@@ -138,10 +149,21 @@ export default function App({ onlineOnly = false }: AdminAppProps) {
   const gyms = useSettingsStore((state) => state.gyms);
   const loadWorkouts = useWorkoutsStore((state) => state.loadOnline);
   const [authRoute, setAuthRoute] = useState<AuthRoute>(getAuthRoute);
-  const allowedRoute = firstAllowedRoute(navItems.map((item) => item.id), user, employees, roles);
-  const canAccessActiveRoute = canAccessRoute(activeRoute, user, employees, roles);
+  const allowedRoute = firstAllowedRoute(
+    navItems.map((item) => item.id),
+    user,
+    employees,
+    roles,
+  );
+  const canAccessActiveRoute = canAccessRoute(
+    activeRoute,
+    user,
+    employees,
+    roles,
+  );
   const Page = pages[canAccessActiveRoute ? activeRoute : allowedRoute];
-  const activeGymName = gyms.find((gym) => gym.id === activeGymId)?.name ?? user?.gym ?? "Noogym";
+  const activeGymName =
+    gyms.find((gym) => gym.id === activeGymId)?.name ?? user?.gym ?? "Noogym";
 
   useEffect(() => {
     setOnlineOnly(onlineOnly);
@@ -182,6 +204,11 @@ export default function App({ onlineOnly = false }: AdminAppProps) {
   }, [allowedRoute, canAccessActiveRoute, isAuthenticated, setRoute, user]);
 
   useEffect(() => {
+    if (!isAuthenticated || accessToken || !isHttpOnlyAuthEnabled()) return;
+    void refreshSession().catch(console.error);
+  }, [accessToken, isAuthenticated, refreshSession]);
+
+  useEffect(() => {
     if (!isAuthenticated || !accessToken) return;
     void loadSettings().catch(console.error);
   }, [accessToken, isAuthenticated, loadSettings]);
@@ -205,7 +232,7 @@ export default function App({ onlineOnly = false }: AdminAppProps) {
       loadClasses(),
       loadEmployees(),
       loadFinance(),
-      loadWorkouts()
+      loadWorkouts(),
     ]).finally(() => {
       const remainingMs = Math.max(0, 550 - (Date.now() - startedAt));
       window.setTimeout(() => {
@@ -216,7 +243,22 @@ export default function App({ onlineOnly = false }: AdminAppProps) {
     return () => {
       cancelled = true;
     };
-  }, [accessToken, activeGymId, isAuthenticated, loadCheckins, loadClasses, loadClients, loadEmployees, loadFinance, loadPlans, loadProducts, loadSales, loadWorkouts, onlineOnly, setGymDataLoading]);
+  }, [
+    accessToken,
+    activeGymId,
+    isAuthenticated,
+    loadCheckins,
+    loadClasses,
+    loadClients,
+    loadEmployees,
+    loadFinance,
+    loadPlans,
+    loadProducts,
+    loadSales,
+    loadWorkouts,
+    onlineOnly,
+    setGymDataLoading,
+  ]);
 
   const navigateAuth = useCallback((route: AuthRoute) => {
     setAuthRoute(route);
@@ -224,8 +266,10 @@ export default function App({ onlineOnly = false }: AdminAppProps) {
   }, []);
 
   if (!isAuthenticated) {
-    if (authRoute === "register") return <Register onNavigateToLogin={() => navigateAuth("login")} />;
-    if (authRoute === "forgot-password") return <ForgotPassword onNavigateToLogin={() => navigateAuth("login")} />;
+    if (authRoute === "register")
+      return <Register onNavigateToLogin={() => navigateAuth("login")} />;
+    if (authRoute === "forgot-password")
+      return <ForgotPassword onNavigateToLogin={() => navigateAuth("login")} />;
 
     return (
       <Login
@@ -241,7 +285,11 @@ export default function App({ onlineOnly = false }: AdminAppProps) {
       <div className="admin-workspace flex min-h-0 flex-1">
         <Sidebar />
         <main className="admin-main min-w-0 flex-1 overflow-auto p-2 sm:p-3">
-          {isGymDataLoading ? <UnitDataLoadingScreen gymName={activeGymName} /> : <Page />}
+          {isGymDataLoading ? (
+            <UnitDataLoadingScreen gymName={activeGymName} />
+          ) : (
+            <Page />
+          )}
         </main>
       </div>
       <BottomSyncBar />
@@ -251,7 +299,14 @@ export default function App({ onlineOnly = false }: AdminAppProps) {
 }
 
 function UnitDataLoadingScreen({ gymName }: { gymName: string }) {
-  const modules = ["Clientes", "Check-ins", "Vendas", "Aulas", "Produtos", "Financeiro"];
+  const modules = [
+    "Clientes",
+    "Check-ins",
+    "Vendas",
+    "Aulas",
+    "Produtos",
+    "Financeiro",
+  ];
 
   return (
     <div className="flex min-h-full items-center justify-center">
@@ -261,14 +316,21 @@ function UnitDataLoadingScreen({ gymName }: { gymName: string }) {
             <span className="h-8 w-8 animate-spin rounded-full border-2 border-noogym-lime border-t-transparent" />
           </span>
           <div className="min-w-0 flex-1">
-            <p className="text-sm uppercase text-noogym-lime">A carregar unidade</p>
+            <p className="text-sm uppercase text-noogym-lime">
+              A carregar unidade
+            </p>
             <h1 className="mt-2 truncate text-2xl font-semibold">{gymName}</h1>
-            <p className="mt-2 text-sm text-zinc-400">A sincronizar dados operacionais desta unidade.</p>
+            <p className="mt-2 text-sm text-zinc-400">
+              A sincronizar dados operacionais desta unidade.
+            </p>
           </div>
         </div>
         <div className="mt-7 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {modules.map((module, index) => (
-            <div key={module} className="rounded-md border border-white/10 bg-white/[0.03] p-4">
+            <div
+              key={module}
+              className="rounded-md border border-white/10 bg-white/[0.03] p-4"
+            >
               <div className="mb-3 flex items-center justify-between">
                 <span className="text-sm font-medium">{module}</span>
                 <span className="h-2 w-2 rounded-full bg-noogym-lime" />

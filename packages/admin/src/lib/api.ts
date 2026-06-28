@@ -27,6 +27,7 @@ export interface ApiAuthUser {
 
 export interface ApiAuthResponse {
   accessToken: string;
+  refreshToken?: string;
   user: ApiAuthUser;
 }
 
@@ -56,7 +57,7 @@ export class ApiError extends Error {
   constructor(
     message: string,
     readonly status?: number,
-    readonly code?: string
+    readonly code?: string,
   ) {
     super(message);
     this.name = "ApiError";
@@ -69,15 +70,64 @@ export const apiBaseUrl = () => {
   return (envUrl ?? DEFAULT_API_URL).replace(/\/+$/, "");
 };
 
-export const loginWithApi = (payload: LoginPayload) => apiRequest<ApiAuthResponse>("/auth/login", { method: "POST", body: payload });
+export const isHttpOnlyAuthEnabled = () => {
+  const value = readPublicEnv("NEXT_PUBLIC_NOOGYM_HTTP_ONLY_AUTH");
+
+  if (value !== undefined) {
+    return value.toLowerCase() !== "false";
+  }
+
+  if (typeof window === "undefined") return false;
+
+  return window.location.port === "3000";
+};
+
+export const loginWithApi = (payload: LoginPayload) =>
+  authRequest<ApiAuthResponse>("login", "/auth/login", payload);
 
 export const registerWithApi = (payload: RegisterPayload) =>
-  apiRequest<ApiAuthResponse>("/auth/register", { method: "POST", body: payload });
+  authRequest<ApiAuthResponse>("register", "/auth/register", payload);
+
+export const refreshWithApi = (refreshToken?: string) => {
+  if (isHttpOnlyAuthEnabled()) {
+    return apiRequest<ApiAuthResponse>("/api/auth/refresh", {
+      method: "POST",
+      baseUrl: "",
+      credentials: "include",
+    });
+  }
+
+  return apiRequest<ApiAuthResponse>("/auth/refresh", {
+    method: "POST",
+    body: { refreshToken },
+  });
+};
+
+export const logoutWithApi = (refreshToken?: string) => {
+  if (isHttpOnlyAuthEnabled()) {
+    return apiRequest<{ message: string }>("/api/auth/logout", {
+      method: "POST",
+      baseUrl: "",
+      credentials: "include",
+    });
+  }
+
+  return apiRequest<{ message: string }>("/auth/logout", {
+    method: "POST",
+    body: { refreshToken },
+  });
+};
 
 export const forgotPasswordWithApi = (email: string) =>
-  apiRequest<{ message: string }>("/auth/forgot-password", { method: "POST", body: { email: email.trim() } });
+  apiRequest<{ message: string }>("/auth/forgot-password", {
+    method: "POST",
+    body: { email: email.trim() },
+  });
 
-export const apiPath = (path: string, query?: Record<string, string | number | boolean | undefined>) => {
+export const apiPath = (
+  path: string,
+  query?: Record<string, string | number | boolean | undefined>,
+) => {
   if (!query) return path;
 
   const params = new URLSearchParams();
@@ -95,24 +145,28 @@ export const apiRequest = async <T>(
     method?: string;
     body?: unknown;
     token?: string;
-  } = {}
+    baseUrl?: string;
+    credentials?: RequestCredentials;
+  } = {},
 ) => {
   let response: Response;
 
   try {
-    response = await fetch(`${apiBaseUrl()}${path}`, {
+    response = await fetch(`${options.baseUrl ?? apiBaseUrl()}${path}`, {
       method: options.method ?? "GET",
+      credentials: options.credentials,
       headers: {
         "Content-Type": "application/json",
-        ...(options.token ? { Authorization: `Bearer ${options.token}` } : {})
+        ...(options.token ? { Authorization: `Bearer ${options.token}` } : {}),
       },
-      body: options.body === undefined ? undefined : JSON.stringify(options.body)
+      body:
+        options.body === undefined ? undefined : JSON.stringify(options.body),
     });
   } catch {
     throw new ApiError(
       "Nao foi possivel conectar ao servidor. Confirme se a API esta online e tente novamente em instantes.",
       undefined,
-      "API_UNREACHABLE"
+      "API_UNREACHABLE",
     );
   }
 
@@ -126,18 +180,40 @@ export const apiRequest = async <T>(
 
   if (!response.ok || !payload?.success) {
     const code = resolveApiCode(payload);
-    throw new ApiError(resolveApiMessage(payload, response.status, code), response.status, code);
+    throw new ApiError(
+      resolveApiMessage(payload, response.status, code),
+      response.status,
+      code,
+    );
   }
 
   return payload.data;
 };
 
-const resolveApiMessage = <T>(payload: ApiEnvelope<T> | null, status?: number, code?: string) => {
+const authRequest = <T>(action: string, directPath: string, body: unknown) => {
+  if (isHttpOnlyAuthEnabled()) {
+    return apiRequest<T>(`/api/auth/${action}`, {
+      method: "POST",
+      body,
+      baseUrl: "",
+      credentials: "include",
+    });
+  }
+
+  return apiRequest<T>(directPath, { method: "POST", body });
+};
+
+const resolveApiMessage = <T>(
+  payload: ApiEnvelope<T> | null,
+  status?: number,
+  code?: string,
+) => {
   if (status === 503 || code === "DATABASE_UNAVAILABLE") {
     return "O sistema ainda esta a iniciar. Tente novamente em alguns segundos.";
   }
 
-  if (!payload || payload.success) return "Nao foi possivel comunicar com a API.";
+  if (!payload || payload.success)
+    return "Nao foi possivel comunicar com a API.";
   const message = payload.error?.message;
   if (Array.isArray(message)) return message.join(" ");
   return message ?? "Nao foi possivel comunicar com a API.";
@@ -149,11 +225,21 @@ const resolveApiCode = <T>(payload: ApiEnvelope<T> | null) => {
 };
 
 const readEnv = () => {
-  const metaEnv = (import.meta as unknown as { env?: Record<string, string | undefined> }).env;
+  return (
+    readPublicEnv("NEXT_PUBLIC_NOOGYM_API_URL") ??
+    readPublicEnv("VITE_NOOGYM_API_URL") ??
+    readPublicEnv("NOOGYM_API_URL")
+  );
+};
+
+const readPublicEnv = (key: string) => {
+  const metaEnv = (
+    import.meta as unknown as { env?: Record<string, string | undefined> }
+  ).env;
   const processEnv =
     typeof process !== "undefined"
-      ? process.env.NEXT_PUBLIC_NOOGYM_API_URL ?? process.env.VITE_NOOGYM_API_URL ?? process.env.NOOGYM_API_URL
+      ? (process.env as Record<string, string | undefined>)[key]
       : undefined;
 
-  return processEnv ?? metaEnv?.NEXT_PUBLIC_NOOGYM_API_URL ?? metaEnv?.VITE_NOOGYM_API_URL ?? metaEnv?.NOOGYM_API_URL;
+  return processEnv ?? metaEnv?.[key];
 };

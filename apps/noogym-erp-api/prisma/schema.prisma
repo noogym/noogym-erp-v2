@@ -266,6 +266,7 @@ model User {
   email           String        @unique
   phone           String?
   passwordHash    String?
+  refreshTokenHash String?
   role            UserRole      @default(ADMIN)
   status          UserStatus    @default(ACTIVE)
   avatarUrl       String?

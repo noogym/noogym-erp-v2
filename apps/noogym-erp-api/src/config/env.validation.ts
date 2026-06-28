@@ -28,6 +28,20 @@ export function validateEnv(config: Record<string, unknown>) {
     config.JWT_EXPIRES_IN = '1d';
   }
 
+  const jwtRefreshSecret = String(config.JWT_REFRESH_SECRET ?? jwtSecret);
+  if (
+    nodeEnv === 'production' &&
+    (weakJwtSecrets.has(jwtRefreshSecret) || jwtRefreshSecret.length < 32)
+  ) {
+    throw new Error(
+      'JWT_REFRESH_SECRET must be a strong secret with at least 32 characters in production',
+    );
+  }
+
+  if (!config.JWT_REFRESH_EXPIRES_IN) {
+    config.JWT_REFRESH_EXPIRES_IN = '7d';
+  }
+
   const authProvider = String(config.AUTH_PROVIDER ?? 'local').toLowerCase();
   if (!['local', 'wso2'].includes(authProvider)) {
     throw new Error('AUTH_PROVIDER must be either local or wso2');
