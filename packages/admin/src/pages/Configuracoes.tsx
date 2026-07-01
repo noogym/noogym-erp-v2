@@ -963,6 +963,48 @@ function BackupTab() {
   const updateSection = useOperationalSettingsStore((state) => state.updateSection);
   const runBackup = useOperationalSettingsStore((state) => state.runBackup);
   const { isSaving, saveOperational } = useSaveOperationalSettings();
+  const [isExporting, setIsExporting] = useState(false);
+  const [isRestoring, setIsRestoring] = useState(false);
+  const backupBridge = typeof window === "undefined" ? undefined : window.noogym?.backup;
+
+  const exportDesktopBackup = () => {
+    if (!backupBridge) {
+      toastInfo("Backup desktop", "Abra o Noogym Desktop para exportar dados locais para ficheiro.");
+      return;
+    }
+
+    setIsExporting(true);
+    backupBridge.exportLocalData(buildLocalBackupPayload())
+      .then((result) => {
+        if (result.canceled) return;
+        result.success ? toastSuccess("Backup exportado", result.path ?? result.message) : toastInfo("Backup nao exportado", result.message);
+      })
+      .catch((error) => toastInfo("Backup nao exportado", error instanceof Error ? error.message : "Nao foi possivel exportar o backup."))
+      .finally(() => setIsExporting(false));
+  };
+
+  const restoreDesktopBackup = () => {
+    if (!backupBridge) {
+      toastInfo("Backup desktop", "Abra o Noogym Desktop para restaurar dados locais.");
+      return;
+    }
+
+    setIsRestoring(true);
+    backupBridge.importLocalData()
+      .then((result) => {
+        if (result.canceled) return;
+        if (!result.success || !result.payload?.localStorage) {
+          toastInfo("Backup nao restaurado", result.message);
+          return;
+        }
+
+        restoreLocalBackupPayload(result.payload.localStorage);
+        toastSuccess("Backup restaurado", "A aplicacao sera recarregada com os dados restaurados.");
+        window.setTimeout(() => window.location.reload(), 700);
+      })
+      .catch((error) => toastInfo("Backup nao restaurado", error instanceof Error ? error.message : "Nao foi possivel restaurar o backup."))
+      .finally(() => setIsRestoring(false));
+  };
 
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
@@ -976,8 +1018,8 @@ function BackupTab() {
           <FormSelect label="Formato de exportacao" value={backup.exportFormat} onChange={(event) => updateSection("backup", { exportFormat: event.target.value })} options={["JSON", "CSV", "XLSX"]} />
         </div>
         <div className="mt-4 flex flex-wrap justify-end gap-2">
-          <Button icon={<Download className="h-4 w-4" />} onClick={() => toastSuccess("Exportacao preparada", `Formato selecionado: ${backup.exportFormat}.`)}>Exportar dados</Button>
-          <Button icon={<UploadCloud className="h-4 w-4" />} onClick={() => toastInfo("Restaurar backup", "Selecao de ficheiro sera ligada ao modulo de backup da API.")}>Restaurar</Button>
+          <Button disabled={isExporting} icon={<Download className="h-4 w-4" />} onClick={exportDesktopBackup}>{isExporting ? "Exportando..." : "Exportar dados"}</Button>
+          <Button disabled={isRestoring} icon={<UploadCloud className="h-4 w-4" />} onClick={restoreDesktopBackup}>{isRestoring ? "Restaurando..." : "Restaurar"}</Button>
           <Button
             variant="primary"
             disabled={isSaving}
@@ -999,10 +1041,47 @@ function BackupTab() {
           <InfoLine label="Retencao" value={`${backup.retentionDays} dias`} />
           <InfoLine label="Local" value={backup.localBackup ? "Ativo" : "Inativo"} />
           <InfoLine label="Nuvem" value={backup.cloudBackup ? "Ativo" : "Inativo"} />
+          <InfoLine label="Desktop" value={backupBridge ? "Bridge disponivel" : "Bridge indisponivel"} />
         </div>
       </Card>
     </div>
   );
+}
+
+const localBackupExcludedKeys = new Set(["noogym:auth"]);
+
+function buildLocalBackupPayload() {
+  const localStorageSnapshot: Record<string, string> = {};
+
+  for (let index = 0; index < window.localStorage.length; index += 1) {
+    const key = window.localStorage.key(index);
+    if (!key?.startsWith("noogym:") || localBackupExcludedKeys.has(key)) continue;
+    const value = window.localStorage.getItem(key);
+    if (value !== null) localStorageSnapshot[key] = value;
+  }
+
+  return {
+    version: 1,
+    source: "noogym-desktop",
+    exportedAt: new Date().toISOString(),
+    localStorage: localStorageSnapshot
+  };
+}
+
+function restoreLocalBackupPayload(localStorageSnapshot: Record<string, string>) {
+  const keysToRemove: string[] = [];
+
+  for (let index = 0; index < window.localStorage.length; index += 1) {
+    const key = window.localStorage.key(index);
+    if (key?.startsWith("noogym:") && !localBackupExcludedKeys.has(key)) keysToRemove.push(key);
+  }
+
+  keysToRemove.forEach((key) => window.localStorage.removeItem(key));
+  Object.entries(localStorageSnapshot).forEach(([key, value]) => {
+    if (key.startsWith("noogym:") && !localBackupExcludedKeys.has(key)) {
+      window.localStorage.setItem(key, value);
+    }
+  });
 }
 
 function InfoLine({ label, value }: { label: string; value: string }) {

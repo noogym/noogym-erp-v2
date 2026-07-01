@@ -19,5 +19,9 @@ interface Window {
       printQRCode: (data: unknown, config: unknown) => Promise<{ success: boolean; message: string; code?: string; error?: string }>;
       openCashDrawer: (config: unknown) => Promise<{ success: boolean; message: string; code?: string; error?: string }>;
     };
+    backup?: {
+      exportLocalData: (payload: unknown) => Promise<{ success: boolean; message: string; path?: string; canceled?: boolean; code?: string }>;
+      importLocalData: () => Promise<{ success: boolean; message: string; path?: string; canceled?: boolean; code?: string; payload?: { localStorage?: Record<string, string> } }>;
+    };
   };
 }

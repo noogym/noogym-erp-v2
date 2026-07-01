@@ -17,5 +17,9 @@ contextBridge.exposeInMainWorld("noogym", {
     printReceipt: (data: unknown, config: unknown) => ipcRenderer.invoke("printer:receipt", data, config),
     printQRCode: (data: unknown, config: unknown) => ipcRenderer.invoke("printer:qr-code", data, config),
     openCashDrawer: (config: unknown) => ipcRenderer.invoke("printer:cash-drawer", config)
+  },
+  backup: {
+    exportLocalData: (payload: unknown) => ipcRenderer.invoke("backup:export-local-data", payload),
+    importLocalData: () => ipcRenderer.invoke("backup:import-local-data")
   }
 });
