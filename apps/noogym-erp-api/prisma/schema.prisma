@@ -267,6 +267,8 @@ model User {
   phone           String?
   passwordHash    String?
   refreshTokenHash String?
+  passwordResetTokenHash      String?
+  passwordResetTokenExpiresAt DateTime?
   role            UserRole      @default(ADMIN)
   status          UserStatus    @default(ACTIVE)
   avatarUrl       String?
@@ -324,6 +326,10 @@ model Member {
   messages           MessageRecipient[]
   sales              Sale[]
   classEnrollments   ClassEnrollment[]
+
+  @@unique([organizationId, email])
+  @@unique([organizationId, phone])
+  @@unique([organizationId, documentNumber])
 }
 
 model Plan {

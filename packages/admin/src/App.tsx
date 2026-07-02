@@ -29,6 +29,7 @@ import Configuracoes from "./pages/Configuracoes";
 import ForgotPassword from "./pages/auth/ForgotPassword";
 import Login from "./pages/auth/Login";
 import Register from "./pages/auth/Register";
+import ResetPassword from "./pages/auth/ResetPassword";
 import { ToastViewport } from "./components/ui/Toast";
 import { isHttpOnlyAuthEnabled } from "./lib/api";
 import { canAccessRoute, firstAllowedRoute } from "./lib/permissions";
@@ -49,7 +50,7 @@ const pages = {
   configuracoes: Configuracoes,
 };
 
-type AuthRoute = "login" | "register" | "forgot-password";
+type AuthRoute = "login" | "register" | "forgot-password" | "reset-password";
 
 const authRouteFromValue = (value: string): AuthRoute | null => {
   const normalized = value
@@ -58,6 +59,7 @@ const authRouteFromValue = (value: string): AuthRoute | null => {
     .split(/[/?#]/)[0];
   if (normalized === "register") return "register";
   if (normalized === "forgot-password") return "forgot-password";
+  if (normalized === "reset-password") return "reset-password";
   if (normalized === "login") return "login";
   return null;
 };
@@ -270,6 +272,8 @@ export default function App({ onlineOnly = false }: AdminAppProps) {
       return <Register onNavigateToLogin={() => navigateAuth("login")} />;
     if (authRoute === "forgot-password")
       return <ForgotPassword onNavigateToLogin={() => navigateAuth("login")} />;
+    if (authRoute === "reset-password")
+      return <ResetPassword onNavigateToLogin={() => navigateAuth("login")} />;
 
     return (
       <Login

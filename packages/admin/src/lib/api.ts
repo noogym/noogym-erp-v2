@@ -119,9 +119,23 @@ export const logoutWithApi = (refreshToken?: string) => {
 };
 
 export const forgotPasswordWithApi = (email: string) =>
-  apiRequest<{ message: string }>("/auth/forgot-password", {
+  apiRequest<{ message: string; resetUrl?: string }>("/auth/forgot-password", {
     method: "POST",
     body: { email: email.trim() },
+  });
+
+export const resetPasswordWithApi = (payload: {
+  email: string;
+  password: string;
+  token: string;
+}) =>
+  apiRequest<{ message: string }>("/auth/reset-password", {
+    method: "POST",
+    body: {
+      email: payload.email.trim(),
+      password: payload.password,
+      token: payload.token,
+    },
   });
 
 export const apiPath = (

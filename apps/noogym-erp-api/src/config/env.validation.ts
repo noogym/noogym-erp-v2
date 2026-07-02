@@ -42,6 +42,14 @@ export function validateEnv(config: Record<string, unknown>) {
     config.JWT_REFRESH_EXPIRES_IN = '7d';
   }
 
+  if (!config.PASSWORD_RESET_BASE_URL) {
+    config.PASSWORD_RESET_BASE_URL = 'http://localhost:3000';
+  }
+
+  if (!config.PASSWORD_RESET_TTL_MINUTES) {
+    config.PASSWORD_RESET_TTL_MINUTES = '30';
+  }
+
   const authProvider = String(config.AUTH_PROVIDER ?? 'local').toLowerCase();
   if (!['local', 'wso2'].includes(authProvider)) {
     throw new Error('AUTH_PROVIDER must be either local or wso2');
