@@ -8,6 +8,7 @@ import {
   type ApiAuthUser,
   type RegisterPayload,
 } from "../lib/api";
+import { createGymSettings } from "../lib/settingsApi";
 
 export interface AuthUser {
   id?: string;
@@ -117,7 +118,7 @@ const fromApiUser = (user: ApiAuthUser): AuthUser => ({
   employeeRole: user.employeeRole,
   permissions: user.permissions,
   gyms: user.gyms,
-  gym: user.organizationName ?? "Noogym Fitness Center",
+  gym: user.gyms?.[0]?.name ?? user.organizationName ?? "Noogym Fitness Center",
   email: user.email,
   organizationId: user.organizationId,
 });
@@ -221,7 +222,20 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({ isLoading: true });
     try {
       const session = await registerWithApi(buildRegisterPayload(data));
-      const user = fromApiUser(session.user);
+      const createdGym = await createGymSettings(session.accessToken, {
+        name: data.organizationName.trim(),
+        slug: slugify(data.organizationName),
+        isActive: true,
+      }).catch((error) => {
+        console.error(error);
+        return null;
+      });
+      const user = fromApiUser({
+        ...session.user,
+        gyms: createdGym
+          ? [{ id: createdGym.id, name: createdGym.name }]
+          : session.user.gyms,
+      });
       saveSession(user, session.accessToken, session.refreshToken);
       set({
         user,

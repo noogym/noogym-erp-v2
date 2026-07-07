@@ -3,6 +3,8 @@ import { BarChart3, Check, Clock, Eye, EyeOff, Lock, Mail, ShieldCheck, Users } 
 import { AuthInput } from "../../components/auth/AuthInput";
 import { AuthLayout } from "../../components/auth/AuthLayout";
 import { GoogleButton } from "../../components/auth/GoogleButton";
+import { webPortalRegisterUrl } from "../../lib/api";
+import { isDesktopLocalDbAvailable } from "../../lib/desktopLocalDb";
 import { useAppStore } from "../../store/appStore";
 import { useAuthStore } from "../../store/authStore";
 
@@ -19,6 +21,8 @@ interface LoginErrors {
 
 export default function Login({ onNavigateToRegister, onNavigateToForgotPassword }: LoginProps) {
   const onlineOnly = useAppStore((state) => state.onlineOnly);
+  const isDesktop = isDesktopLocalDbAvailable();
+  const requiresOnlineAuth = onlineOnly || isDesktop;
   const login = useAuthStore((state) => state.login);
   const loginMock = useAuthStore((state) => state.loginMock);
   const isLoading = useAuthStore((state) => state.isLoading);
@@ -40,7 +44,7 @@ export default function Login({ onNavigateToRegister, onNavigateToForgotPassword
     event.preventDefault();
     if (!validate()) return;
     try {
-      if (onlineOnly) {
+      if (requiresOnlineAuth) {
         await login(email, password);
         return;
       }
@@ -54,12 +58,24 @@ export default function Login({ onNavigateToRegister, onNavigateToForgotPassword
   };
 
   const handleGoogleLogin = () => {
-    if (onlineOnly) {
+    if (requiresOnlineAuth) {
       setErrors({ form: "Login com Google ainda nao esta configurado na API." });
       return;
     }
 
     loginMock();
+  };
+
+  const handleCreateAccount = () => {
+    if (!isDesktop) {
+      onNavigateToRegister();
+      return;
+    }
+
+    const url = webPortalRegisterUrl();
+    void (window.noogym?.openExternal?.(url) ?? Promise.resolve(false)).then((opened) => {
+      if (!opened) window.open(url, "_blank", "noopener,noreferrer");
+    });
   };
 
   return (
@@ -186,8 +202,8 @@ export default function Login({ onNavigateToRegister, onNavigateToForgotPassword
 
         <p className="mt-7 text-center text-base text-zinc-400 2xl:mt-12 2xl:text-lg">
           Ainda não tem uma conta?{" "}
-          <button type="button" className="no-drag font-medium text-noogym-lime transition hover:text-white" onClick={onNavigateToRegister}>
-            Criar conta
+          <button type="button" className="no-drag font-medium text-noogym-lime transition hover:text-white" onClick={handleCreateAccount}>
+            {isDesktop ? "Criar no portal web" : "Criar conta"}
           </button>
         </p>
       </form>

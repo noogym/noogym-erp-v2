@@ -1,4 +1,5 @@
 import {
+  AlertTriangle,
   Bell,
   Building2,
   CalendarClock,
@@ -31,6 +32,12 @@ import { useOperationalSettingsStore, type OperationalSettings } from "../store/
 import { useSettingsStore } from "../store/settingsStore";
 import { toastInfo, toastSuccess } from "../store/toastStore";
 import type { GymSettings, OrganizationSettings } from "../lib/settingsApi";
+import {
+  isDesktopLocalDbAvailable,
+  listDesktopSyncConflicts,
+  resolveDesktopSyncConflict,
+  type DesktopSyncConflict
+} from "../lib/desktopLocalDb";
 
 const configTabs = [
   "Geral",
@@ -42,6 +49,7 @@ const configTabs = [
   "Notificacoes",
   "Usuarios e permissoes",
   "Integracoes",
+  "Sincronizacao",
   "Backup"
 ];
 
@@ -120,6 +128,7 @@ export default function Configuracoes() {
           {tab === "Notificacoes" ? <NotificationsTab /> : null}
           {tab === "Usuarios e permissoes" ? <UsersTab users={users} /> : null}
           {tab === "Integracoes" ? <IntegrationsTab /> : null}
+          {tab === "Sincronizacao" ? <SyncTab /> : null}
           {tab === "Backup" ? <BackupTab /> : null}
         </div>
       </div>
@@ -958,6 +967,105 @@ function IntegrationsTab() {
   );
 }
 
+function SyncTab() {
+  const [conflicts, setConflicts] = useState<DesktopSyncConflict[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [resolvingId, setResolvingId] = useState<string | null>(null);
+  const refreshSyncStatus = useAppStore((state) => state.refreshSyncStatus);
+  const isDesktop = isDesktopLocalDbAvailable();
+
+  const loadConflicts = () => {
+    if (!isDesktop) return;
+    setIsLoading(true);
+    listDesktopSyncConflicts()
+      .then(setConflicts)
+      .catch((error) => toastInfo("Conflitos", error instanceof Error ? error.message : "Nao foi possivel carregar conflitos."))
+      .finally(() => setIsLoading(false));
+  };
+
+  useEffect(() => {
+    loadConflicts();
+  }, [isDesktop]);
+
+  const resolveConflict = (conflict: DesktopSyncConflict, resolution: "keep_local" | "use_remote") => {
+    setResolvingId(conflict.id);
+    resolveDesktopSyncConflict(conflict.id, resolution)
+      .then(() => {
+        toastSuccess(
+          "Conflito resolvido",
+          resolution === "keep_local"
+            ? "A alteracao local voltara para a fila de sincronizacao."
+            : "A versao do servidor foi aplicada no desktop."
+        );
+        loadConflicts();
+        refreshSyncStatus().catch(console.error);
+      })
+      .catch((error) => toastInfo("Conflito nao resolvido", error instanceof Error ? error.message : "Tente novamente."))
+      .finally(() => setResolvingId(null));
+  };
+
+  if (!isDesktop) {
+    return (
+      <Card className="p-5">
+        <SectionTitle icon={Database} title="Sincronizacao desktop" description="A resolucao de conflitos fica disponivel dentro do Noogym Desktop." />
+        <p className="text-sm text-zinc-400">Abra esta tela na versao desktop para ver a fila local e resolver alteracoes paralelas.</p>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
+      <Card className="p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <SectionTitle icon={AlertTriangle} title="Conflitos pendentes" description="Escolha qual versao deve prevalecer quando desktop e servidor mudaram o mesmo registo." />
+          <Button disabled={isLoading} icon={<RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />} onClick={loadConflicts}>
+            Atualizar
+          </Button>
+        </div>
+
+        <div className="mt-4 space-y-3">
+          {conflicts.length === 0 ? (
+            <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4 text-sm text-zinc-400">
+              Nenhum conflito pendente. A fila local pode sincronizar normalmente.
+            </div>
+          ) : conflicts.map((conflict) => (
+            <div key={conflict.id} className="rounded-lg border border-amber-400/20 bg-amber-400/[0.04] p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge>{entityLabel(conflict.entity)}</Badge>
+                    <Badge>{operationLabel(conflict.operation)}</Badge>
+                  </div>
+                  <p className="mt-2 truncate text-base font-semibold text-white">{conflictTitle(conflict)}</p>
+                  <p className="mt-1 text-xs text-zinc-400">Criado em {formatConflictDate(conflict.createdAt)}</p>
+                  {conflict.error ? <p className="mt-2 text-xs text-amber-200">{conflict.error}</p> : null}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button disabled={resolvingId === conflict.id} onClick={() => resolveConflict(conflict, "use_remote")}>
+                    Usar servidor
+                  </Button>
+                  <Button variant="primary" disabled={resolvingId === conflict.id} onClick={() => resolveConflict(conflict, "keep_local")}>
+                    Manter local
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      <Card className="p-5">
+        <SectionTitle icon={Database} title="Como resolve" description="A decisao muda apenas o registo em conflito." />
+        <div className="space-y-3 text-sm text-zinc-300">
+          <RuleLine active text="Manter local reenfileira a alteracao e forca o proximo envio para a API." />
+          <RuleLine active text="Usar servidor aplica a versao remota no SQLite e descarta o evento local." />
+          <RuleLine active={conflicts.length === 0} text={`${conflicts.length} conflito(s) pendente(s).`} />
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 function BackupTab() {
   const backup = useOperationalSettingsStore((state) => state.settings.backup);
   const updateSection = useOperationalSettingsStore((state) => state.updateSection);
@@ -1046,6 +1154,52 @@ function BackupTab() {
       </Card>
     </div>
   );
+}
+
+function conflictTitle(conflict: DesktopSyncConflict) {
+  const localName = displayValue(conflict.localPayload.name ?? conflict.localPayload.title ?? conflict.localPayload.customer);
+  const remoteName = displayValue(conflict.remotePayload?.name ?? conflict.remotePayload?.title ?? conflict.remotePayload?.customerName);
+  return localName ?? remoteName ?? conflict.remoteId ?? conflict.entityId;
+}
+
+function entityLabel(entity: string) {
+  const labels: Record<string, string> = {
+    clients: "Clientes",
+    plans: "Planos",
+    "plan-categories": "Categorias",
+    products: "Produtos",
+    sales: "Vendas",
+    checkins: "Check-ins",
+    classes: "Aulas",
+    employees: "Funcionarios",
+    "finance-records": "Financeiro",
+    "finance-categories": "Categorias financeiras",
+    "finance-accounts": "Contas financeiras",
+    workouts: "Treinos",
+    "operational-settings": "Operacao"
+  };
+
+  return labels[entity] ?? entity;
+}
+
+function operationLabel(operation: DesktopSyncConflict["operation"]) {
+  const labels: Record<DesktopSyncConflict["operation"], string> = {
+    create: "Criacao",
+    update: "Alteracao",
+    delete: "Remocao"
+  };
+
+  return labels[operation];
+}
+
+function formatConflictDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("pt-AO", { dateStyle: "short", timeStyle: "short" }).format(date);
+}
+
+function displayValue(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
 const localBackupExcludedKeys = new Set(["noogym:auth"]);

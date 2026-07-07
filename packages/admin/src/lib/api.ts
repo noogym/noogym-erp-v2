@@ -1,4 +1,5 @@
 const DEFAULT_API_URL = "http://localhost:3333";
+const DEFAULT_WEB_PORTAL_URL = "https://admin.noogym.com/register";
 
 type ApiEnvelope<T> =
   | {
@@ -68,6 +69,17 @@ export const apiBaseUrl = () => {
   const envUrl = readEnv();
 
   return (envUrl ?? DEFAULT_API_URL).replace(/\/+$/, "");
+};
+
+export const webPortalRegisterUrl = () => {
+  const portalUrl =
+    readPublicEnv("NEXT_PUBLIC_NOOGYM_WEB_URL") ??
+    readPublicEnv("VITE_NOOGYM_WEB_URL") ??
+    readPublicEnv("NOOGYM_WEB_URL") ??
+    DEFAULT_WEB_PORTAL_URL;
+  const normalizedUrl = portalUrl.replace(/\/+$/, "");
+
+  return normalizedUrl.endsWith("/register") ? normalizedUrl : `${normalizedUrl}/register`;
 };
 
 export const isHttpOnlyAuthEnabled = () => {

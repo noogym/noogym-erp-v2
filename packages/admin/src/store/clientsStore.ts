@@ -13,6 +13,11 @@ import {
   localCollection,
   resolveAdminDataSource,
 } from "../lib/dataSource";
+import {
+  listDesktopClients,
+  replaceDesktopClients,
+  upsertDesktopClient,
+} from "../lib/desktopLocalDb";
 import { uid } from "../lib/storage";
 import { useAppStore } from "./appStore";
 import { useAuthStore } from "./authStore";
@@ -47,6 +52,7 @@ const mergeSyncedClient = (
 
 interface ClientsState {
   clients: ClientRecord[];
+  loadLocal: () => Promise<void>;
   loadOnline: () => Promise<void>;
   addClient: (client: Partial<ClientRecord>) => ClientRecord | null;
   updateClient: (id: string, data: Partial<ClientRecord>) => boolean;
@@ -88,10 +94,27 @@ const currentClientsDataSource = () =>
 
 export const useClientsStore = create<ClientsState>((set, get) => ({
   clients: localClients.read(),
+  loadLocal: async () => {
+    const desktopClients = await listDesktopClients();
+    if (!desktopClients) {
+      set({ clients: localClients.read() });
+      return;
+    }
+
+    if (desktopClients.length) {
+      persist(desktopClients);
+      set({ clients: desktopClients });
+      return;
+    }
+
+    const seededClients = localClients.read();
+    await replaceDesktopClients(seededClients);
+    set({ clients: seededClients });
+  },
   loadOnline: async () => {
     const source = currentClientsDataSource();
     if (!isApiDataSource(source)) {
-      set({ clients: localClients.read() });
+      await get().loadLocal();
       return;
     }
 
@@ -102,6 +125,7 @@ export const useClientsStore = create<ClientsState>((set, get) => ({
     );
     const clients = members.map(clientFromApi);
     persist(clients);
+    void replaceDesktopClients(clients).catch(console.error);
     set({ clients });
   },
   addClient: (client) => {
@@ -144,6 +168,7 @@ export const useClientsStore = create<ClientsState>((set, get) => ({
     };
     const clients = [created, ...get().clients];
     persist(clients);
+    void upsertDesktopClient(created, "create").catch(console.error);
     useAppStore.getState().addPendingSync();
     useNotificationsStore.getState().addNotification({
       sourceId: `event:clients:created:${created.id}`,
@@ -184,6 +209,10 @@ export const useClientsStore = create<ClientsState>((set, get) => ({
               : item,
           );
           persist(nextClients);
+          void upsertDesktopClient(
+            mergeSyncedClient(synced, created, Boolean(created.planId)),
+            "update",
+          ).catch(console.error);
           set({ clients: nextClients });
         })
         .catch(console.error);
@@ -200,6 +229,7 @@ export const useClientsStore = create<ClientsState>((set, get) => ({
         client.id === id ? { ...client, ...data } : client,
       );
       persist(clients);
+      void upsertDesktopClient(fallback, "update").catch(console.error);
       useAppStore.getState().addPendingSync();
       if (data.status && updatedClient?.status !== data.status) {
         useNotificationsStore.getState().addNotification({
@@ -251,6 +281,14 @@ export const useClientsStore = create<ClientsState>((set, get) => ({
                 : client,
             );
             persist(nextClients);
+            void upsertDesktopClient(
+              mergeSyncedClient(
+                synced,
+                fallback,
+                Boolean(data.plan !== undefined || data.planId !== undefined),
+              ),
+              "update",
+            ).catch(console.error);
             set({ clients: nextClients });
           })
           .catch(console.error);
@@ -265,6 +303,10 @@ export const useClientsStore = create<ClientsState>((set, get) => ({
         client.id === id ? { ...client, lastCheckin } : client,
       );
       persist(clients);
+      const updatedClient = clients.find((client) => client.id === id);
+      if (updatedClient) {
+        void upsertDesktopClient(updatedClient, "update").catch(console.error);
+      }
       return { clients };
     }),
   deactivateClient: (id) => get().updateClient(id, { status: "Inativo" }),

@@ -1,12 +1,18 @@
-import { app, BrowserWindow, ipcMain, type IpcMainInvokeEvent } from "electron";
+import { app, BrowserWindow, ipcMain, shell, type IpcMainInvokeEvent } from "electron";
 import path from "node:path";
 import { registerBackupIpc } from "./backup-ipc";
+import { registerLocalDbIpc } from "./localdb-ipc";
 import { registerPrinterIpc } from "./printer-ipc";
 
 const MIN_ZOOM_FACTOR = 0.85;
 const MAX_ZOOM_FACTOR = 1.25;
 
 const getWindowFromEvent = (event: IpcMainInvokeEvent) => BrowserWindow.fromWebContents(event.sender);
+
+const appIconPath = () =>
+  app.isPackaged
+    ? path.join(process.resourcesPath, "icon.ico")
+    : path.join(__dirname, "../../build-resources/icon.ico");
 
 const clampZoomFactor = (zoomFactor: number) => {
   if (!Number.isFinite(zoomFactor)) return 1;
@@ -22,6 +28,7 @@ const createWindow = () => {
     minHeight: 820,
     backgroundColor: "#050708",
     title: "Noogym Desktop",
+    icon: appIconPath(),
     frame: false,
     titleBarStyle: "hidden",
     webPreferences: {
@@ -41,6 +48,16 @@ const createWindow = () => {
 
 app.whenReady().then(() => {
   ipcMain.handle("app:version", () => app.getVersion());
+  ipcMain.handle("app:open-external", async (_event, url: string) => {
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
+      await shell.openExternal(parsed.toString());
+      return true;
+    } catch {
+      return false;
+    }
+  });
   ipcMain.handle("window:minimize", (event) => {
     getWindowFromEvent(event)?.minimize();
   });
@@ -64,6 +81,7 @@ app.whenReady().then(() => {
     return nextZoomFactor;
   });
   registerBackupIpc(ipcMain);
+  registerLocalDbIpc(ipcMain);
   registerPrinterIpc(ipcMain);
   createWindow();
 

@@ -27,8 +27,15 @@
       "dist/**/*",
       "package.json"
     ],
+    "extraResources": [
+      {
+        "from": "build-resources/icon.ico",
+        "to": "icon.ico"
+      }
+    ],
     "asar": true,
     "win": {
+      "icon": "build-resources/icon.ico",
       "signAndEditExecutable": false,
       "target": [
         {
@@ -41,6 +48,11 @@
       "artifactName": "Noogym-Desktop-Setup-${version}-${arch}.${ext}"
     },
     "nsis": {
+      "installerIcon": "build-resources/icon.ico",
+      "uninstallerIcon": "build-resources/icon.ico",
+      "installerHeader": "build-resources/installer-header.bmp",
+      "installerSidebar": "build-resources/installer-sidebar.bmp",
+      "uninstallerSidebar": "build-resources/installer-sidebar.bmp",
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
@@ -58,12 +70,14 @@
     "@noogym/types": "workspace:*",
     "@noogym/ui": "workspace:*",
     "@vitejs/plugin-react": "^5.0.4",
+    "better-sqlite3": "^12.11.1",
     "lucide-react": "^0.545.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "zustand": "^5.0.8"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^24.7.2",
     "@types/react": "^19.1.13",
     "@types/react-dom": "^19.1.9",

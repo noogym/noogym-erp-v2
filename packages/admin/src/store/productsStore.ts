@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { products as mockProducts } from "../data/mock";
 import { createResource, listResource, productFromApi, productToDto, updateResource } from "../lib/domainApi";
-import { readLocal, uid, writeLocal } from "../lib/storage";
+import { readLocal, readLocalDb, uid, writeLocal } from "../lib/storage";
 import { useAppStore } from "./appStore";
 import { useAuthStore } from "./authStore";
 import { useNotificationsStore } from "./notificationsStore";
@@ -10,8 +10,8 @@ import type { ProductCategoryRecord, ProductRecord, ProductStockMovementRecord }
 const categoryColors = ["#B6FF00", "#38BDF8", "#A855F7", "#F59E0B", "#2DD4BF", "#FB7185", "#94A3B8"];
 const initialCategoryNames = ["Suplementos", "Roupas", "Acessorios", "Bebidas", "Outros"];
 const initialProducts: ProductRecord[] = mockProducts.map((product) => ({ ...product, sku: product.id, barcode: "7891234567890", status: "Ativo", unit: "Unidade", minStock: 10 }));
-const persist = (products: ProductRecord[]) => writeLocal("noogym:products", products);
-const persistCategories = (categories: ProductCategory[]) => writeLocal("noogym:product-categories", categories);
+const persist = (products: ProductRecord[], sync = false) => writeLocal("noogym:products", products, { sync });
+const persistCategories = (categories: ProductCategory[], sync = false) => writeLocal("noogym:product-categories", categories, { sync });
 const persistMovements = (movements: ProductStockMovementRecord[]) => writeLocal("noogym:product-stock-movements", movements);
 
 export type ProductCategory = ProductCategoryRecord;
@@ -80,6 +80,7 @@ export const useProductsStore = create<{
   products: ProductRecord[];
   categories: ProductCategory[];
   movements: ProductStockMovementRecord[];
+  loadLocal: () => Promise<void>;
   loadOnline: () => Promise<void>;
   addProduct: (product: Partial<ProductRecord>) => void;
   updateProduct: (id: string, product: Partial<ProductRecord>) => void;
@@ -95,6 +96,17 @@ export const useProductsStore = create<{
   products: readLocal("noogym:products", initialProducts),
   categories: readCategories(),
   movements: readLocal("noogym:product-stock-movements", []),
+  loadLocal: async () => {
+    const [products, categories, movements] = await Promise.all([
+      readLocalDb("noogym:products", initialProducts),
+      readLocalDb("noogym:product-categories", readCategories()),
+      readLocalDb("noogym:product-stock-movements", [] as ProductStockMovementRecord[])
+    ]);
+    persist(products);
+    persistCategories(uniqueCategories(categories));
+    persistMovements(movements);
+    set({ products, categories: uniqueCategories(categories), movements });
+  },
   loadOnline: async () => {
     const token = useAuthStore.getState().accessToken;
     if (!token) return;
@@ -102,7 +114,7 @@ export const useProductsStore = create<{
     const apiProducts = await listResource<Record<string, unknown>>("products", token, { gymId: activeGymId });
     const products = apiProducts.map(productFromApi);
     const categories = uniqueCategories([...get().categories, ...products.map((product, index) => categoryFromName(product.category, index))]);
-    persist(products);
+    persist(products, true);
     persistCategories(categories);
     set({ products, categories });
   },
@@ -110,7 +122,7 @@ export const useProductsStore = create<{
     const created: ProductRecord = { id: uid("PRD"), gymId: useAppStore.getState().activeGymId ?? undefined, name: "Novo produto", category: "Suplementos", stock: 0, price: 0, cost: 0, emoji: "PRD", status: "Ativo", unit: "Unidade", minStock: 10, ...product };
     const products = [created, ...state.products];
     const categories = state.categories.some((category) => normalize(category.name) === normalize(created.category)) ? state.categories : uniqueCategories([...state.categories, categoryFromName(created.category, state.categories.length)]);
-    persist(products);
+    persist(products, true);
     persistCategories(categories);
     useAppStore.getState().addPendingSync();
     notifyStockIfNeeded(created);
@@ -132,7 +144,7 @@ export const useProductsStore = create<{
   updateProduct: (id, product) => set((state) => {
     const nextProduct = { ...state.products.find((item) => item.id === id), ...product };
     const products = state.products.map((item) => item.id === id ? { ...item, ...product } : item);
-    persist(products);
+    persist(products, true);
     useAppStore.getState().addPendingSync();
     const updatedProduct = products.find((item) => item.id === id);
     if (updatedProduct) notifyStockIfNeeded(updatedProduct);
@@ -185,7 +197,7 @@ export const useProductsStore = create<{
     const exists = get().categories.some((item) => normalize(item.name) === normalize(input.name));
     if (exists) return false;
     const categories = uniqueCategories([...get().categories, { ...categoryFromName(input.name, get().categories.length), ...input, id: input.id ?? uid("PCAT"), icon: input.icon ?? "Produto", color: input.color ?? categoryColors[get().categories.length % categoryColors.length], status: input.status ?? "Ativo", order: input.order ?? get().categories.length + 1 }]);
-    persistCategories(categories);
+    persistCategories(categories, true);
     set({ categories });
     return true;
   },
@@ -196,15 +208,15 @@ export const useProductsStore = create<{
     if (duplicate) return false;
     const categories = uniqueCategories(get().categories.map((item) => normalize(item.name) === target ? { ...item, ...category, name: category.name.trim() } : item));
     const products = get().products.map((product) => normalize(product.category) === target ? { ...product, category: category.name.trim() } : product);
-    persistCategories(categories);
-    persist(products);
+    persistCategories(categories, true);
+    persist(products, true);
     set({ categories, products });
     return true;
   },
   toggleCategoryStatus: (name) => {
     const target = normalize(name);
     const categories = get().categories.map((category) => normalize(category.name) === target ? { ...category, status: category.status === "Ativo" ? "Inativo" as const : "Ativo" as const } : category);
-    persistCategories(categories);
+    persistCategories(categories, true);
     set({ categories });
     return true;
   },
@@ -218,7 +230,7 @@ export const useProductsStore = create<{
       return { ...product, stock: nextStock };
     });
     const nextMovements = movements.length ? [...movements, ...state.movements] : state.movements;
-    persist(products);
+    persist(products, true);
     persistMovements(nextMovements);
 
     const token = useAuthStore.getState().accessToken;
