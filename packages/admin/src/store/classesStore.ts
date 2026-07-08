@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { classes as mockClasses } from "../data/mock";
 import { classFromApi, classToDto, createResource, listResource, updateResource } from "../lib/domainApi";
-import { readLocal, uid, writeLocal } from "../lib/storage";
+import { readLocal, readLocalDb, uid, writeLocal } from "../lib/storage";
 import { useAppStore } from "./appStore";
 import { useAuthStore } from "./authStore";
 import { useNotificationsStore } from "./notificationsStore";
@@ -9,10 +9,11 @@ import { toastInfo } from "./toastStore";
 import type { ClassRecord } from "@noogym/types";
 
 const initial: ClassRecord[] = mockClasses.map((lesson) => ({ ...lesson, id: uid("CLS") }));
-const persist = (classes: ClassRecord[]) => writeLocal("noogym:classes", classes);
+const persist = (classes: ClassRecord[], sync = false) => writeLocal("noogym:classes", classes, { sync });
 
 export const useClassesStore = create<{
   classes: ClassRecord[];
+  loadLocal: () => Promise<void>;
   loadOnline: () => Promise<void>;
   addClass: (lesson: Partial<ClassRecord>) => void;
   updateClass: (id: string, lesson: Partial<ClassRecord>) => void;
@@ -23,13 +24,18 @@ export const useClassesStore = create<{
   updateParticipants: (id: string, participants: number) => void;
 }>((set, get) => ({
   classes: readLocal("noogym:classes", initial),
+  loadLocal: async () => {
+    const classes = await readLocalDb("noogym:classes", initial);
+    persist(classes);
+    set({ classes });
+  },
   loadOnline: async () => {
     const token = useAuthStore.getState().accessToken;
     if (!token) return;
     const activeGymId = useAppStore.getState().activeGymId ?? undefined;
     const apiClasses = await listResource<Record<string, unknown>>("classes", token, { gymId: activeGymId });
     const classes = apiClasses.map(classFromApi);
-    persist(classes);
+    persist(classes, true);
     set({ classes });
   },
   addClass: (lesson) => set((state) => {

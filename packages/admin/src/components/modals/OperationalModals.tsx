@@ -346,8 +346,12 @@ export function NewClientModal({ open, client, onClose }: { open: boolean; clien
       observations: observations.trim()
     };
 
-    if (client) updateClient(client.id, payload);
-    else addClient(payload);
+    const saved = client ? updateClient(client.id, payload) : addClient(payload);
+    if (!saved) {
+      toastInfo("Cliente ja cadastrado", "Ja existe cliente com este e-mail, telefone ou BI.");
+      return;
+    }
+
     toastSuccess(client ? "Cliente atualizado com sucesso" : "Cliente criado com sucesso");
     onClose();
   };

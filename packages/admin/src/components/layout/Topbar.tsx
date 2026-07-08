@@ -59,9 +59,11 @@ export function Topbar() {
   const decreaseZoom = useAppStore((state) => state.decreaseZoom);
   const increaseZoom = useAppStore((state) => state.increaseZoom);
   const isOffline = useAppStore((state) => state.isOffline);
+  const connectionState = useAppStore((state) => state.connectionState);
   const isGymDataLoading = useAppStore((state) => state.isGymDataLoading);
   const onlineOnly = useAppStore((state) => state.onlineOnly);
   const pendingSync = useAppStore((state) => state.pendingSync);
+  const conflictSync = useAppStore((state) => state.conflictSync);
   const resetZoom = useAppStore((state) => state.resetZoom);
   const setRoute = useAppStore((state) => state.setRoute);
   const setActiveGymId = useAppStore((state) => state.setActiveGymId);
@@ -86,6 +88,14 @@ export function Topbar() {
   const windowControls = typeof window !== "undefined" ? window.noogym?.windowControls : undefined;
   const zoomControls = typeof window !== "undefined" ? window.noogym?.zoomControls : undefined;
   const isOnline = onlineOnly || !isOffline;
+  const connectionLabel =
+    connectionState === "online_without_session"
+      ? "Online sem sessao"
+      : connectionState === "syncing"
+        ? "Sincronizando"
+        : isOnline
+          ? "Online"
+          : "Offline";
   const zoomPercent = Math.round(zoomFactor * 100);
   const allowedGyms = useMemo(() => allowedGymsForUser(user, employees, gyms), [employees, gyms, user]);
   const fallbackGymName = allowedGyms[0]?.name ?? user?.gyms?.[0]?.name ?? user?.gym ?? "Noogym Fitness Center";
@@ -132,6 +142,28 @@ export function Topbar() {
         tone: "warning",
         route: "configuracoes",
         actionLabel: "Ver estado"
+      });
+    } else if (connectionState === "online_without_session" && pendingSync > 0) {
+      generated.push({
+        sourceId: "auto:system:online-without-session",
+        title: "Conta online necessaria",
+        description: "A conexao voltou, mas e preciso entrar online para sincronizar.",
+        category: "system",
+        tone: "warning",
+        actionType: "sync",
+        actionLabel: "Sincronizar"
+      });
+    }
+
+    if (conflictSync > 0) {
+      generated.push({
+        sourceId: "auto:system:sync-conflicts",
+        title: "Conflitos de sincronizacao",
+        description: `${conflictSync} conflito(s) precisam de decisao manual.`,
+        category: "system",
+        tone: "danger",
+        route: "configuracoes",
+        actionLabel: "Resolver"
       });
     }
 
@@ -206,7 +238,7 @@ export function Topbar() {
     }
 
     return generated.filter((notification) => !notification.route || canAccessRoute(notification.route, user, employees, roles));
-  }, [classes, clients, employees, financeRecords, isOnline, pendingSync, products, roles, user]);
+  }, [classes, clients, conflictSync, connectionState, employees, financeRecords, isOnline, pendingSync, products, roles, user]);
   const visibleNotifications = notifications.filter((notification) => !notification.route || canAccessRoute(notification.route, user, employees, roles));
   const unreadCount = visibleNotifications.filter((notification) => !notification.readAt).length;
 
@@ -280,8 +312,8 @@ export function Topbar() {
         </button>
         <button className="flex h-10 shrink-0 items-center gap-2 rounded-full border border-white/10 px-3 sm:px-4">
           {isOnline ? <Wifi className="h-5 w-5 text-noogym-lime" /> : <WifiOff className="h-5 w-5" />}
-          <span className="hidden sm:inline">{isOnline ? "Online" : "Offline"}</span>
-          <span className="h-2.5 w-2.5 rounded-full bg-green-500" />
+          <span className="hidden sm:inline">{connectionLabel}</span>
+          <span className={`h-2.5 w-2.5 rounded-full ${isOnline ? "bg-green-500" : "bg-orange-400"}`} />
         </button>
         <div className="hidden min-w-0 items-center gap-2 truncate text-zinc-200 xl:flex">
           <RefreshCw className="h-4 w-4" />

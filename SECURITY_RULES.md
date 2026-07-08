@@ -16,7 +16,9 @@ Estas regras sao obrigatorias para qualquer merge no Noogym ERP. Elas refletem a
 - `JWT_SECRET` deve ser obrigatorio em ambientes que nao sejam desenvolvimento local e deve ter entropia adequada.
 - Tokens JWT devem ter expiracao configurada e documentada.
 - Login, register e recuperacao de senha devem ter rate limiting.
-- Fluxos futuros de refresh token, logout server-side ou revogacao devem ser tratados como decisao arquitetural separada.
+- Refresh tokens devem ser emitidos separadamente do access token, armazenados no banco apenas como hash e rotacionados a cada uso de `POST /auth/refresh`.
+- Logout server-side deve revogar o refresh token persistido, removendo o hash associado ao usuario.
+- `JWT_REFRESH_SECRET` deve ser diferente de `JWT_SECRET` em producao, ter entropia adequada e expiracao documentada por `JWT_REFRESH_EXPIRES_IN`.
 - Nenhum endpoint protegido pode depender apenas de validacao no frontend.
 
 ## 3. Autorizacao e RBAC
@@ -54,7 +56,8 @@ Estas regras sao obrigatorias para qualquer merge no Noogym ERP. Elas refletem a
 
 - Logica sensivel deve residir no backend; o frontend pode otimizar UX, mas nao autorizar operacoes.
 - O uso atual de `localStorage` para simulacao local-first e dados operacionais do MVP e uma decisao arquitetural existente.
-- Para o SaaS web em producao, tokens em `localStorage` devem ser tratados como risco conhecido; preferir sessao com cookie `HttpOnly`, `Secure` e `SameSite` quando a arquitetura permitir.
+- O web-admin deve preferir o modo de sessao com cookie `HttpOnly`, `Secure` e `SameSite`, emitido pelo BFF Next em `/api/auth/*`.
+- O refresh token nao deve ficar acessivel a JavaScript no SaaS web. `localStorage` para tokens fica restrito a fluxos legados, desktop/local-first ou ambientes sem BFF.
 - Novos secrets, chaves de integracao, tokens de terceiros ou dados fiscais sensiveis nao podem ser armazenados no frontend.
 - Erros exibidos ao usuario nao devem revelar stack trace, queries, secrets ou detalhes internos.
 
@@ -88,6 +91,7 @@ Antes de merge em qualquer fluxo sensivel, adicionar ou manter testes para:
 - acesso cruzado entre `organizationId`;
 - manipulacao de IDs recebidos do frontend;
 - usuario autenticado sem role necessaria;
+- refresh token expirado, adulterado, reutilizado apos rotacao ou revogado por logout;
 - acesso indevido a relatorios financeiros;
 - criacao ou alteracao de pagamentos com valor/status manipulado;
 - venda com preco, desconto, imposto ou total adulterado;
@@ -102,6 +106,7 @@ Antes de merge em qualquer fluxo sensivel, adicionar ou manter testes para:
 - [ ] Validei todos os IDs relacionados contra o tenant autenticado.
 - [ ] A rota tem `JwtAuthGuard` quando nao e publica.
 - [ ] A rota sensivel tem `RolesGuard` e `@Roles`.
+- [ ] Fluxos de auth nao expuseram `refreshTokenHash` nem persistiram refresh token em texto puro.
 - [ ] Valores financeiros decisivos sao calculados ou validados no backend.
 - [ ] Nao expus `passwordHash`, tokens, secrets ou dados pessoais desnecessarios.
 - [ ] Nao registei secrets ou dados sensiveis em logs/auditoria.

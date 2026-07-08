@@ -8,9 +8,12 @@
     "dev": "pnpm build:main && concurrently -k \"vite --host 127.0.0.1\" \"wait-on tcp:5173 && node scripts/start-electron-dev.cjs\"",
     "build:main": "tsc -p tsconfig.electron.json",
     "build": "tsc -p tsconfig.json && vite build && tsc -p tsconfig.electron.json",
+    "build:prod": "cross-env VITE_NOOGYM_API_URL=https://apiv1.noogym.com VITE_NOOGYM_WEB_URL=https://admin.noogym.com/register pnpm build",
     "dist": "pnpm build && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder",
-    "dist:win": "pnpm build && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win nsis --x64",
-    "pack:win": "pnpm build && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win dir --x64",
+    "dist:win": "pnpm build && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false ELECTRON_BUILDER_DISABLE_BUILD_CACHE=true electron-builder --win nsis --x64",
+    "dist:win:prod": "pnpm build:prod && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false ELECTRON_BUILDER_DISABLE_BUILD_CACHE=true electron-builder --win nsis --x64",
+    "pack:win": "pnpm build && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false ELECTRON_BUILDER_DISABLE_BUILD_CACHE=true electron-builder --win dir --x64",
+    "pack:win:prod": "pnpm build:prod && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false ELECTRON_BUILDER_DISABLE_BUILD_CACHE=true electron-builder --win dir --x64",
     "preview": "vite preview --host 127.0.0.1",
     "lint": "tsc --noEmit",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.electron.json --noEmit"
@@ -23,13 +26,24 @@
       "output": "release",
       "buildResources": "build-resources"
     },
+    "afterPack": "scripts/apply-win-icon.cjs",
     "files": [
       "dist/**/*",
       "package.json"
     ],
+    "extraResources": [
+      {
+        "from": "build-resources/icon.ico",
+        "to": "icon.ico"
+      }
+    ],
     "asar": true,
     "win": {
+      "icon": "build-resources/icon.ico",
       "signAndEditExecutable": false,
+      "signExts": [
+        "!.exe"
+      ],
       "target": [
         {
           "target": "nsis",
@@ -41,6 +55,11 @@
       "artifactName": "Noogym-Desktop-Setup-${version}-${arch}.${ext}"
     },
     "nsis": {
+      "installerIcon": "build-resources/icon.ico",
+      "uninstallerIcon": "build-resources/icon.ico",
+      "installerHeader": "build-resources/installer-header.bmp",
+      "installerSidebar": "build-resources/installer-sidebar.bmp",
+      "uninstallerSidebar": "build-resources/installer-sidebar.bmp",
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
@@ -58,12 +77,14 @@
     "@noogym/types": "workspace:*",
     "@noogym/ui": "workspace:*",
     "@vitejs/plugin-react": "^5.0.4",
+    "better-sqlite3": "^12.11.1",
     "lucide-react": "^0.545.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "zustand": "^5.0.8"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^24.7.2",
     "@types/react": "^19.1.13",
     "@types/react-dom": "^19.1.9",

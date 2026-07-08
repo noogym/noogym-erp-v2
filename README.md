@@ -7,7 +7,7 @@ Monorepo Turborepo para o Noogym, com wrappers desktop e web, packages compartil
 - Turborepo + pnpm workspaces
 - Desktop: Electron + React + TypeScript + Vite + Tailwind CSS
 - Web Admin: Next.js App Router + React + TypeScript + Tailwind CSS
-- Backend ERP API: NestJS + TypeScript + Prisma ORM + PostgreSQL + JWT + Swagger/OpenAPI
+- Backend ERP API: NestJS + TypeScript + Prisma ORM + MySQL + JWT + Swagger/OpenAPI
 - Packages compartilhados: admin, UI, core, types, config e data-access
 
 ## Estrutura
@@ -67,13 +67,15 @@ Rotas iniciais:
 
 O backend vive em `apps/noogym-erp-api` e e a API REST para gestao de ginasios, academias, membros, planos, assinaturas, pagamentos, despesas, check-ins, treinos, agenda, mensagens, relatorios, integracoes e auditoria.
 
-Configure `apps/noogym-erp-api/.env` com PostgreSQL e JWT:
+Configure `apps/noogym-erp-api/.env` com MySQL e JWT:
 
 ```env
-DATABASE_URL="postgresql://postgres:postgres@localhost:5432/noogym?schema=public"
+DATABASE_URL="mysql://noogym:noogym_password@localhost:3306/noogymsoftware"
 JWT_SECRET="change-me"
 JWT_EXPIRES_IN="1d"
-PORT=3000
+JWT_REFRESH_SECRET="change-me-too"
+JWT_REFRESH_EXPIRES_IN="7d"
+PORT=3333
 ```
 
 Comandos a partir da raiz do monorepo:
@@ -87,10 +89,10 @@ pnpm dev:noogym-erp-api
 
 URLs principais:
 
-- API: `http://localhost:3000`
-- Swagger: `http://localhost:3000/docs`
-- Scalar API Reference: `http://localhost:3000/reference`
-- OpenAPI JSON: `http://localhost:3000/openapi.json`
+- API: `http://localhost:3333`
+- Swagger: `http://localhost:3333/docs`
+- Scalar API Reference: `http://localhost:3333/reference`
+- OpenAPI JSON: `http://localhost:3333/openapi.json`
 
 Credenciais demo criadas pelo seed:
 
@@ -200,8 +202,12 @@ O desktop e o wrapper Electron/Vite sobre `@noogym/admin`. Ele preserva o fluxo 
 
 O `web-admin` e o wrapper Next.js sobre `@noogym/admin`, portanto expoe as mesmas telas da versao desktop. O adapter atual usa mocks, mas a fronteira continua preparada para consumir o `noogym-erp-api` via REST API + cookies/session.
 
+No web-admin, a sessao pode usar o BFF Next em `/api/auth/*` para guardar o refresh token em cookie `HttpOnly`, `Secure` e `SameSite`, evitando que ele fique acessivel a JavaScript. O armazenamento em `localStorage` permanece apenas como compatibilidade para fluxos desktop/local-first ou ambientes sem esse BFF.
+
+Nos stores de `packages/admin`, a fronteira entre API e simulacao local-first deve ser explicita. Use `resolveAdminDataSource` para decidir entre `api` e `local-first`, e encapsule seeds/mocks em colecoes locais nomeadas. Assim, mocks e `localStorage` continuam disponiveis para desktop/offline, mas nao ficam misturados com o caminho SaaS como se fossem a fonte principal.
+
 ## Backend ERP API
 
 O `noogym-erp-api` e o backend NestJS do Noogym ERP. Ele organiza a regra de negocio server-side em modulos de Auth, Organizations, Gyms, Users, Members, Plans, Subscriptions, Payments, Products, Sales, Employees, Classes, Expenses, Check-ins, Exercises, Workouts, Appointments, Messages, Reports, Integrations e Audit Logs.
 
-A API usa Prisma com PostgreSQL, autenticacao JWT, RBAC por `UserRole`, multi-tenancy por `organizationId`, validacao global de DTOs, respostas HTTP padronizadas, documentacao Swagger/Scalar e seed demo. O objetivo e servir o `web-admin` como backend SaaS e oferecer uma superficie de sincronizacao/integracao para o desktop quando os fluxos locais deixarem de ser apenas simulados.
+A API usa Prisma com MySQL, autenticacao JWT com access token e refresh token, RBAC por `UserRole`, multi-tenancy por `organizationId`, validacao global de DTOs, respostas HTTP padronizadas, documentacao Swagger/Scalar e seed demo. O objetivo e servir o `web-admin` como backend SaaS e oferecer uma superficie de sincronizacao/integracao para o desktop quando os fluxos locais deixarem de ser apenas simulados.
