@@ -21,7 +21,7 @@ export type AuthPayload = {
 
 export const REFRESH_COOKIE_NAME = "noogym_refresh_token";
 
-const DEFAULT_API_URL = "http://localhost:3333";
+const DEFAULT_API_URL = "https://apiv1.noogym.com";
 const DEFAULT_REFRESH_MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
 
 export const authApiUrl = (path: string) =>

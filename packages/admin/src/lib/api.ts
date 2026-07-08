@@ -1,4 +1,4 @@
-const DEFAULT_API_URL = "http://localhost:3333";
+const DEFAULT_API_URL = "https://apiv1.noogym.com";
 const DEFAULT_WEB_PORTAL_URL = "https://admin.noogym.com/register";
 
 type ApiEnvelope<T> =
