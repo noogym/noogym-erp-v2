@@ -16,7 +16,7 @@ import {
 } from "../lib/financeApi";
 import type { CashSessionRecord, CloseCashSessionPayload, FinanceSummaryFilters, OpenCashSessionPayload } from "../lib/financeApi";
 import type { FinanceLocalData } from "../lib/localFinance";
-import { readLocal, uid, writeLocal } from "../lib/storage";
+import { readLocal, readLocalDb, uid, writeLocal } from "../lib/storage";
 import { useAppStore } from "./appStore";
 import { useAuthStore } from "./authStore";
 import { useNotificationsStore } from "./notificationsStore";
@@ -53,9 +53,9 @@ const initialCategories: FinanceCategory[] = [
   { id: "FINCAT-008", kind: "Despesa", name: "Operacional" }
 ];
 
-const persist = (records: FinanceRecord[]) => writeLocal("noogym:finance", records);
-const persistCategories = (categories: FinanceCategory[]) => writeLocal("noogym:finance-categories", categories);
-const persistAccounts = (accounts: FinanceAccountRecord[]) => writeLocal("noogym:finance-accounts", accounts);
+const persist = (records: FinanceRecord[], sync = false) => writeLocal("noogym:finance", records, { sync });
+const persistCategories = (categories: FinanceCategory[], sync = false) => writeLocal("noogym:finance-categories", categories, { sync });
+const persistAccounts = (accounts: FinanceAccountRecord[], sync = false) => writeLocal("noogym:finance-accounts", accounts, { sync });
 const normalize = (value: string) => value.trim().toLocaleLowerCase("pt-AO");
 const accountTransactionAffectsBalance = (record: FinanceRecord) =>
   record.kind === "Receita" ? record.status === "Recebido" : record.status === "Pago";
@@ -80,6 +80,7 @@ export const useFinanceStore = create<{
   activeFilters: FinanceSummaryFilters;
   currentCashSession: CashSessionRecord | null;
   cashSessions: CashSessionRecord[];
+  loadLocal: () => Promise<void>;
   loadOnline: (filters?: FinanceSummaryFilters) => Promise<void>;
   loadCashSessions: () => Promise<void>;
   openCashSession: (payload: OpenCashSessionPayload) => Promise<CashSessionRecord | null>;
@@ -100,6 +101,17 @@ export const useFinanceStore = create<{
   activeFilters: {},
   currentCashSession: null,
   cashSessions: [],
+  loadLocal: async () => {
+    const [records, categories, accounts] = await Promise.all([
+      readLocalDb("noogym:finance", initial),
+      readLocalDb("noogym:finance-categories", initialCategories),
+      readLocalDb("noogym:finance-accounts", initialAccounts)
+    ]);
+    persist(records);
+    persistCategories(categories);
+    persistAccounts(accounts);
+    set({ records, categories, accounts, remoteDashboard: null, currentCashSession: null, cashSessions: [] });
+  },
   loadOnline: async (filters = {}) => {
     const token = useAuthStore.getState().accessToken;
     const activeGymId = useAppStore.getState().activeGymId ?? undefined;
@@ -116,7 +128,7 @@ export const useFinanceStore = create<{
       getCurrentCashSession(token, scopedFilters.gymId),
       listCashSessions(token)
     ]);
-    persist(records);
+    persist(records, true);
     persistAccounts(accounts);
     persistCategories(categories);
     set({ records, accounts, categories, remoteDashboard, currentCashSession, cashSessions, activeFilters: scopedFilters });
@@ -155,7 +167,7 @@ export const useFinanceStore = create<{
     const created: FinanceRecord = { id: uid("FIN"), gymId: useAppStore.getState().activeGymId ?? undefined, kind: "Receita", category: "Mensalidades", value: 0, date: "Hoje", status: "Recebido", ...target, method: "Dinheiro", ...record };
     const records = [created, ...state.records];
     const accounts = applyRecordToAccounts(state.accounts, created);
-    persist(records);
+    persist(records, true);
     persistAccounts(accounts);
     useAppStore.getState().addPendingSync();
     useNotificationsStore.getState().addNotification({
@@ -206,7 +218,7 @@ export const useFinanceStore = create<{
       if (exists) return state;
 
       const categories = [{ id: uid("FINCAT"), ...category, name }, ...state.categories];
-      persistCategories(categories);
+      persistCategories(categories, true);
       useAppStore.getState().addPendingSync();
       created = true;
       const token = useAuthStore.getState().accessToken;
@@ -224,7 +236,7 @@ export const useFinanceStore = create<{
       const duplicate = state.categories.some((item) => item.id !== id && item.kind === (category.kind ?? current.kind) && normalize(item.name) === normalize(name));
       if (!name || duplicate) return state;
       const categories = state.categories.map((item) => item.id === id ? { ...item, ...category, name } : item);
-      persistCategories(categories);
+      persistCategories(categories, true);
       updated = true;
       const token = useAuthStore.getState().accessToken;
       if (useAppStore.getState().onlineOnly && token) updateFinanceCategory(token, id, { ...category, name }).catch(console.error);
@@ -240,7 +252,7 @@ export const useFinanceStore = create<{
       const inUse = state.records.some((record) => record.kind === category.kind && normalize(record.category) === normalize(category.name));
       if (inUse) return state;
       const categories = state.categories.filter((item) => item.id !== id);
-      persistCategories(categories);
+      persistCategories(categories, true);
       removed = true;
       const token = useAuthStore.getState().accessToken;
       if (useAppStore.getState().onlineOnly && token) deleteFinanceCategory(token, id).catch(console.error);
@@ -261,7 +273,7 @@ export const useFinanceStore = create<{
       color: account.color ?? "#B6FF00"
     };
     const accounts = [created, ...state.accounts.map((item) => created.isDefault ? { ...item, isDefault: false } : item)];
-    persistAccounts(accounts);
+    persistAccounts(accounts, true);
     useAppStore.getState().addPendingSync();
     const token = useAuthStore.getState().accessToken;
     if (useAppStore.getState().onlineOnly && token) createFinanceAccount(token, created).catch(console.error);
@@ -269,7 +281,7 @@ export const useFinanceStore = create<{
   }),
   updateAccount: (id, account) => set((state) => {
     const accounts = state.accounts.map((item) => item.id === id ? { ...item, ...account, isDefault: account.isDefault ? true : item.isDefault } : account.isDefault ? { ...item, isDefault: false } : item);
-    persistAccounts(accounts);
+    persistAccounts(accounts, true);
     useAppStore.getState().addPendingSync();
     const token = useAuthStore.getState().accessToken;
     if (useAppStore.getState().onlineOnly && token) updateFinanceAccount(token, id, account).catch(console.error);
@@ -290,8 +302,8 @@ export const useFinanceStore = create<{
       if (account.id === to.id) return { ...account, balance: account.balance + value };
       return account;
     });
-    persist(records);
-    persistAccounts(accounts);
+    persist(records, true);
+    persistAccounts(accounts, true);
     useAppStore.getState().addPendingSync();
     useNotificationsStore.getState().addNotification({
       sourceId: `event:finance:transfer:${records[0].id}:${records[1].id}`,

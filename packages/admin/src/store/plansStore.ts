@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { plans as mockPlans } from "../data/mock";
 import { createResource, listResource, planCategoryFromApi, planCategoryToDto, planFromApi, planToDto, updateResource } from "../lib/domainApi";
-import { readLocal, uid, writeLocal } from "../lib/storage";
+import { readLocal, readLocalDb, uid, writeLocal } from "../lib/storage";
 import { useAppStore } from "./appStore";
 import { useAuthStore } from "./authStore";
 import { toastInfo } from "./toastStore";
@@ -10,9 +10,9 @@ import type { PlanCategoryRecord, PlanRecord } from "@noogym/types";
 const initialCategories = ["Musculação", "Funcional", "Lutas", "Natação", "Cross Training", "Aulas"];
 const categoryColors = ["#B6FF00", "#38BDF8", "#A855F7", "#F59E0B", "#2DD4BF", "#FB7185", "#94A3B8"];
 const initialPlans: PlanRecord[] = mockPlans.map((plan, index) => ({ ...plan, id: uid("PLN"), status: "Ativo", color: categoryColors[index % categoryColors.length] }));
-const persist = (plans: PlanRecord[]) => writeLocal("noogym:plans", plans);
-const persistCategories = (categories: string[]) => writeLocal("noogym:plan-categories", categories);
-const persistCategoryDetails = (categories: PlanCategory[]) => writeLocal("noogym:plan-category-details", categories);
+const persist = (plans: PlanRecord[], sync = false) => writeLocal("noogym:plans", plans, { sync });
+const persistCategories = (categories: string[], sync = false) => writeLocal("noogym:plan-categories", categories, { sync });
+const persistCategoryDetails = (categories: PlanCategory[], sync = false) => writeLocal("noogym:plan-category-details", categories, { sync });
 
 export type PlanCategory = PlanCategoryRecord;
 
@@ -70,6 +70,7 @@ export const usePlansStore = create<{
   plans: PlanRecord[];
   categories: string[];
   categoryDetails: PlanCategory[];
+  loadLocal: () => Promise<void>;
   loadOnline: () => Promise<void>;
   addPlan: (plan: Partial<PlanRecord>) => void;
   updatePlan: (id: string, plan: Partial<PlanRecord>) => void;
@@ -83,6 +84,15 @@ export const usePlansStore = create<{
   plans: readLocal("noogym:plans", initialPlans),
   categoryDetails: readCategoryDetails(),
   categories: readCategoryDetails().map((category) => category.name),
+  loadLocal: async () => {
+    const plans = await readLocalDb("noogym:plans", initialPlans);
+    const categoryDetails = uniqueCategoryDetails(await readLocalDb("noogym:plan-category-details", readCategoryDetails()));
+    const categories = categoryDetails.map((category) => category.name);
+    persist(plans);
+    persistCategories(categories);
+    persistCategoryDetails(categoryDetails, true);
+    set({ plans, categories, categoryDetails });
+  },
   loadOnline: async () => {
     const token = useAuthStore.getState().accessToken;
     if (!token) return;
@@ -109,9 +119,9 @@ export const usePlansStore = create<{
     }
     categoryDetails = uniqueCategoryDetails(categoryDetails);
     const categories = categoryDetails.map((category) => category.name);
-    persist(plans);
+    persist(plans, true);
     persistCategories(categories);
-    persistCategoryDetails(categoryDetails);
+    persistCategoryDetails(categoryDetails, true);
     set({ plans, categories, categoryDetails });
   },
   addPlan: (plan) => set((state) => {
@@ -225,9 +235,9 @@ export const usePlansStore = create<{
     } : item));
     const plans = get().plans.map((plan) => plan.category === currentName ? { ...plan, category: name } : plan);
     const categories = nextDetails.map((item) => item.name);
-    persist(plans);
+    persist(plans, true);
     persistCategories(categories);
-    persistCategoryDetails(nextDetails);
+    persistCategoryDetails(nextDetails, true);
     set({ plans, categories, categoryDetails: nextDetails });
     const updatedCategory = nextDetails.find((item) => item.name === name);
     const token = useAuthStore.getState().accessToken;

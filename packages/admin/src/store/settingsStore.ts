@@ -12,6 +12,7 @@ import {
   type OrganizationSettingsPayload,
   type UserSettings
 } from "../lib/settingsApi";
+import { getDesktopBinding } from "../lib/desktopLocalDb";
 import { useAuthStore } from "./authStore";
 
 interface SettingsState {
@@ -19,6 +20,7 @@ interface SettingsState {
   gyms: GymSettings[];
   users: UserSettings[];
   isLoading: boolean;
+  loadLocal: () => Promise<void>;
   loadOnline: () => Promise<void>;
   saveOrganization: (data: OrganizationSettingsPayload) => Promise<void>;
   savePrimaryGym: (data: GymSettingsPayload) => Promise<void>;
@@ -42,6 +44,37 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   gyms: [],
   users: [],
   isLoading: false,
+  loadLocal: async () => {
+    const binding = await getDesktopBinding();
+    if (!binding) return;
+
+    const organizationPayload = binding.organization ?? {};
+    const organization: OrganizationSettings | null = binding.organizationId || binding.organizationName
+      ? {
+          ...organizationPayload,
+          id: asString(organizationPayload.id, binding.organizationId ?? "desktop-organization"),
+          name: asString(organizationPayload.name, binding.organizationName ?? "Noogym"),
+          slug: asString(organizationPayload.slug, slugify(binding.organizationName ?? "Noogym"))
+        } as OrganizationSettings
+      : null;
+    const gyms = binding.gyms.map((gym) => ({
+      ...gym,
+      id: asString(gym.id),
+      name: asString(gym.name, "Unidade"),
+      slug: asString(gym.slug, slugify(asString(gym.name, "unidade"))),
+      isActive: gym.isActive !== false
+    })) as GymSettings[];
+    const users = binding.users.map((user) => ({
+      ...user,
+      id: asString(user.id),
+      name: asString(user.name, "Utilizador"),
+      email: asString(user.email),
+      role: asString(user.role, "STAFF"),
+      status: asString(user.status, "ACTIVE")
+    })) as UserSettings[];
+
+    set({ organization, gyms, users });
+  },
   loadOnline: async () => {
     const token = useAuthStore.getState().accessToken;
     if (!token) return;
@@ -117,3 +150,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     }
   }
 }));
+
+function asString(value: unknown, fallback = "") {
+  return typeof value === "string" && value.trim() ? value : fallback;
+}

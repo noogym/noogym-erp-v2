@@ -3,6 +3,7 @@ import { BarChart3, Calendar, Check, DollarSign, Eye, EyeOff, Lock, Mail, Phone,
 import { AuthInput } from "../../components/auth/AuthInput";
 import { AuthLayout } from "../../components/auth/AuthLayout";
 import { GoogleButton } from "../../components/auth/GoogleButton";
+import { isDesktopLocalDbAvailable } from "../../lib/desktopLocalDb";
 import { useAppStore } from "../../store/appStore";
 import { useAuthStore } from "../../store/authStore";
 
@@ -22,6 +23,7 @@ interface RegisterErrors {
 
 export default function Register({ onNavigateToLogin }: RegisterProps) {
   const onlineOnly = useAppStore((state) => state.onlineOnly);
+  const requiresOnlineAuth = onlineOnly || isDesktopLocalDbAvailable();
   const register = useAuthStore((state) => state.register);
   const registerMock = useAuthStore((state) => state.registerMock);
   const isLoading = useAuthStore((state) => state.isLoading);
@@ -39,7 +41,7 @@ export default function Register({ onNavigateToLogin }: RegisterProps) {
   const validate = () => {
     const nextErrors: RegisterErrors = {};
     if (!name.trim()) nextErrors.name = "Informe seu nome.";
-    if (onlineOnly && !gymName.trim()) nextErrors.gymName = "Informe o nome do ginasio.";
+    if (requiresOnlineAuth && !gymName.trim()) nextErrors.gymName = "Informe o nome do ginasio.";
     if (!email.trim()) nextErrors.email = "Informe o e-mail.";
     if (!password) nextErrors.password = "Informe a senha.";
     if (!confirmPassword) nextErrors.confirmPassword = "Confirme a senha.";
@@ -53,7 +55,7 @@ export default function Register({ onNavigateToLogin }: RegisterProps) {
     event.preventDefault();
     if (!validate()) return;
     try {
-      if (onlineOnly) {
+      if (requiresOnlineAuth) {
         await register({ name, email, password, phone, organizationName: gymName });
         return;
       }
@@ -67,7 +69,7 @@ export default function Register({ onNavigateToLogin }: RegisterProps) {
   };
 
   const handleGoogleRegister = () => {
-    if (onlineOnly) {
+    if (requiresOnlineAuth) {
       setErrors({ form: "Cadastro com Google ainda nao esta configurado na API." });
       return;
     }

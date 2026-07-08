@@ -19,8 +19,10 @@ RUN pnpm install --frozen-lockfile --filter noogym --filter @noogym/web-admin...
 
 FROM deps AS builder
 
-ARG NEXT_PUBLIC_NOOGYM_API_URL=http://localhost:3333
+ARG NEXT_PUBLIC_NOOGYM_API_URL=https://apiv1.noogym.com
+ARG NEXT_PUBLIC_NOOGYM_HTTP_ONLY_AUTH=true
 ENV NEXT_PUBLIC_NOOGYM_API_URL=$NEXT_PUBLIC_NOOGYM_API_URL
+ENV NEXT_PUBLIC_NOOGYM_HTTP_ONLY_AUTH=$NEXT_PUBLIC_NOOGYM_HTTP_ONLY_AUTH
 
 RUN pnpm --filter @noogym/web-admin build
 
@@ -28,6 +30,9 @@ FROM node:20-alpine AS runner
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV NOOGYM_API_URL=https://apiv1.noogym.com
+ENV NEXT_PUBLIC_NOOGYM_API_URL=https://apiv1.noogym.com
+ENV NEXT_PUBLIC_NOOGYM_HTTP_ONLY_AUTH=true
 ENV HOSTNAME=0.0.0.0
 ENV PORT=3000
 
@@ -38,6 +43,7 @@ RUN addgroup --system --gid 1001 nodejs \
 
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web-admin/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web-admin/.next/static ./apps/web-admin/.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/apps/web-admin/public ./apps/web-admin/public
 
 USER nextjs
 

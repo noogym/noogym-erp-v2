@@ -12,13 +12,34 @@ export function Sidebar() {
   const activeRoute = useAppStore((state) => state.activeRoute);
   const setRoute = useAppStore((state) => state.setRoute);
   const onlineOnly = useAppStore((state) => state.onlineOnly);
+  const connectionState = useAppStore((state) => state.connectionState);
   const isStatusPanelCollapsed = useAppStore((state) => state.isStatusPanelCollapsed);
+  const syncNow = useAppStore((state) => state.syncNow);
   const toggleStatusPanel = useAppStore((state) => state.toggleStatusPanel);
   const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
   const employees = useEmployeesStore((state) => state.employees);
   const roles = useEmployeesStore((state) => state.roles);
-  const StatusIcon = onlineOnly ? Wifi : WifiOff;
+  const isConnected = onlineOnly || connectionState !== "offline";
+  const StatusIcon = isConnected ? Wifi : WifiOff;
+  const statusTitle = onlineOnly
+    ? "Modo Online"
+    : connectionState === "offline"
+      ? "Modo Offline"
+      : connectionState === "online_without_session"
+        ? "Online sem sessao"
+        : connectionState === "syncing"
+          ? "Sincronizando"
+          : "Pronto para sync";
+  const statusDescription = onlineOnly
+    ? "A versao web opera conectada e mantem os dados sincronizados com o servidor."
+    : connectionState === "offline"
+      ? "O sistema esta funcionando sem internet. Seus dados serao sincronizados quando a conexao retornar."
+      : connectionState === "online_without_session"
+        ? "A conexao voltou, mas e preciso entrar online para enviar os dados locais ao servidor."
+        : connectionState === "syncing"
+          ? "O Desktop esta enviando pendencias e recebendo dados atualizados."
+          : "A API esta acessivel e a sessao online esta pronta para sincronizar.";
   const visibleNavItems = navItems.filter((item) => canAccessRoute(item.id, user, employees, roles));
   const roleLabel = effectiveRole(user, employees);
 
@@ -70,7 +91,7 @@ export function Sidebar() {
       <div className={`panel mt-4 hidden shrink-0 shadow-none transition-all lg:block ${isStatusPanelCollapsed ? "p-2" : "p-4"}`}>
         <div className={`flex items-center gap-2 text-noogym-lime ${isStatusPanelCollapsed ? "" : "mb-3"}`}>
           <StatusIcon className="h-5 w-5 shrink-0" />
-          <span className="min-w-0 flex-1 truncate text-sm font-medium">{onlineOnly ? "Modo Online" : "Modo Offline"}</span>
+          <span className="min-w-0 flex-1 truncate text-sm font-medium">{statusTitle}</span>
           <button
             type="button"
             className="no-drag flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-zinc-300 transition hover:bg-white/10 hover:text-white"
@@ -84,11 +105,9 @@ export function Sidebar() {
         {isStatusPanelCollapsed ? null : (
           <>
             <p className="text-xs leading-6 text-zinc-300">
-              {onlineOnly
-                ? "A versao web opera conectada e mantem os dados sincronizados com o servidor."
-                : "O sistema esta funcionando sem internet. Seus dados serao sincronizados quando a conexao retornar."}
+              {statusDescription}
             </p>
-            <Button className="mt-4 w-full" variant="secondary">
+            <Button className="mt-4 w-full" variant="secondary" onClick={() => void syncNow()}>
               {onlineOnly ? "Ver estado online" : "Ver sincronizacao"}
             </Button>
           </>
