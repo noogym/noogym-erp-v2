@@ -13,6 +13,11 @@ import {
   localCollection,
   resolveAdminDataSource,
 } from "../lib/dataSource";
+import {
+  listDesktopClients,
+  replaceDesktopClients,
+  upsertDesktopClient,
+} from "../lib/desktopLocalDb";
 import { uid } from "../lib/storage";
 import { useAppStore } from "./appStore";
 import { useAuthStore } from "./authStore";
@@ -22,7 +27,6 @@ import type { ClientRecord } from "@noogym/types";
 const seedClients = () =>
   mockClients.map((client) => ({
     ...client,
-    document: "000000000LA000",
   })) as ClientRecord[];
 const localClients = localCollection<ClientRecord[]>(
   "noogym:clients",
@@ -48,15 +52,39 @@ const mergeSyncedClient = (
 
 interface ClientsState {
   clients: ClientRecord[];
+  loadLocal: () => Promise<void>;
   loadOnline: () => Promise<void>;
-  addClient: (client: Partial<ClientRecord>) => ClientRecord;
-  updateClient: (id: string, data: Partial<ClientRecord>) => void;
+  addClient: (client: Partial<ClientRecord>) => ClientRecord | null;
+  updateClient: (id: string, data: Partial<ClientRecord>) => boolean;
   updateLastCheckin: (id: string, lastCheckin: string) => void;
   deactivateClient: (id: string) => void;
   importClients: () => void;
 }
 
 const persist = localClients.write;
+const normalizeEmail = (value?: string) => value?.trim().toLowerCase() ?? "";
+const normalizeDigits = (value?: string) => value?.replace(/\D/g, "") ?? "";
+const normalizeDocument = (value?: string) =>
+  value?.replace(/[^a-z0-9]/gi, "").toUpperCase() ?? "";
+const hasDuplicateClientIdentity = (
+  clients: ClientRecord[],
+  data: Partial<ClientRecord>,
+  currentId?: string,
+) => {
+  const email = normalizeEmail(data.email);
+  const phone = normalizeDigits(data.phone);
+  const document = normalizeDocument(data.document);
+
+  return clients.some((client) => {
+    if (client.id === currentId) return false;
+
+    return (
+      (email && normalizeEmail(client.email) === email) ||
+      (phone && normalizeDigits(client.phone) === phone) ||
+      (document && normalizeDocument(client.document) === document)
+    );
+  });
+};
 const currentClientsDataSource = () =>
   resolveAdminDataSource({
     onlineOnly: useAppStore.getState().onlineOnly,
@@ -66,10 +94,27 @@ const currentClientsDataSource = () =>
 
 export const useClientsStore = create<ClientsState>((set, get) => ({
   clients: localClients.read(),
+  loadLocal: async () => {
+    const desktopClients = await listDesktopClients();
+    if (!desktopClients) {
+      set({ clients: localClients.read() });
+      return;
+    }
+
+    if (desktopClients.length) {
+      persist(desktopClients);
+      set({ clients: desktopClients });
+      return;
+    }
+
+    const seededClients = localClients.read();
+    await replaceDesktopClients(seededClients);
+    set({ clients: seededClients });
+  },
   loadOnline: async () => {
     const source = currentClientsDataSource();
     if (!isApiDataSource(source)) {
-      set({ clients: localClients.read() });
+      await get().loadLocal();
       return;
     }
 
@@ -80,15 +125,18 @@ export const useClientsStore = create<ClientsState>((set, get) => ({
     );
     const clients = members.map(clientFromApi);
     persist(clients);
+    void replaceDesktopClients(clients).catch(console.error);
     set({ clients });
   },
   addClient: (client) => {
+    if (hasDuplicateClientIdentity(get().clients, client)) return null;
+
     const created: ClientRecord = {
       id: client.id ?? uid("CLI"),
       gymId: client.gymId ?? useAppStore.getState().activeGymId ?? undefined,
       name: client.name ?? "Novo cliente",
       phone: client.phone ?? "+244 900 000 000",
-      email: client.email ?? "cliente@email.com",
+      email: client.email ?? "",
       plan: client.plan ?? "Plano Premium Mensal",
       planId: client.planId,
       planTone: client.planTone ?? "lime",
@@ -104,7 +152,7 @@ export const useClientsStore = create<ClientsState>((set, get) => ({
           .map((part) => part[0])
           .join("")
           .slice(0, 2),
-      document: client.document ?? "000000000LA000",
+      document: client.document,
       createdAt: client.createdAt ?? new Date().toISOString(),
       gender: client.gender,
       maritalStatus: client.maritalStatus,
@@ -120,6 +168,7 @@ export const useClientsStore = create<ClientsState>((set, get) => ({
     };
     const clients = [created, ...get().clients];
     persist(clients);
+    void upsertDesktopClient(created, "create").catch(console.error);
     useAppStore.getState().addPendingSync();
     useNotificationsStore.getState().addNotification({
       sourceId: `event:clients:created:${created.id}`,
@@ -160,13 +209,19 @@ export const useClientsStore = create<ClientsState>((set, get) => ({
               : item,
           );
           persist(nextClients);
+          void upsertDesktopClient(
+            mergeSyncedClient(synced, created, Boolean(created.planId)),
+            "update",
+          ).catch(console.error);
           set({ clients: nextClients });
         })
         .catch(console.error);
     }
     return created;
   },
-  updateClient: (id, data) =>
+  updateClient: (id, data) => {
+    if (hasDuplicateClientIdentity(get().clients, data, id)) return false;
+
     set((state) => {
       const updatedClient = state.clients.find((client) => client.id === id);
       const fallback = { ...updatedClient, ...data } as ClientRecord;
@@ -174,6 +229,7 @@ export const useClientsStore = create<ClientsState>((set, get) => ({
         client.id === id ? { ...client, ...data } : client,
       );
       persist(clients);
+      void upsertDesktopClient(fallback, "update").catch(console.error);
       useAppStore.getState().addPendingSync();
       if (data.status && updatedClient?.status !== data.status) {
         useNotificationsStore.getState().addNotification({
@@ -225,18 +281,32 @@ export const useClientsStore = create<ClientsState>((set, get) => ({
                 : client,
             );
             persist(nextClients);
+            void upsertDesktopClient(
+              mergeSyncedClient(
+                synced,
+                fallback,
+                Boolean(data.plan !== undefined || data.planId !== undefined),
+              ),
+              "update",
+            ).catch(console.error);
             set({ clients: nextClients });
           })
           .catch(console.error);
       }
       return { clients };
-    }),
+    });
+    return true;
+  },
   updateLastCheckin: (id, lastCheckin) =>
     set((state) => {
       const clients = state.clients.map((client) =>
         client.id === id ? { ...client, lastCheckin } : client,
       );
       persist(clients);
+      const updatedClient = clients.find((client) => client.id === id);
+      if (updatedClient) {
+        void upsertDesktopClient(updatedClient, "update").catch(console.error);
+      }
       return { clients };
     }),
   deactivateClient: (id) => get().updateClient(id, { status: "Inativo" }),

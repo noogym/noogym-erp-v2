@@ -1,4 +1,4 @@
-import { Cloud, FileText, RefreshCw, Settings, ShieldCheck } from "lucide-react";
+import { AlertTriangle, Cloud, FileText, RefreshCw, Settings, ShieldCheck } from "lucide-react";
 import { Button } from "@noogym/ui";
 import { canAccessRoute } from "../../lib/permissions";
 import { useAppStore } from "../../store/appStore";
@@ -7,21 +7,31 @@ import { useEmployeesStore } from "../../store/employeesStore";
 
 export function BottomSyncBar() {
   const pendingSync = useAppStore((state) => state.pendingSync);
+  const conflictSync = useAppStore((state) => state.conflictSync);
   const onlineOnly = useAppStore((state) => state.onlineOnly);
+  const connectionState = useAppStore((state) => state.connectionState);
   const setRoute = useAppStore((state) => state.setRoute);
   const syncState = useAppStore((state) => state.syncState);
+  const syncLabel = useAppStore((state) => state.syncLabel);
   const syncNow = useAppStore((state) => state.syncNow);
   const user = useAuthStore((state) => state.user);
   const employees = useEmployeesStore((state) => state.employees);
   const roles = useEmployeesStore((state) => state.roles);
   const canOpenSettings = canAccessRoute("configuracoes", user, employees, roles);
+  const syncModeLabel = onlineOnly
+    ? "Online"
+    : connectionState === "offline"
+      ? "Offline"
+      : connectionState === "online_without_session"
+        ? "Online sem sessao"
+        : "Local-First";
 
   return (
     <footer className="hidden h-[92px] shrink-0 items-center gap-5 overflow-x-auto border-t border-white/10 bg-noogym-panel/95 px-4 xl:flex 2xl:gap-7 2xl:px-6">
       <div className="flex items-center gap-4 border-r border-white/10 pr-7 text-sm">
         <span className="text-zinc-300">Versao 1.0.0</span>
         <span className="rounded border border-noogym-lime/30 bg-noogym-lime/10 px-3 py-1 text-noogym-lime">
-          {onlineOnly ? "Online" : "Local-First"}
+          {syncModeLabel}
         </span>
       </div>
       <div className="flex min-w-[240px] items-center gap-4 border-r border-white/10 pr-5 2xl:min-w-[300px] 2xl:pr-7">
@@ -44,7 +54,7 @@ export function BottomSyncBar() {
         </span>
         <div>
           <p className="text-sm">{onlineOnly ? "Sincronizacao online" : "Pendencias de sincronizacao"}</p>
-          <p className="text-xs text-zinc-400">{onlineOnly ? "Sem pendencias" : `${pendingSync} registros`}</p>
+          <p className="text-xs text-zinc-400">{onlineOnly ? "Sem pendencias" : `${pendingSync} registro(s), ${conflictSync} conflito(s)`}</p>
         </div>
       </div>
       <div className="flex min-w-[210px] items-center gap-4 2xl:min-w-[260px]">
@@ -52,8 +62,8 @@ export function BottomSyncBar() {
           <ShieldCheck className="h-5 w-5" />
         </span>
         <div>
-          <p className="text-sm">Ultimo backup</p>
-          <p className="text-xs text-zinc-400">Hoje, 10:30</p>
+          <p className="text-sm">Estado da sincronizacao</p>
+          <p className="max-w-[220px] truncate text-xs text-zinc-400">{syncLabel}</p>
         </div>
       </div>
       <Button
@@ -65,6 +75,15 @@ export function BottomSyncBar() {
       >
         {syncState === "syncing" ? "Sincronizando..." : "Sincronizar agora"}
       </Button>
+      {!onlineOnly && conflictSync > 0 && canOpenSettings ? (
+        <Button
+          className="h-12 min-w-[180px] text-sm"
+          icon={<AlertTriangle className="h-5 w-5" />}
+          onClick={() => setRoute("configuracoes")}
+        >
+          Resolver conflitos
+        </Button>
+      ) : null}
       {canOpenSettings ? (
         <button className="no-drag icon-tile h-12 w-12" onClick={() => setRoute("configuracoes")} aria-label="Abrir configuracoes" title="Abrir configuracoes">
           <Settings className="h-5 w-5" />

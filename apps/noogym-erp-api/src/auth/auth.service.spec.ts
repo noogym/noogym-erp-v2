@@ -1,4 +1,4 @@
-import { UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { UserRole, UserStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { AuthService } from './auth.service';
@@ -16,6 +16,7 @@ describe('AuthService refresh tokens', () => {
   function createService() {
     const prisma = {
       user: {
+        findUnique: jest.fn(),
         findFirst: jest.fn(),
         update: jest.fn(),
       },
@@ -42,12 +43,21 @@ describe('AuthService refresh tokens', () => {
         return values[key] ?? fallback;
       }),
     };
+    const passwordResetEmail = {
+      sendPasswordResetEmail: jest.fn().mockResolvedValue(true),
+    };
 
     return {
       prisma,
       jwtService,
       config,
-      service: new AuthService(prisma as any, jwtService as any, config as any),
+      passwordResetEmail,
+      service: new AuthService(
+        prisma as any,
+        jwtService as any,
+        config as any,
+        passwordResetEmail as any,
+      ),
     };
   }
 
@@ -139,5 +149,110 @@ describe('AuthService refresh tokens', () => {
     await expect(service.refresh({ refreshToken })).rejects.toBeInstanceOf(
       UnauthorizedException,
     );
+  });
+
+  it('creates a password reset token and sends the recovery link', async () => {
+    const { passwordResetEmail, prisma, service } = createService();
+    prisma.user.findUnique.mockResolvedValue({
+      id: 'user-1',
+      email: 'admin@noogym.com',
+      name: 'Admin',
+      status: UserStatus.ACTIVE,
+    });
+    prisma.user.update.mockResolvedValue({ id: 'user-1' });
+
+    const response = await service.forgotPassword({
+      email: 'admin@noogym.com',
+    });
+
+    expect(response.message).toBe(
+      'If this email is registered, password recovery instructions will be sent.',
+    );
+    expect(response.resetUrl).toContain('/reset-password?');
+    expect(prisma.user.update).toHaveBeenCalledWith({
+      where: { id: 'user-1' },
+      data: {
+        passwordResetTokenHash: expect.any(String),
+        passwordResetTokenExpiresAt: expect.any(Date),
+      },
+    });
+    expect(
+      prisma.user.update.mock.calls[0][0].data.passwordResetTokenHash,
+    ).not.toContain('reset-password');
+    expect(passwordResetEmail.sendPasswordResetEmail).toHaveBeenCalledWith({
+      to: 'admin@noogym.com',
+      name: 'Admin',
+      resetUrl: response.resetUrl,
+    });
+  });
+
+  it('resets password with a valid reset token and revokes sessions', async () => {
+    const { prisma, service } = createService();
+    prisma.user.findUnique.mockResolvedValueOnce({
+      id: 'user-1',
+      email: 'admin@noogym.com',
+      name: 'Admin',
+      status: UserStatus.ACTIVE,
+    });
+    prisma.user.update.mockResolvedValue({ id: 'user-1' });
+
+    const response = await service.forgotPassword({
+      email: 'admin@noogym.com',
+    });
+    const token = new URL(response.resetUrl as string).searchParams.get(
+      'token',
+    ) as string;
+    const passwordResetTokenHash =
+      prisma.user.update.mock.calls[0][0].data.passwordResetTokenHash;
+
+    prisma.user.findUnique.mockResolvedValueOnce({
+      id: 'user-1',
+      status: UserStatus.ACTIVE,
+      passwordResetTokenHash,
+      passwordResetTokenExpiresAt: new Date(Date.now() + 60_000),
+    });
+
+    await expect(
+      service.resetPassword({
+        email: 'admin@noogym.com',
+        token,
+        password: 'NovaSenha123',
+      }),
+    ).resolves.toEqual({ message: 'Password reset successfully' });
+
+    expect(prisma.user.update).toHaveBeenLastCalledWith({
+      where: { id: 'user-1' },
+      data: {
+        passwordHash: expect.any(String),
+        refreshTokenHash: null,
+        passwordResetTokenHash: null,
+        passwordResetTokenExpiresAt: null,
+      },
+    });
+    const storedPasswordHash =
+      prisma.user.update.mock.calls[1][0].data.passwordHash;
+    await expect(bcrypt.compare('NovaSenha123', storedPasswordHash)).resolves.toBe(
+      true,
+    );
+  });
+
+  it('rejects invalid or expired reset tokens', async () => {
+    const { prisma, service } = createService();
+    prisma.user.findUnique.mockResolvedValue({
+      id: 'user-1',
+      status: UserStatus.ACTIVE,
+      passwordResetTokenHash:
+        '0000000000000000000000000000000000000000000000000000000000000000',
+      passwordResetTokenExpiresAt: new Date(Date.now() + 60_000),
+    });
+
+    await expect(
+      service.resetPassword({
+        email: 'admin@noogym.com',
+        token: 'invalid-reset-token-invalid-reset-token',
+        password: 'NovaSenha123',
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.user.update).not.toHaveBeenCalled();
   });
 });

@@ -1,4 +1,5 @@
-const DEFAULT_API_URL = "http://localhost:3333";
+const DEFAULT_API_URL = "https://apiv1.noogym.com";
+const DEFAULT_WEB_PORTAL_URL = "https://admin.noogym.com/register";
 
 type ApiEnvelope<T> =
   | {
@@ -70,6 +71,17 @@ export const apiBaseUrl = () => {
   return (envUrl ?? DEFAULT_API_URL).replace(/\/+$/, "");
 };
 
+export const webPortalRegisterUrl = () => {
+  const portalUrl =
+    readPublicEnv("NEXT_PUBLIC_NOOGYM_WEB_URL") ??
+    readPublicEnv("VITE_NOOGYM_WEB_URL") ??
+    readPublicEnv("NOOGYM_WEB_URL") ??
+    DEFAULT_WEB_PORTAL_URL;
+  const normalizedUrl = portalUrl.replace(/\/+$/, "");
+
+  return normalizedUrl.endsWith("/register") ? normalizedUrl : `${normalizedUrl}/register`;
+};
+
 export const isHttpOnlyAuthEnabled = () => {
   const value = readPublicEnv("NEXT_PUBLIC_NOOGYM_HTTP_ONLY_AUTH");
 
@@ -119,9 +131,23 @@ export const logoutWithApi = (refreshToken?: string) => {
 };
 
 export const forgotPasswordWithApi = (email: string) =>
-  apiRequest<{ message: string }>("/auth/forgot-password", {
+  apiRequest<{ message: string; resetUrl?: string }>("/auth/forgot-password", {
     method: "POST",
     body: { email: email.trim() },
+  });
+
+export const resetPasswordWithApi = (payload: {
+  email: string;
+  password: string;
+  token: string;
+}) =>
+  apiRequest<{ message: string }>("/auth/reset-password", {
+    method: "POST",
+    body: {
+      email: payload.email.trim(),
+      password: payload.password,
+      token: payload.token,
+    },
   });
 
 export const apiPath = (

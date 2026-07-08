@@ -3,18 +3,17 @@ import { ArrowLeft, BarChart3, CheckCircle2, Clock, Lock, Mail, ShieldCheck } fr
 import { AuthInput } from "../../components/auth/AuthInput";
 import { AuthLayout } from "../../components/auth/AuthLayout";
 import { forgotPasswordWithApi } from "../../lib/api";
-import { useAppStore } from "../../store/appStore";
 
 interface ForgotPasswordProps {
   onNavigateToLogin: () => void;
 }
 
 export default function ForgotPassword({ onNavigateToLogin }: ForgotPasswordProps) {
-  const onlineOnly = useAppStore((state) => state.onlineOnly);
   const [email, setEmail] = useState("");
   const [emailSent, setEmailSent] = useState(false);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [resetUrl, setResetUrl] = useState("");
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -27,11 +26,13 @@ export default function ForgotPassword({ onNavigateToLogin }: ForgotPasswordProp
 
     setIsLoading(true);
     try {
-      if (onlineOnly) await forgotPasswordWithApi(email);
+      const response = await forgotPasswordWithApi(email);
       setError("");
       setEmailSent(true);
+      setResetUrl(response.resetUrl ?? "");
     } catch (apiError) {
       setEmailSent(false);
+      setResetUrl("");
       setError(apiError instanceof Error ? apiError.message : "Nao foi possivel enviar as instrucoes.");
     } finally {
       setIsLoading(false);
@@ -105,6 +106,11 @@ export default function ForgotPassword({ onNavigateToLogin }: ForgotPasswordProp
             </div>
             Verifique a caixa de entrada de <span className="font-semibold text-white">{email}</span>. Se o e-mail estiver cadastrado,
             voce recebera o link de redefinicao em instantes.
+            {resetUrl ? (
+              <a className="mt-3 block break-all font-semibold text-noogym-lime hover:text-white" href={resetUrl}>
+                Abrir link de teste local
+              </a>
+            ) : null}
           </div>
         ) : null}
 

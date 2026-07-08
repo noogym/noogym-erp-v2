@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { BottomSyncBar } from "./components/layout/BottomSyncBar";
 import { Sidebar } from "./components/layout/Sidebar";
 import { Topbar } from "./components/layout/Topbar";
@@ -9,6 +9,7 @@ import { useClassesStore } from "./store/classesStore";
 import { useClientsStore } from "./store/clientsStore";
 import { useEmployeesStore } from "./store/employeesStore";
 import { useFinanceStore } from "./store/financeStore";
+import { useOperationalSettingsStore } from "./store/operationalSettingsStore";
 import { usePlansStore } from "./store/plansStore";
 import { useProductsStore } from "./store/productsStore";
 import { useSalesStore } from "./store/salesStore";
@@ -29,8 +30,10 @@ import Configuracoes from "./pages/Configuracoes";
 import ForgotPassword from "./pages/auth/ForgotPassword";
 import Login from "./pages/auth/Login";
 import Register from "./pages/auth/Register";
+import ResetPassword from "./pages/auth/ResetPassword";
 import { ToastViewport } from "./components/ui/Toast";
 import { isHttpOnlyAuthEnabled } from "./lib/api";
+import { isDesktopLocalDbAvailable } from "./lib/desktopLocalDb";
 import { canAccessRoute, firstAllowedRoute } from "./lib/permissions";
 import { navItems } from "./routes/nav";
 
@@ -49,7 +52,7 @@ const pages = {
   configuracoes: Configuracoes,
 };
 
-type AuthRoute = "login" | "register" | "forgot-password";
+type AuthRoute = "login" | "register" | "forgot-password" | "reset-password";
 
 const authRouteFromValue = (value: string): AuthRoute | null => {
   const normalized = value
@@ -58,6 +61,7 @@ const authRouteFromValue = (value: string): AuthRoute | null => {
     .split(/[/?#]/)[0];
   if (normalized === "register") return "register";
   if (normalized === "forgot-password") return "forgot-password";
+  if (normalized === "reset-password") return "reset-password";
   if (normalized === "login") return "login";
   return null;
 };
@@ -130,25 +134,40 @@ export default function App({ onlineOnly = false }: AdminAppProps) {
   const activeGymId = useAppStore((state) => state.activeGymId);
   const isGymDataLoading = useAppStore((state) => state.isGymDataLoading);
   const setGymDataLoading = useAppStore((state) => state.setGymDataLoading);
+  const startConnectivityMonitor = useAppStore((state) => state.startConnectivityMonitor);
+  const syncNow = useAppStore((state) => state.syncNow);
   const theme = useAppStore((state) => state.theme);
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const user = useAuthStore((state) => state.user);
   const accessToken = useAuthStore((state) => state.accessToken);
   const refreshSession = useAuthStore((state) => state.refreshSession);
+  const loadLocalClients = useClientsStore((state) => state.loadLocal);
   const loadClients = useClientsStore((state) => state.loadOnline);
+  const loadLocalPlans = usePlansStore((state) => state.loadLocal);
   const loadPlans = usePlansStore((state) => state.loadOnline);
+  const loadLocalProducts = useProductsStore((state) => state.loadLocal);
   const loadProducts = useProductsStore((state) => state.loadOnline);
+  const loadLocalCheckins = useCheckinsStore((state) => state.loadLocal);
   const loadCheckins = useCheckinsStore((state) => state.loadOnline);
+  const loadLocalSales = useSalesStore((state) => state.loadLocal);
   const loadSales = useSalesStore((state) => state.loadOnline);
+  const loadLocalClasses = useClassesStore((state) => state.loadLocal);
   const loadClasses = useClassesStore((state) => state.loadOnline);
+  const loadLocalEmployees = useEmployeesStore((state) => state.loadLocal);
   const loadEmployees = useEmployeesStore((state) => state.loadOnline);
   const employees = useEmployeesStore((state) => state.employees);
   const roles = useEmployeesStore((state) => state.roles);
+  const loadLocalFinance = useFinanceStore((state) => state.loadLocal);
   const loadFinance = useFinanceStore((state) => state.loadOnline);
+  const loadLocalOperationalSettings = useOperationalSettingsStore((state) => state.loadLocal);
   const loadSettings = useSettingsStore((state) => state.loadOnline);
+  const loadLocalSettings = useSettingsStore((state) => state.loadLocal);
   const gyms = useSettingsStore((state) => state.gyms);
+  const loadLocalWorkouts = useWorkoutsStore((state) => state.loadLocal);
   const loadWorkouts = useWorkoutsStore((state) => state.loadOnline);
   const [authRoute, setAuthRoute] = useState<AuthRoute>(getAuthRoute);
+  const desktopInitKeyRef = useRef<string | null>(null);
+  const desktopLoginOnly = isDesktopLocalDbAvailable();
   const allowedRoute = firstAllowedRoute(
     navItems.map((item) => item.id),
     user,
@@ -164,7 +183,35 @@ export default function App({ onlineOnly = false }: AdminAppProps) {
   const Page = pages[canAccessActiveRoute ? activeRoute : allowedRoute];
   const activeGymName =
     gyms.find((gym) => gym.id === activeGymId)?.name ?? user?.gym ?? "Noogym";
-
+  const loadDesktopLocalModules = useCallback(
+    () =>
+      Promise.allSettled([
+        loadLocalSettings(),
+        loadLocalOperationalSettings(),
+        loadLocalClients(),
+        loadLocalPlans(),
+        loadLocalProducts(),
+        loadLocalCheckins(),
+        loadLocalSales(),
+        loadLocalClasses(),
+        loadLocalEmployees(),
+        loadLocalFinance(),
+        loadLocalWorkouts(),
+      ]),
+    [
+      loadLocalCheckins,
+      loadLocalClasses,
+      loadLocalClients,
+      loadLocalEmployees,
+      loadLocalFinance,
+      loadLocalOperationalSettings,
+      loadLocalPlans,
+      loadLocalProducts,
+      loadLocalSales,
+      loadLocalSettings,
+      loadLocalWorkouts,
+    ],
+  );
   useEffect(() => {
     setOnlineOnly(onlineOnly);
   }, [onlineOnly, setOnlineOnly]);
@@ -199,6 +246,12 @@ export default function App({ onlineOnly = false }: AdminAppProps) {
   }, [isAuthenticated, setRoute]);
 
   useEffect(() => {
+    if (isAuthenticated || !desktopLoginOnly || authRoute !== "register") return;
+    setAuthRoute("login");
+    updateAuthUrl("login", "replaceState");
+  }, [authRoute, desktopLoginOnly, isAuthenticated]);
+
+  useEffect(() => {
     if (!isAuthenticated || !user || canAccessActiveRoute) return;
     setRoute(allowedRoute);
   }, [allowedRoute, canAccessActiveRoute, isAuthenticated, setRoute, user]);
@@ -209,9 +262,70 @@ export default function App({ onlineOnly = false }: AdminAppProps) {
   }, [accessToken, isAuthenticated, refreshSession]);
 
   useEffect(() => {
-    if (!isAuthenticated || !accessToken) return;
+    if (!isAuthenticated) return undefined;
+    return startConnectivityMonitor();
+  }, [isAuthenticated, startConnectivityMonitor]);
+
+  useEffect(() => {
+    if (!isAuthenticated || onlineOnly) return;
+    void loadDesktopLocalModules().catch(console.error);
+  }, [isAuthenticated, loadDesktopLocalModules, onlineOnly]);
+
+  useEffect(() => {
+    if (!isAuthenticated || onlineOnly) return;
+
+    const handleDesktopSyncComplete = () => {
+      void loadDesktopLocalModules().catch(console.error);
+    };
+
+    window.addEventListener("noogym:desktop-sync-complete", handleDesktopSyncComplete);
+    return () => window.removeEventListener("noogym:desktop-sync-complete", handleDesktopSyncComplete);
+  }, [isAuthenticated, loadDesktopLocalModules, onlineOnly]);
+
+  useEffect(() => {
+    if (!onlineOnly || !isAuthenticated || !accessToken) return;
     void loadSettings().catch(console.error);
-  }, [accessToken, isAuthenticated, loadSettings]);
+  }, [accessToken, isAuthenticated, loadSettings, onlineOnly]);
+
+  useEffect(() => {
+    if (!isAuthenticated || onlineOnly || !user) return;
+
+    const initKey = `${user.id ?? user.email ?? user.name}:${accessToken ? "online" : "local"}`;
+    if (desktopInitKeyRef.current === initKey) {
+      void loadDesktopLocalModules().catch(console.error);
+      return;
+    }
+
+    desktopInitKeyRef.current = initKey;
+    let cancelled = false;
+    const startedAt = Date.now();
+    setGymDataLoading(true);
+
+    void (async () => {
+      await loadDesktopLocalModules().catch(console.error);
+      if (accessToken) {
+        await syncNow().catch(console.error);
+      }
+      await loadDesktopLocalModules().catch(console.error);
+    })().finally(() => {
+      const remainingMs = Math.max(0, 550 - (Date.now() - startedAt));
+      window.setTimeout(() => {
+        if (!cancelled) setGymDataLoading(false);
+      }, remainingMs);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    accessToken,
+    isAuthenticated,
+    loadDesktopLocalModules,
+    onlineOnly,
+    setGymDataLoading,
+    syncNow,
+    user,
+  ]);
 
   useEffect(() => {
     if (!onlineOnly || !isAuthenticated || !accessToken) {
@@ -266,10 +380,12 @@ export default function App({ onlineOnly = false }: AdminAppProps) {
   }, []);
 
   if (!isAuthenticated) {
-    if (authRoute === "register")
+    if (!desktopLoginOnly && authRoute === "register")
       return <Register onNavigateToLogin={() => navigateAuth("login")} />;
     if (authRoute === "forgot-password")
       return <ForgotPassword onNavigateToLogin={() => navigateAuth("login")} />;
+    if (authRoute === "reset-password")
+      return <ResetPassword onNavigateToLogin={() => navigateAuth("login")} />;
 
     return (
       <Login

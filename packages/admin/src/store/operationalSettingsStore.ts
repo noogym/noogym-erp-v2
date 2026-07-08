@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { getOperationalSettings, resetOperationalSettingsApi, updateOperationalSettings } from "../lib/settingsApi";
+import { readLocal, readLocalDb, writeLocal } from "../lib/storage";
 import { useAuthStore } from "./authStore";
 
 export interface PaymentMethodSetting {
@@ -100,6 +101,7 @@ interface OperationalSettingsState {
   settings: OperationalSettings;
   isLoading: boolean;
   isSaving: boolean;
+  loadLocal: () => Promise<void>;
   loadOnline: () => Promise<void>;
   saveOnline: () => Promise<void>;
   updateSection: <Key extends keyof OperationalSettings>(section: Key, data: Partial<OperationalSettings[Key]>) => void;
@@ -228,21 +230,26 @@ const loadSettings = () => {
   if (typeof window === "undefined") return defaultSettings;
 
   try {
-    return mergeSettings(JSON.parse(localStorage.getItem(storageKey) ?? "null"));
+    return mergeSettings(readLocal(storageKey, null));
   } catch {
     return defaultSettings;
   }
 };
 
-const persistSettings = (settings: OperationalSettings) => {
+const persistSettings = (settings: OperationalSettings, sync = false) => {
   if (typeof window === "undefined") return;
-  localStorage.setItem(storageKey, JSON.stringify(settings));
+  writeLocal(storageKey, settings, { sync });
 };
 
 export const useOperationalSettingsStore = create<OperationalSettingsState>((set, get) => ({
   settings: loadSettings(),
   isLoading: false,
   isSaving: false,
+  loadLocal: async () => {
+    const settings = mergeSettings(await readLocalDb(storageKey, defaultSettings));
+    persistSettings(settings);
+    set({ settings });
+  },
   loadOnline: async () => {
     const token = useAuthStore.getState().accessToken;
     if (!token) return;
@@ -278,7 +285,7 @@ export const useOperationalSettingsStore = create<OperationalSettingsState>((set
           ...data
         }
       };
-      persistSettings(settings);
+      persistSettings(settings, true);
       return { settings };
     }),
   updatePaymentMethod: (id, data) =>
@@ -290,7 +297,7 @@ export const useOperationalSettingsStore = create<OperationalSettingsState>((set
           paymentMethods: state.settings.finance.paymentMethods.map((method) => method.id === id ? { ...method, ...data } : method)
         }
       };
-      persistSettings(settings);
+      persistSettings(settings, true);
       return { settings };
     }),
   runBackup: () =>
@@ -302,17 +309,17 @@ export const useOperationalSettingsStore = create<OperationalSettingsState>((set
           lastBackupAt: "Agora"
         }
       };
-      persistSettings(settings);
+      persistSettings(settings, true);
       return { settings };
     }),
   resetOperationalSettings: () => {
-    persistSettings(defaultSettings);
+    persistSettings(defaultSettings, true);
     set({ settings: defaultSettings });
   },
   resetOperationalSettingsOnline: async () => {
     const token = useAuthStore.getState().accessToken;
     if (!token) {
-      persistSettings(defaultSettings);
+      persistSettings(defaultSettings, true);
       set({ settings: defaultSettings });
       return;
     }

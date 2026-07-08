@@ -249,8 +249,14 @@ export default function Clientes() {
       toastInfo("Selecione um CSV", "Use o modelo CSV ou carregue uma lista de clientes.");
       return;
     }
-    importRows.forEach((client) => addClient(client));
-    toastSuccess("Clientes importados", `${importRows.length} cliente(s) adicionados.`);
+    const imported = importRows.filter((client) => addClient(client)).length;
+    const skipped = importRows.length - imported;
+    if (imported) {
+      toastSuccess("Clientes importados", `${imported} cliente(s) adicionados.`);
+    }
+    if (skipped) {
+      toastInfo("Duplicados ignorados", `${skipped} cliente(s) ja tinham e-mail, telefone ou BI cadastrado.`);
+    }
     setImportRows([]);
     setImportPreview([]);
     setImportFileName("");
