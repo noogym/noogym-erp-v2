@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { workouts as mockWorkouts } from "../data/mock";
 import { createResource, deleteResource, listResource, updateResource, workoutFromApi, workoutToDto } from "../lib/domainApi";
-import { readLocal, uid, writeLocal } from "../lib/storage";
+import { readLocal, readLocalDb, uid, writeLocal } from "../lib/storage";
 import { useAppStore } from "./appStore";
 import { useAuthStore } from "./authStore";
 import type { WorkoutRecord } from "@noogym/types";
@@ -41,10 +41,11 @@ const normalizeWorkout = (workout: WorkoutRecord): WorkoutRecord => {
 };
 
 const initial: WorkoutRecord[] = mockWorkouts.map((workout) => normalizeWorkout({ ...workout, id: uid("TRN") }));
-const persist = (workouts: WorkoutRecord[]) => writeLocal("noogym:workouts", workouts);
+const persist = (workouts: WorkoutRecord[], sync = false) => writeLocal("noogym:workouts", workouts, { sync });
 
 export const useWorkoutsStore = create<{
   workouts: WorkoutRecord[];
+  loadLocal: () => Promise<void>;
   loadOnline: () => Promise<void>;
   addWorkout: (workout: Partial<WorkoutRecord>) => void;
   updateWorkout: (id: string, workout: Partial<WorkoutRecord>) => void;
@@ -53,18 +54,23 @@ export const useWorkoutsStore = create<{
   deleteWorkout: (id: string) => void;
 }>((set, get) => ({
   workouts: readLocal("noogym:workouts", initial).map(normalizeWorkout),
+  loadLocal: async () => {
+    const workouts = (await readLocalDb("noogym:workouts", initial)).map(normalizeWorkout);
+    persist(workouts);
+    set({ workouts });
+  },
   loadOnline: async () => {
     const token = useAuthStore.getState().accessToken;
     if (!token) return;
     const apiWorkouts = await listResource<Record<string, unknown>>("workouts", token);
     const workouts = apiWorkouts.map(workoutFromApi).map(normalizeWorkout);
-    persist(workouts);
+    persist(workouts, true);
     set({ workouts });
   },
   addWorkout: (workout) => set((state) => {
     const created: WorkoutRecord = normalizeWorkout({ id: uid("TRN"), name: "Novo treino", client: "Carlos Alberto Silva", goal: "Hipertrofia", author: "Admin", updated: "Hoje, 10:30", status: "Ativo", exercises: 0, ...workout });
     const workouts = [created, ...state.workouts];
-    persist(workouts);
+    persist(workouts, true);
     useAppStore.getState().addPendingSync();
 
     const token = useAuthStore.getState().accessToken;
@@ -108,7 +114,8 @@ export const useWorkoutsStore = create<{
   setWorkoutStatus: (id, status) => get().updateWorkout(id, { status, updated: "Agora" }),
   deleteWorkout: (id) => set((state) => {
     const workouts = state.workouts.filter((item) => item.id !== id);
-    persist(workouts);
+    persist(workouts, true);
+    useAppStore.getState().addPendingSync();
     const token = useAuthStore.getState().accessToken;
     if (useAppStore.getState().onlineOnly && token) deleteResource("workouts", id, token).catch(console.error);
     return { workouts };

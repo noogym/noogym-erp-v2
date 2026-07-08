@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { employees as mockEmployees } from "../data/mock";
 import { createResource, employeeFromApi, employeeToDto, listResource, updateResource } from "../lib/domainApi";
 import { listUserSettings, type UserSettings } from "../lib/settingsApi";
-import { readLocal, uid, writeLocal } from "../lib/storage";
+import { readLocal, readLocalDb, uid, writeLocal } from "../lib/storage";
 import { useAppStore } from "./appStore";
 import { useAuthStore } from "./authStore";
 import type { EmployeeActivityRecord, EmployeeRecord, EmployeeRoleRecord } from "@noogym/types";
@@ -99,7 +99,7 @@ const normalizeEmployee = (employee: EmployeeRecord, index = 0): EmployeeRecord 
 };
 
 const initial: EmployeeRecord[] = (mockEmployees as EmployeeRecord[]).map(normalizeEmployee);
-const persist = (employees: EmployeeRecord[]) => writeLocal("noogym:employees", employees);
+const persist = (employees: EmployeeRecord[], sync = false) => writeLocal("noogym:employees", employees, { sync });
 const persistRoles = (roles: EmployeeRoleRecord[]) => writeLocal("noogym:employee-roles", roles);
 const persistActivities = (activities: EmployeeActivityRecord[]) => writeLocal("noogym:employee-activities", activities);
 const activityTime = () => new Intl.DateTimeFormat("pt-AO", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date());
@@ -178,6 +178,7 @@ export const useEmployeesStore = create<{
   employees: EmployeeRecord[];
   roles: EmployeeRoleRecord[];
   activities: EmployeeActivityRecord[];
+  loadLocal: () => Promise<void>;
   loadOnline: () => Promise<void>;
   addEmployee: (employee: Partial<EmployeeRecord>) => void;
   updateEmployee: (id: string, employee: Partial<EmployeeRecord>) => void;
@@ -192,6 +193,19 @@ export const useEmployeesStore = create<{
   employees: readLocal("noogym:employees", initial).map(normalizeEmployee),
   roles: withEmployeeCount(mergeDefaultRoles(readLocal("noogym:employee-roles", defaultRoles)), readLocal("noogym:employees", initial).map(normalizeEmployee)),
   activities: readLocal("noogym:employee-activities", []),
+  loadLocal: async () => {
+    const [rawEmployees, rawRoles, activities] = await Promise.all([
+      readLocalDb("noogym:employees", initial),
+      readLocalDb("noogym:employee-roles", defaultRoles),
+      readLocalDb("noogym:employee-activities", [] as EmployeeActivityRecord[])
+    ]);
+    const employees = rawEmployees.map(normalizeEmployee);
+    const roles = withEmployeeCount(mergeDefaultRoles(rawRoles), employees);
+    persist(employees);
+    persistRoles(roles);
+    persistActivities(activities);
+    set({ employees, roles, activities });
+  },
   loadOnline: async () => {
     const token = useAuthStore.getState().accessToken;
     if (!token) return;
@@ -207,7 +221,7 @@ export const useEmployeesStore = create<{
     });
     const employees = mergeUsersWithoutEmployeeProfiles(syncedEmployees, apiUsers, activeGymId);
     const roles = withEmployeeCount(mergeDefaultRoles(get().roles), employees);
-    persist(employees);
+    persist(employees, true);
     persistRoles(roles);
     set({ employees, roles });
   },
@@ -224,7 +238,7 @@ export const useEmployeesStore = create<{
       dateTime: activityTime(),
       detail: created.role
     }, ...state.activities];
-    persist(employees);
+    persist(employees, true);
     persistRoles(roles);
     persistActivities(activities);
     useAppStore.getState().addPendingSync();

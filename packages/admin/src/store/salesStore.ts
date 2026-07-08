@@ -1,19 +1,20 @@
 import { create } from "zustand";
 import { apiRequest } from "../lib/api";
 import { createResource, listResource, saleFromApi, saleToDto } from "../lib/domainApi";
-import { readLocal, uid, writeLocal } from "../lib/storage";
+import { readLocal, readLocalDb, uid, writeLocal } from "../lib/storage";
 import { useAppStore } from "./appStore";
 import { useAuthStore } from "./authStore";
 import { useNotificationsStore } from "./notificationsStore";
 import { toastInfo } from "./toastStore";
 import type { SaleItemRecord, SaleRecord } from "@noogym/types";
 
-const persist = (sales: SaleRecord[]) => writeLocal("noogym:sales", sales);
+const persist = (sales: SaleRecord[], sync = false) => writeLocal("noogym:sales", sales, { sync });
 const initialSales = readLocal("noogym:sales", [] as SaleRecord[]);
 
 export const useSalesStore = create<{
   sales: SaleRecord[];
   revenue: number;
+  loadLocal: () => Promise<void>;
   loadOnline: () => Promise<void>;
   addSale: (sale: Partial<SaleRecord>, items?: SaleItemRecord[]) => void;
   cancelSale: (id: string) => void;
@@ -21,13 +22,18 @@ export const useSalesStore = create<{
 }>((set, get) => ({
   sales: initialSales,
   revenue: initialSales.reduce((sum, sale) => sum + sale.total, 0),
+  loadLocal: async () => {
+    const sales = await readLocalDb("noogym:sales", [] as SaleRecord[]);
+    persist(sales);
+    set({ sales, revenue: sales.reduce((sum, sale) => sum + sale.total, 0) });
+  },
   loadOnline: async () => {
     const token = useAuthStore.getState().accessToken;
     if (!token) return;
     const activeGymId = useAppStore.getState().activeGymId ?? undefined;
     const apiSales = await listResource<Record<string, unknown>>("sales", token, { gymId: activeGymId });
     const sales = apiSales.map(saleFromApi);
-    persist(sales);
+    persist(sales, true);
     set({ sales, revenue: sales.reduce((sum, sale) => sum + sale.total, 0) });
   },
   addSale: (sale, items = []) => set((state) => {
@@ -50,7 +56,7 @@ export const useSalesStore = create<{
       items
     };
     const sales = [record, ...state.sales];
-    persist(sales);
+    persist(sales, true);
     useAppStore.getState().addPendingSync();
     useNotificationsStore.getState().addNotification({
       sourceId: `event:sales:created:${record.id}`,
@@ -78,7 +84,8 @@ export const useSalesStore = create<{
   }),
   cancelSale: (id) => set((state) => {
     const sales = state.sales.map((sale) => sale.id === id ? { ...sale, status: "Cancelada" } : sale);
-    persist(sales);
+    persist(sales, true);
+    useAppStore.getState().addPendingSync();
     const cancelled = sales.find((sale) => sale.id === id);
     if (cancelled) {
       useNotificationsStore.getState().addNotification({

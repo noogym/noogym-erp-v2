@@ -29,6 +29,7 @@ lerna-debug.log*
 .env
 .env.*
 !.env.example
+!apps/desktop/.env.production
 
 # Electron / packaging
 *.asar

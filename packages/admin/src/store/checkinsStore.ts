@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { checkinFromApi, checkinToDto, createResource, createSubscription, listResource } from "../lib/domainApi";
-import { readLocal, uid, writeLocal } from "../lib/storage";
+import { readLocal, readLocalDb, uid, writeLocal } from "../lib/storage";
 import { useAppStore } from "./appStore";
 import { useAuthStore } from "./authStore";
 import { useClientsStore } from "./clientsStore";
@@ -14,7 +14,7 @@ const initial: CheckinRecord[] = [
   { id: "CHK-003", clientName: "Carla Menezes", clientId: "CLI-003", type: "App", accessType: "Entrada", dateTime: "Hoje, 09:00" }
 ];
 
-const persist = (checkins: CheckinRecord[]) => writeLocal("noogym:checkins", checkins);
+const persist = (checkins: CheckinRecord[], sync = false) => writeLocal("noogym:checkins", checkins, { sync });
 const isMissingSubscriptionError = (error: unknown) =>
   error instanceof Error && error.message.includes("valid active subscription");
 const isActiveSubscriptionError = (error: unknown) =>
@@ -60,11 +60,18 @@ const syncClientLastCheckins = (checkins: CheckinRecord[]) => {
 export const useCheckinsStore = create<{
   checkins: CheckinRecord[];
   todayCount: number;
+  loadLocal: () => Promise<void>;
   loadOnline: () => Promise<void>;
   addCheckin: (checkin: Partial<CheckinRecord>) => boolean;
 }>((set, get) => ({
   checkins: readLocal("noogym:checkins", initial),
   todayCount: readLocal("noogym:checkins", initial).length + 139,
+  loadLocal: async () => {
+    const checkins = await readLocalDb("noogym:checkins", initial);
+    persist(checkins);
+    syncClientLastCheckins(checkins);
+    set({ checkins, todayCount: checkins.filter((checkin) => checkin.dateTime.startsWith("Hoje")).length });
+  },
   loadOnline: async () => {
     const token = useAuthStore.getState().accessToken;
     if (!token) return;
@@ -110,7 +117,7 @@ export const useCheckinsStore = create<{
 
     set((state) => {
       const checkins = [record, ...state.checkins];
-      persist(checkins);
+      persist(checkins, true);
       useClientsStore.getState().updateLastCheckin(record.clientId, record.dateTime);
       useAppStore.getState().addPendingSync();
       useNotificationsStore.getState().addNotification({

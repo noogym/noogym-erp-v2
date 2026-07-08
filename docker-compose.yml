@@ -1,18 +1,20 @@
 services:
   mysql:
-    image: mysql:8.4
+    image: "mysql:8.4"
     restart: unless-stopped
     environment:
-      MYSQL_DATABASE: ${MYSQL_DATABASE:-noogymsoftware}
-      MYSQL_USER: ${MYSQL_USER:-noogym}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-noogym_password}
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-noogym_root_password}
+      MYSQL_DATABASE: "${MYSQL_DATABASE:-noogymsoftware}"
+      MYSQL_USER: "${MYSQL_USER:-noogym}"
+      MYSQL_PASSWORD: "${MYSQL_PASSWORD:-noogym_password}"
+      MYSQL_ROOT_PASSWORD: "${MYSQL_ROOT_PASSWORD:-noogym_root_password}"
     expose:
       - "3306"
     volumes:
-      - noogym_mysql_data:/var/lib/mysql
+      - "noogym_mysql_data:/var/lib/mysql"
     healthcheck:
-      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u$${MYSQL_USER} -p$${MYSQL_PASSWORD} --silent"]
+      test:
+        - CMD-SHELL
+        - "mysqladmin ping -h 127.0.0.1 -u$${MYSQL_USER} -p$${MYSQL_PASSWORD} --silent"
       interval: 10s
       timeout: 5s
       retries: 10
@@ -29,20 +31,36 @@ services:
         condition: service_healthy
     environment:
       NODE_ENV: production
-      AUTH_PROVIDER: ${AUTH_PROVIDER:-local}
+      AUTH_PROVIDER: "${AUTH_PROVIDER:-local}"
       PORT: 3333
-      DATABASE_URL: ${DATABASE_URL:-mysql://noogym:noogym_password@mysql:3306/noogymsoftware}
-      DATABASE_RETRY_DELAY_MS: ${DATABASE_RETRY_DELAY_MS:-2000}
-      JWT_SECRET: ${JWT_SECRET:-change-this-secret-before-production-please}
-      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-1d}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
-      THROTTLE_TTL_MS: ${THROTTLE_TTL_MS:-60000}
-      THROTTLE_LIMIT: ${THROTTLE_LIMIT:-120}
-      RUN_MIGRATIONS: ${RUN_MIGRATIONS:-true}
+      DATABASE_URL: "${DATABASE_URL:-mysql://noogym:noogym_password@mysql:3306/noogymsoftware}"
+      DATABASE_RETRY_DELAY_MS: "${DATABASE_RETRY_DELAY_MS:-2000}"
+      JWT_SECRET: "${JWT_SECRET:-change-this-secret-before-production-please}"
+      JWT_EXPIRES_IN: "${JWT_EXPIRES_IN:-1d}"
+      JWT_REFRESH_SECRET: "${JWT_REFRESH_SECRET:-change-this-refresh-secret-before-production-please}"
+      JWT_REFRESH_EXPIRES_IN: "${JWT_REFRESH_EXPIRES_IN:-7d}"
+      PASSWORD_RESET_BASE_URL: "${PASSWORD_RESET_BASE_URL:-https://admin.noogym.com}"
+      PASSWORD_RESET_TTL_MINUTES: "${PASSWORD_RESET_TTL_MINUTES:-30}"
+      PASSWORD_RESET_EXPOSE_TOKEN: "${PASSWORD_RESET_EXPOSE_TOKEN:-false}"
+      SMTP_HOST: "${SMTP_HOST:-}"
+      SMTP_PORT: "${SMTP_PORT:-587}"
+      SMTP_SECURE: "${SMTP_SECURE:-false}"
+      SMTP_USER: "${SMTP_USER:-}"
+      SMTP_PASS: "${SMTP_PASS:-}"
+      SMTP_FROM: "${SMTP_FROM:-Noogym <noreply@noogym.com>}"
+      # 🔥 CORRIGIDO: Agora aceita requisições vindas do admin.noogym.com (Mata o erro de CORS)
+      CORS_ORIGINS: "${CORS_ORIGINS:-https://admin.noogym.com}"
+      THROTTLE_TTL_MS: "${THROTTLE_TTL_MS:-60000}"
+      THROTTLE_LIMIT: "${THROTTLE_LIMIT:-120}"
+      RUN_MIGRATIONS: "${RUN_MIGRATIONS:-true}"
     expose:
       - "3333"
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3333/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      test:
+        - CMD
+        - node
+        - "-e"
+        - "require('http').get('http://127.0.0.1:3333/health',res=>{process.exit(res.statusCode<500?0:1)}).on('error',()=>process.exit(1))"
       interval: 20s
       timeout: 5s
       retries: 10
@@ -52,21 +70,28 @@ services:
     build:
       context: .
       dockerfile: apps/web-admin/Dockerfile
+      # 🔥 CORRIGIDO: Injeta a URL correta da API no processo de compilação do Next.js
       args:
-        NEXT_PUBLIC_NOOGYM_API_URL: ${NEXT_PUBLIC_NOOGYM_API_URL:-http://localhost:3333}
+        NEXT_PUBLIC_NOOGYM_API_URL: "${NEXT_PUBLIC_NOOGYM_API_URL:-https://apiv1.noogym.com}"
+        NEXT_PUBLIC_NOOGYM_HTTP_ONLY_AUTH: "${NEXT_PUBLIC_NOOGYM_HTTP_ONLY_AUTH:-true}"
     image: noogym-web-admin
     restart: unless-stopped
     environment:
       NODE_ENV: production
-      NEXT_PUBLIC_NOOGYM_API_URL: ${NEXT_PUBLIC_NOOGYM_API_URL:-http://localhost:3333}
+      NEXT_PUBLIC_NOOGYM_API_URL: "${NEXT_PUBLIC_NOOGYM_API_URL:-https://apiv1.noogym.com}"
+      NEXT_PUBLIC_NOOGYM_HTTP_ONLY_AUTH: "${NEXT_PUBLIC_NOOGYM_HTTP_ONLY_AUTH:-true}"
     expose:
       - "3000"
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      test:
+        - CMD
+        - node
+        - "-e"
+        - "require('http').get('http://127.0.0.1:3000/',res=>{process.exit(res.statusCode<500?0:1)}).on('error',()=>process.exit(1))"
       interval: 20s
       timeout: 5s
       retries: 10
       start_period: 20s
 
 volumes:
-  noogym_mysql_data:
+  noogym_mysql_data: null

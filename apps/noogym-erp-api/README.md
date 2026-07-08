@@ -9,7 +9,7 @@ Este app representa a camada backend/API do monorepo para o `web-admin` e para i
 - NestJS
 - TypeScript
 - Prisma ORM
-- PostgreSQL
+- MySQL
 - JWT Auth
 - Bcrypt
 - Class Validator / Class Transformer
@@ -18,7 +18,7 @@ Este app representa a camada backend/API do monorepo para o `web-admin` e para i
 
 ## Funcionalidades
 
-- Autenticacao com register, login e perfil autenticado
+- Autenticacao com register, login, refresh token, logout server-side e perfil autenticado
 - Multi-tenant por `organizationId`
 - RBAC basico por `UserRole`
 - Respostas HTTP padronizadas
@@ -62,17 +62,19 @@ As principais decisoes arquiteturais estao documentadas em [docs/adr](./docs/adr
 
 - Node.js 18+
 - pnpm
-- PostgreSQL
+- MySQL
 
 ## Configuracao
 
 Crie um ficheiro `.env` com base em `.env.example`:
 
 ```env
-DATABASE_URL="postgresql://postgres:postgres@localhost:5432/noogym?schema=public"
+DATABASE_URL="mysql://noogym:noogym_password@localhost:3306/noogymsoftware"
 JWT_SECRET="change-me"
 JWT_EXPIRES_IN="1d"
-PORT=3000
+JWT_REFRESH_SECRET="change-me-too"
+JWT_REFRESH_EXPIRES_IN="7d"
+PORT=3333
 ```
 
 ## Instalacao
@@ -89,7 +91,7 @@ Gerar Prisma Client:
 pnpm prisma:generate
 ```
 
-Aplicar migrations no PostgreSQL:
+Aplicar migrations no MySQL:
 
 ```bash
 pnpm prisma:migrate
@@ -126,25 +128,25 @@ pnpm start:prod
 API:
 
 ```text
-http://localhost:3000
+http://localhost:3333
 ```
 
 Swagger:
 
 ```text
-http://localhost:3000/docs
+http://localhost:3333/docs
 ```
 
 Scalar:
 
 ```text
-http://localhost:3000/reference
+http://localhost:3333/reference
 ```
 
 OpenAPI JSON:
 
 ```text
-http://localhost:3000/openapi.json
+http://localhost:3333/openapi.json
 ```
 
 ## Scripts
@@ -167,6 +169,44 @@ Endpoints publicos:
 
 - `POST /auth/register`
 - `POST /auth/login`
+- `POST /auth/refresh`
+- `POST /auth/logout`
+
+`register` e `login` retornam `accessToken`, `refreshToken` e os dados basicos do usuario. O `accessToken` e usado nas rotas protegidas. O `refreshToken` deve ser enviado para `POST /auth/refresh` quando for necessario emitir um novo par de tokens.
+
+Exemplo de resposta:
+
+```json
+{
+  "success": true,
+  "data": {
+    "accessToken": "<accessToken>",
+    "refreshToken": "<refreshToken>",
+    "user": {
+      "id": "user-id",
+      "name": "Admin",
+      "email": "admin@noogym.com",
+      "role": "OWNER",
+      "organizationId": "organization-id"
+    }
+  }
+}
+```
+
+Exemplo de refresh:
+
+```http
+POST /auth/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "<refreshToken>"
+}
+```
+
+O refresh token e armazenado no banco apenas como hash em `User.refreshTokenHash` e e rotacionado a cada refresh. `POST /auth/logout` revoga o refresh token atual.
+
+No `web-admin`, o BFF Next em `/api/auth/*` pode consumir estes endpoints e guardar o refresh token em cookie `HttpOnly`, `Secure` e `SameSite`. Nesse modo, o frontend recebe apenas o `accessToken` em memoria e renova a sessao atraves do cookie.
 
 Endpoints protegidos usam Bearer Token:
 
