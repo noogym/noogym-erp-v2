@@ -10,10 +10,10 @@
     "build": "tsc -p tsconfig.json && vite build && tsc -p tsconfig.electron.json",
     "build:prod": "cross-env VITE_NOOGYM_API_URL=https://apiv1.noogym.com VITE_NOOGYM_WEB_URL=https://admin.noogym.com/register pnpm build",
     "dist": "pnpm build && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder",
-    "dist:win": "pnpm build && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win nsis --x64",
-    "dist:win:prod": "pnpm build:prod && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win nsis --x64",
-    "pack:win": "pnpm build && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win dir --x64",
-    "pack:win:prod": "pnpm build:prod && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win dir --x64",
+    "dist:win": "pnpm build && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false ELECTRON_BUILDER_DISABLE_BUILD_CACHE=true electron-builder --win nsis --x64",
+    "dist:win:prod": "pnpm build:prod && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false ELECTRON_BUILDER_DISABLE_BUILD_CACHE=true electron-builder --win nsis --x64",
+    "pack:win": "pnpm build && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false ELECTRON_BUILDER_DISABLE_BUILD_CACHE=true electron-builder --win dir --x64",
+    "pack:win:prod": "pnpm build:prod && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false ELECTRON_BUILDER_DISABLE_BUILD_CACHE=true electron-builder --win dir --x64",
     "preview": "vite preview --host 127.0.0.1",
     "lint": "tsc --noEmit",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.electron.json --noEmit"
@@ -26,6 +26,7 @@
       "output": "release",
       "buildResources": "build-resources"
     },
+    "afterPack": "scripts/apply-win-icon.cjs",
     "files": [
       "dist/**/*",
       "package.json"
@@ -40,6 +41,9 @@
     "win": {
       "icon": "build-resources/icon.ico",
       "signAndEditExecutable": false,
+      "signExts": [
+        "!.exe"
+      ],
       "target": [
         {
           "target": "nsis",

@@ -6,6 +6,11 @@ import { registerPrinterIpc } from "./printer-ipc";
 
 const MIN_ZOOM_FACTOR = 0.85;
 const MAX_ZOOM_FACTOR = 1.25;
+const APP_USER_MODEL_ID = "com.noogym.erp.desktop";
+
+if (process.platform === "win32") {
+  app.setAppUserModelId(APP_USER_MODEL_ID);
+}
 
 const getWindowFromEvent = (event: IpcMainInvokeEvent) => BrowserWindow.fromWebContents(event.sender);
 
