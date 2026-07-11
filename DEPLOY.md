@@ -43,6 +43,7 @@ Campos que devem mudar em producao:
 - `MYSQL_ROOT_PASSWORD`
 - `JWT_SECRET`
 - `CORS_ORIGINS`
+- `NOOGYM_API_URL`
 - `NEXT_PUBLIC_NOOGYM_API_URL`
 
 No Coolify, configure o dominio no servico correto e inclua a porta interna do container no campo de dominio:
@@ -60,6 +61,7 @@ Exemplo para dominio real:
 
 ```env
 CORS_ORIGINS=https://admin.noogym.com
+NOOGYM_API_URL=https://api.noogym.com
 NEXT_PUBLIC_NOOGYM_API_URL=https://api.noogym.com
 ```
 
