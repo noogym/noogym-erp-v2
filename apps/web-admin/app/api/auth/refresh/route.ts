@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import {
   authResponse,
+  clearRefreshCookie,
   postAuth,
   REFRESH_COOKIE_NAME,
   type AuthPayload,
@@ -23,5 +24,10 @@ export async function POST() {
     refreshToken,
   });
 
-  return authResponse(payload, status);
+  const response = authResponse(payload, status);
+  if (status === 401 || payload?.success === false) {
+    clearRefreshCookie(response);
+  }
+
+  return response;
 }

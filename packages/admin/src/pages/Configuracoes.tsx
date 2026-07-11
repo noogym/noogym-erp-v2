@@ -103,7 +103,7 @@ export default function Configuracoes() {
             subtitle={isLoading ? "Sincronizando configuracoes com a API..." : "Administre regras, unidade, acessos e operacao do sistema."}
           />
           <div className="flex flex-wrap gap-2">
-            <Button icon={<RefreshCw className={`h-4 w-4 ${syncState === "syncing" ? "animate-spin" : ""}`} />} onClick={() => syncNow()}>
+            <Button icon={<RefreshCw className={`h-4 w-4 ${syncState === "syncing" ? "animate-spin" : ""}`} />} onClick={() => void syncNow().catch(() => undefined)}>
               Sincronizar
             </Button>
             <Button variant="primary" disabled={isSaving} icon={<Save className="h-4 w-4" />} onClick={() => saveOperational()}>

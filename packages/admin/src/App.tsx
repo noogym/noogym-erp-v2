@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BottomSyncBar } from "./components/layout/BottomSyncBar";
+import { AppRouteErrorBoundary } from "./components/layout/AppRouteErrorBoundary";
 import { Sidebar } from "./components/layout/Sidebar";
 import { Topbar } from "./components/layout/Topbar";
-import { useAppStore } from "./store/appStore";
+import { useAppStore, type RouteId } from "./store/appStore";
 import { useAuthStore } from "./store/authStore";
 import { useCheckinsStore } from "./store/checkinsStore";
 import { useClassesStore } from "./store/classesStore";
@@ -32,7 +33,7 @@ import Login from "./pages/auth/Login";
 import Register from "./pages/auth/Register";
 import ResetPassword from "./pages/auth/ResetPassword";
 import { ToastViewport } from "./components/ui/Toast";
-import { isHttpOnlyAuthEnabled } from "./lib/api";
+import { ApiError, isHttpOnlyAuthEnabled } from "./lib/api";
 import { isDesktopLocalDbAvailable } from "./lib/desktopLocalDb";
 import { canAccessRoute, firstAllowedRoute } from "./lib/permissions";
 import { navItems } from "./routes/nav";
@@ -51,6 +52,28 @@ const pages = {
   financas: Financas,
   configuracoes: Configuracoes,
 };
+
+const pageLabels: Record<RouteId, string> = {
+  dashboard: "Dashboard",
+  checkin: "Check-in",
+  clientes: "Clientes",
+  planos: "Planos",
+  vendas: "Vendas POS",
+  produtos: "Produtos",
+  aulas: "Aulas",
+  treinos: "Treinos",
+  funcionarios: "Funcionarios",
+  relatorios: "Relatorios",
+  financas: "Financas",
+  configuracoes: "Configuracoes",
+};
+
+const reportBackgroundError = (error: unknown) => {
+  if (error instanceof ApiError) return;
+  console.error(error);
+};
+
+const ignoreBackgroundError = () => undefined;
 
 type AuthRoute = "login" | "register" | "forgot-password" | "reset-password";
 
@@ -181,6 +204,8 @@ export default function App({ onlineOnly = false }: AdminAppProps) {
     roles,
   );
   const Page = pages[canAccessActiveRoute ? activeRoute : allowedRoute];
+  const renderedRoute = canAccessActiveRoute ? activeRoute : allowedRoute;
+  const canOpenSettings = canAccessRoute("configuracoes", user, employees, roles);
   const activeGymName =
     gyms.find((gym) => gym.id === activeGymId)?.name ?? user?.gym ?? "Noogym";
   const loadDesktopLocalModules = useCallback(
@@ -258,7 +283,7 @@ export default function App({ onlineOnly = false }: AdminAppProps) {
 
   useEffect(() => {
     if (!isAuthenticated || accessToken || !isHttpOnlyAuthEnabled()) return;
-    void refreshSession().catch(console.error);
+    void refreshSession().catch(reportBackgroundError);
   }, [accessToken, isAuthenticated, refreshSession]);
 
   useEffect(() => {
@@ -268,14 +293,14 @@ export default function App({ onlineOnly = false }: AdminAppProps) {
 
   useEffect(() => {
     if (!isAuthenticated || onlineOnly) return;
-    void loadDesktopLocalModules().catch(console.error);
+    void loadDesktopLocalModules().catch(reportBackgroundError);
   }, [isAuthenticated, loadDesktopLocalModules, onlineOnly]);
 
   useEffect(() => {
     if (!isAuthenticated || onlineOnly) return;
 
     const handleDesktopSyncComplete = () => {
-      void loadDesktopLocalModules().catch(console.error);
+      void loadDesktopLocalModules().catch(reportBackgroundError);
     };
 
     window.addEventListener("noogym:desktop-sync-complete", handleDesktopSyncComplete);
@@ -284,7 +309,7 @@ export default function App({ onlineOnly = false }: AdminAppProps) {
 
   useEffect(() => {
     if (!onlineOnly || !isAuthenticated || !accessToken) return;
-    void loadSettings().catch(console.error);
+    void loadSettings().catch(reportBackgroundError);
   }, [accessToken, isAuthenticated, loadSettings, onlineOnly]);
 
   useEffect(() => {
@@ -292,7 +317,7 @@ export default function App({ onlineOnly = false }: AdminAppProps) {
 
     const initKey = `${user.id ?? user.email ?? user.name}:${accessToken ? "online" : "local"}`;
     if (desktopInitKeyRef.current === initKey) {
-      void loadDesktopLocalModules().catch(console.error);
+      void loadDesktopLocalModules().catch(reportBackgroundError);
       return;
     }
 
@@ -302,11 +327,11 @@ export default function App({ onlineOnly = false }: AdminAppProps) {
     setGymDataLoading(true);
 
     void (async () => {
-      await loadDesktopLocalModules().catch(console.error);
+      await loadDesktopLocalModules().catch(reportBackgroundError);
       if (accessToken) {
-        await syncNow().catch(console.error);
+        await syncNow().catch(reportBackgroundError);
       }
-      await loadDesktopLocalModules().catch(console.error);
+      await loadDesktopLocalModules().catch(reportBackgroundError);
     })().finally(() => {
       const remainingMs = Math.max(0, 550 - (Date.now() - startedAt));
       window.setTimeout(() => {
@@ -401,11 +426,19 @@ export default function App({ onlineOnly = false }: AdminAppProps) {
       <div className="admin-workspace flex min-h-0 flex-1">
         <Sidebar />
         <main className="admin-main min-w-0 flex-1 overflow-auto p-2 sm:p-3">
-          {isGymDataLoading ? (
-            <UnitDataLoadingScreen gymName={activeGymName} />
-          ) : (
-            <Page />
-          )}
+          <AppRouteErrorBoundary
+            resetKey={`${renderedRoute}:${activeGymId ?? "all"}:${isGymDataLoading ? "loading" : "ready"}`}
+            routeLabel={pageLabels[renderedRoute]}
+            canOpenSettings={canOpenSettings}
+            onOpenSettings={() => setRoute("configuracoes")}
+            onSyncNow={() => void syncNow().catch(ignoreBackgroundError)}
+          >
+            {isGymDataLoading ? (
+              <UnitDataLoadingScreen gymName={activeGymName} />
+            ) : (
+              <Page />
+            )}
+          </AppRouteErrorBoundary>
         </main>
       </div>
       <BottomSyncBar />

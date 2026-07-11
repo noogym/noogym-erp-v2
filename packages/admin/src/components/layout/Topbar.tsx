@@ -274,14 +274,14 @@ export function Topbar() {
     setNotificationsOpen(false);
     if (notification.route && !canAccessRoute(notification.route, user, employees, roles)) return;
     if (notification.actionType === "sync") {
-      void syncNow();
+      void syncNow().catch(() => undefined);
       return;
     }
     if (notification.route) setRoute(notification.route);
   };
 
   return (
-    <header className="drag-region flex min-h-16 shrink-0 flex-wrap items-center justify-between gap-3 border-b border-white/10 bg-black/20 px-3 py-3 lg:h-[72px] lg:flex-nowrap lg:px-5 lg:py-0">
+    <header className="drag-region relative z-40 flex min-h-16 shrink-0 flex-wrap items-center justify-between gap-3 border-b border-white/10 bg-black/20 px-3 py-3 lg:h-[72px] lg:flex-nowrap lg:px-5 lg:py-0">
       <div className="hidden w-[260px] lg:block" />
       <div className="no-drag relative order-3 flex h-11 min-w-0 basis-full items-center rounded-lg border border-white/10 bg-white/[0.035] text-sm lg:order-none lg:min-w-[320px] lg:basis-auto xl:min-w-[380px]">
         {allowedGyms.length ? (
