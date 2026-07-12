@@ -33,9 +33,12 @@ import { useSettingsStore } from "../store/settingsStore";
 import { toastInfo, toastSuccess } from "../store/toastStore";
 import type { GymSettings, OrganizationSettings } from "../lib/settingsApi";
 import {
+  clearDesktopLocalData,
+  getDesktopLocalDbStatus,
   isDesktopLocalDbAvailable,
   listDesktopSyncConflicts,
   resolveDesktopSyncConflict,
+  type DesktopLocalDbStatus,
   type DesktopSyncConflict
 } from "../lib/desktopLocalDb";
 
@@ -103,7 +106,7 @@ export default function Configuracoes() {
             subtitle={isLoading ? "Sincronizando configuracoes com a API..." : "Administre regras, unidade, acessos e operacao do sistema."}
           />
           <div className="flex flex-wrap gap-2">
-            <Button icon={<RefreshCw className={`h-4 w-4 ${syncState === "syncing" ? "animate-spin" : ""}`} />} onClick={() => syncNow()}>
+            <Button icon={<RefreshCw className={`h-4 w-4 ${syncState === "syncing" ? "animate-spin" : ""}`} />} onClick={() => void syncNow().catch(() => undefined)}>
               Sincronizar
             </Button>
             <Button variant="primary" disabled={isSaving} icon={<Save className="h-4 w-4" />} onClick={() => saveOperational()}>
@@ -1073,7 +1076,23 @@ function BackupTab() {
   const { isSaving, saveOperational } = useSaveOperationalSettings();
   const [isExporting, setIsExporting] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
+  const [isClearingLocalData, setIsClearingLocalData] = useState(false);
+  const [localDbStatus, setLocalDbStatus] = useState<DesktopLocalDbStatus | null>(null);
+  const [clearLocalDataOpen, setClearLocalDataOpen] = useState(false);
+  const [clearLocalDataConfirmation, setClearLocalDataConfirmation] = useState("");
   const backupBridge = typeof window === "undefined" ? undefined : window.noogym?.backup;
+  const isDesktop = isDesktopLocalDbAvailable();
+
+  const refreshLocalDataStatus = () => {
+    if (!isDesktop) return;
+    getDesktopLocalDbStatus()
+      .then((status) => setLocalDbStatus(status))
+      .catch(() => setLocalDbStatus(null));
+  };
+
+  useEffect(() => {
+    refreshLocalDataStatus();
+  }, [isDesktop]);
 
   const exportDesktopBackup = () => {
     if (!backupBridge) {
@@ -1114,7 +1133,41 @@ function BackupTab() {
       .finally(() => setIsRestoring(false));
   };
 
+  const requestClearLocalData = () => {
+    if (!isDesktop) {
+      toastInfo("Dados locais", "Esta acao esta disponivel apenas na versao desktop.");
+      return;
+    }
+
+    refreshLocalDataStatus();
+    setClearLocalDataConfirmation("");
+    setClearLocalDataOpen(true);
+  };
+
+  const confirmClearLocalData = () => {
+    if (clearLocalDataConfirmation !== "APAGAR DADOS") return;
+
+    setIsClearingLocalData(true);
+    clearDesktopLocalData()
+      .then((result) => {
+        if (!result?.success) {
+          toastInfo("Dados locais nao apagados", result?.message ?? "Nao foi possivel limpar este computador.");
+          return;
+        }
+
+        clearNoogymLocalStorage();
+        toastSuccess("Dados locais apagados", "O Noogym Desktop sera recarregado com um banco local novo.");
+        window.setTimeout(() => window.location.reload(), 900);
+      })
+      .catch((error) => toastInfo("Dados locais nao apagados", error instanceof Error ? error.message : "Nao foi possivel limpar este computador."))
+      .finally(() => {
+        setIsClearingLocalData(false);
+        setClearLocalDataOpen(false);
+      });
+  };
+
   return (
+    <>
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
       <Card className="p-5">
         <SectionTitle icon={Database} title="Backup e retencao" description="Controle exportacao de dados, retencao e rotina de copia." />
@@ -1142,17 +1195,67 @@ function BackupTab() {
         </div>
       </Card>
 
-      <Card className="p-5">
-        <SectionTitle icon={Database} title="Estado do backup" description="Situacao atual de seguranca dos dados." />
-        <div className="space-y-3 text-sm">
-          <InfoLine label="Ultimo backup" value={backup.lastBackupAt} />
-          <InfoLine label="Retencao" value={`${backup.retentionDays} dias`} />
-          <InfoLine label="Local" value={backup.localBackup ? "Ativo" : "Inativo"} />
-          <InfoLine label="Nuvem" value={backup.cloudBackup ? "Ativo" : "Inativo"} />
-          <InfoLine label="Desktop" value={backupBridge ? "Bridge disponivel" : "Bridge indisponivel"} />
-        </div>
-      </Card>
+      <div className="space-y-4">
+        <Card className="p-5">
+          <SectionTitle icon={Database} title="Estado do backup" description="Situacao atual de seguranca dos dados." />
+          <div className="space-y-3 text-sm">
+            <InfoLine label="Ultimo backup" value={backup.lastBackupAt} />
+            <InfoLine label="Retencao" value={`${backup.retentionDays} dias`} />
+            <InfoLine label="Local" value={backup.localBackup ? "Ativo" : "Inativo"} />
+            <InfoLine label="Nuvem" value={backup.cloudBackup ? "Ativo" : "Inativo"} />
+            <InfoLine label="Desktop" value={backupBridge ? "Bridge disponivel" : "Bridge indisponivel"} />
+          </div>
+        </Card>
+
+        <Card className="p-5">
+          <SectionTitle icon={AlertTriangle} title="Dados deste computador" description="Zona avancada para limpar apenas esta instalacao desktop." />
+          <div className="space-y-3 text-sm">
+            <InfoLine label="SQLite" value={localDbStatus?.path ?? (isDesktop ? "A carregar..." : "Indisponivel na web")} />
+            <InfoLine label="Pendentes" value={String(localDbStatus?.pendingSync ?? 0)} />
+            <InfoLine label="Falhados" value={String(localDbStatus?.failedSync ?? 0)} />
+            <InfoLine label="Conflitos" value={String(localDbStatus?.conflictSync ?? 0)} />
+          </div>
+          <div className="mt-4 rounded-md border border-red-500/25 bg-red-500/[0.04] p-3 text-sm text-zinc-300">
+            Apagar dados locais remove o SQLite, fila de sincronizacao, conflitos e cache operacional deste computador. Dados ja sincronizados podem voltar pela API.
+          </div>
+          <div className="mt-4 flex flex-wrap justify-end gap-2">
+            <Button disabled={!isDesktop} icon={<RefreshCw className="h-4 w-4" />} onClick={refreshLocalDataStatus}>Atualizar estado</Button>
+            <Button variant="danger" disabled={!isDesktop || isClearingLocalData} icon={<Trash2 className="h-4 w-4" />} onClick={requestClearLocalData}>
+              {isClearingLocalData ? "Apagando..." : "Apagar dados locais"}
+            </Button>
+          </div>
+        </Card>
+      </div>
     </div>
+    <ConfirmModal
+      open={clearLocalDataOpen}
+      title="Apagar dados locais deste computador?"
+      message="Esta acao limpa o banco SQLite local, a fila de sincronizacao e os conflitos deste terminal. Esta operacao nao pode ser desfeita sem backup."
+      confirmLabel={isClearingLocalData ? "Apagando..." : "Apagar dados locais"}
+      danger
+      confirmDisabled={clearLocalDataConfirmation !== "APAGAR DADOS" || isClearingLocalData}
+      onClose={() => setClearLocalDataOpen(false)}
+      onConfirm={confirmClearLocalData}
+      details={
+        <div className="space-y-4 text-sm text-zinc-300">
+          <div className="grid gap-2 sm:grid-cols-3">
+            <DangerCount label="Pendentes" value={localDbStatus?.pendingSync ?? 0} />
+            <DangerCount label="Falhados" value={localDbStatus?.failedSync ?? 0} />
+            <DangerCount label="Conflitos" value={localDbStatus?.conflictSync ?? 0} />
+          </div>
+          <p className="text-xs text-zinc-400">
+            Antes de continuar, sincronize os dados e confirme que nao existem alteracoes importantes apenas neste computador.
+            O backup atual nao substitui a sincronizacao do SQLite.
+          </p>
+          <FormInput
+            label='Digite "APAGAR DADOS" para confirmar'
+            value={clearLocalDataConfirmation}
+            onChange={(event) => setClearLocalDataConfirmation(event.target.value)}
+          />
+        </div>
+      }
+    />
+    </>
   );
 }
 
@@ -1203,6 +1306,7 @@ function displayValue(value: unknown) {
 }
 
 const localBackupExcludedKeys = new Set(["noogym:auth"]);
+const localDataPreservedKeys = new Set(["noogym:auth", "noogym:theme", "noogym:desktop-zoom-factor"]);
 
 function buildLocalBackupPayload() {
   const localStorageSnapshot: Record<string, string> = {};
@@ -1238,11 +1342,31 @@ function restoreLocalBackupPayload(localStorageSnapshot: Record<string, string>)
   });
 }
 
+function clearNoogymLocalStorage() {
+  const keysToRemove: string[] = [];
+
+  for (let index = 0; index < window.localStorage.length; index += 1) {
+    const key = window.localStorage.key(index);
+    if (key?.startsWith("noogym:") && !localDataPreservedKeys.has(key)) keysToRemove.push(key);
+  }
+
+  keysToRemove.forEach((key) => window.localStorage.removeItem(key));
+}
+
 function InfoLine({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-start justify-between gap-4 border-b border-white/10 pb-2 last:border-b-0">
       <span className="text-zinc-400">{label}</span>
       <span className="max-w-[65%] text-right font-medium text-zinc-100">{value || "-"}</span>
+    </div>
+  );
+}
+
+function DangerCount({ label, value }: { label: string; value: number }) {
+  return (
+    <div className={`rounded-md border p-3 ${value > 0 ? "border-red-500/30 bg-red-500/10" : "border-white/10 bg-white/[0.03]"}`}>
+      <p className="text-xs text-zinc-400">{label}</p>
+      <p className={`mt-1 text-2xl font-semibold ${value > 0 ? "text-red-300" : "text-zinc-100"}`}>{value}</p>
     </div>
   );
 }

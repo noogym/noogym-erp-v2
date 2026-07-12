@@ -505,6 +505,40 @@ export class SQLiteLocalDb {
     this.db.prepare("DELETE FROM desktop_binding WHERE id = 'default'").run();
   }
 
+  clearLocalData() {
+    const before = {
+      path: this.getDatabasePath(),
+      pendingSync: this.getPendingSyncCount(),
+      failedSync: this.getFailedSyncCount(),
+      conflictSync: this.getOpenSyncConflictCount()
+    };
+
+    const transaction = this.db.transaction(() => {
+      this.db.prepare("DELETE FROM clients").run();
+      this.db.prepare("DELETE FROM sync_queue").run();
+      this.db.prepare("DELETE FROM sync_conflicts").run();
+      this.db.prepare("DELETE FROM local_tombstones").run();
+      this.db.prepare("DELETE FROM local_collections").run();
+      this.db.prepare("DELETE FROM desktop_binding").run();
+    });
+
+    transaction();
+    this.db.pragma("wal_checkpoint(TRUNCATE)");
+    this.db.exec("VACUUM");
+
+    return {
+      success: true,
+      message: "Dados locais apagados deste computador.",
+      before,
+      after: {
+        path: this.getDatabasePath(),
+        pendingSync: this.getPendingSyncCount(),
+        failedSync: this.getFailedSyncCount(),
+        conflictSync: this.getOpenSyncConflictCount()
+      }
+    };
+  }
+
   findClientByRemoteId(remoteId: string) {
     const row = this.db
       .prepare("SELECT id, payload FROM clients WHERE remote_id = @remoteId AND deleted_at IS NULL LIMIT 1")

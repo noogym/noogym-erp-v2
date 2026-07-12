@@ -5,7 +5,7 @@ import { MAX_ZOOM_FACTOR, MIN_ZOOM_FACTOR, useAppStore } from "../../store/appSt
 import { useAuthStore } from "../../store/authStore";
 import { useClassesStore } from "../../store/classesStore";
 import { useClientsStore } from "../../store/clientsStore";
-import { allowedGymsForUser, canAccessRoute, canSwitchGym } from "../../lib/permissions";
+import { allowedGymsForUser, canAccessRoute } from "../../lib/permissions";
 import { useEmployeesStore } from "../../store/employeesStore";
 import { useFinanceStore } from "../../store/financeStore";
 import { useNotificationsStore } from "../../store/notificationsStore";
@@ -97,11 +97,27 @@ export function Topbar() {
           ? "Online"
           : "Offline";
   const zoomPercent = Math.round(zoomFactor * 100);
-  const allowedGyms = useMemo(() => allowedGymsForUser(user, employees, gyms), [employees, gyms, user]);
-  const fallbackGymName = allowedGyms[0]?.name ?? user?.gyms?.[0]?.name ?? user?.gym ?? "Noogym Fitness Center";
+  const settingsAllowedGyms = useMemo(() => allowedGymsForUser(user, employees, gyms), [employees, gyms, user]);
+  const userGymOptions = useMemo(
+    () =>
+      (user?.gyms ?? [])
+        .flatMap((gym) =>
+          gym.id && gym.name
+            ? [{
+                id: gym.id,
+                name: gym.name,
+                slug: gym.name,
+                isActive: true,
+              }]
+            : [],
+        ),
+    [user?.gyms],
+  );
+  const allowedGyms = settingsAllowedGyms.length ? settingsAllowedGyms : userGymOptions;
+  const fallbackGymName = allowedGyms[0]?.name ?? user?.gym ?? "Noogym Fitness Center";
   const activeGym = allowedGyms.find((gym) => gym.id === activeGymId) ?? allowedGyms[0];
   const activeGymValue = activeGym?.id ?? "";
-  const canChangeGym = canSwitchGym(user, employees, gyms);
+  const canChangeGym = allowedGyms.length > 1;
   const automaticNotifications = useMemo<NotificationInput[]>(() => {
     const generated: NotificationInput[] = [];
     const activeClients = clients.filter((client) => client.status === "Ativo");
@@ -274,14 +290,14 @@ export function Topbar() {
     setNotificationsOpen(false);
     if (notification.route && !canAccessRoute(notification.route, user, employees, roles)) return;
     if (notification.actionType === "sync") {
-      void syncNow();
+      void syncNow().catch(() => undefined);
       return;
     }
     if (notification.route) setRoute(notification.route);
   };
 
   return (
-    <header className="drag-region flex min-h-16 shrink-0 flex-wrap items-center justify-between gap-3 border-b border-white/10 bg-black/20 px-3 py-3 lg:h-[72px] lg:flex-nowrap lg:px-5 lg:py-0">
+    <header className="drag-region relative z-40 flex min-h-16 shrink-0 flex-wrap items-center justify-between gap-3 border-b border-white/10 bg-black/20 px-3 py-3 lg:h-[72px] lg:flex-nowrap lg:px-5 lg:py-0">
       <div className="hidden w-[260px] lg:block" />
       <div className="no-drag relative order-3 flex h-11 min-w-0 basis-full items-center rounded-lg border border-white/10 bg-white/[0.035] text-sm lg:order-none lg:min-w-[320px] lg:basis-auto xl:min-w-[380px]">
         {allowedGyms.length ? (
@@ -315,9 +331,9 @@ export function Topbar() {
           <span className="hidden sm:inline">{connectionLabel}</span>
           <span className={`h-2.5 w-2.5 rounded-full ${isOnline ? "bg-green-500" : "bg-orange-400"}`} />
         </button>
-        <div className="hidden min-w-0 items-center gap-2 truncate text-zinc-200 xl:flex">
-          <RefreshCw className="h-4 w-4" />
-          {syncLabel}
+        <div className="hidden min-w-0 max-w-[280px] items-center gap-2 text-zinc-200 xl:flex 2xl:max-w-[360px]" title={syncLabel}>
+          <RefreshCw className="h-4 w-4 shrink-0" />
+          <span className="min-w-0 truncate">{syncLabel}</span>
         </div>
         <div ref={notificationsRef} className="relative shrink-0">
           <button

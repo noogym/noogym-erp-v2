@@ -3,14 +3,19 @@ import { BarChart, DonutChart, LineChart } from "../../ui/Charts";
 import { Button } from "@noogym/ui";
 import { Card } from "@noogym/ui";
 import { MetricCard } from "@noogym/ui";
-import { chart15 } from "../../../data/mock";
 import type { ReportOverview } from "../../../lib/reportApi";
 
 const money = (value = 0) => `${Math.round(value).toLocaleString("pt-AO")} Kz`;
 const int = (value = 0) => Math.round(value).toLocaleString("pt-AO");
 const percent = (value = 0, total = 0) => (total > 0 ? Math.round((value / total) * 100) : 0);
 
-export function OverviewReport({ overview }: { overview?: ReportOverview | null }) {
+interface OverviewCharts {
+  revenue: { labels: string[]; values: number[] };
+  checkinsByWeekday: { labels: string[]; values: number[] };
+  activeClients: { labels: string[]; values: number[] };
+}
+
+export function OverviewReport({ overview, charts }: { overview?: ReportOverview | null; charts?: OverviewCharts }) {
   const revenue = overview?.revenueTotal ?? 2245000;
   const expenses = overview?.expensesTotal ?? 62300;
   const totalMembers = overview?.totalMembers ?? 1248;
@@ -20,6 +25,9 @@ export function OverviewReport({ overview }: { overview?: ReportOverview | null 
   const weeklyFrequency = overview?.weeklyFrequency ?? 1340;
   const completedSales = overview?.completedSales ?? 154;
   const netProfit = overview?.netProfit ?? revenue - expenses;
+  const revenueChart = charts?.revenue ?? { labels: [], values: [] };
+  const checkinsChart = charts?.checkinsByWeekday ?? { labels: ["Seg", "Ter", "Qua", "Qui", "Sex", "Sab", "Dom"], values: [] };
+  const activeClientsChart = charts?.activeClients ?? { labels: [], values: [] };
 
   return (
     <>
@@ -43,7 +51,7 @@ export function OverviewReport({ overview }: { overview?: ReportOverview | null 
             <Button className="h-8">Diario</Button>
           </div>
           <div className="h-64">
-            <LineChart values={chart15.map((value) => value * Math.max(1, revenue / 590))} labels={["01/05", "03/05", "05/05", "07/05", "08/05"]} />
+            <LineChart values={nonEmptyValues(revenueChart.values)} labels={revenueChart.labels} />
           </div>
         </Card>
         <Card className="p-4">
@@ -51,7 +59,7 @@ export function OverviewReport({ overview }: { overview?: ReportOverview | null 
             <h2 className="font-semibold">Check-ins por dia da semana</h2>
             <Button className="h-8">Total</Button>
           </div>
-          <BarChart values={[0.14, 0.16, 0.18, 0.17, 0.21, 0.09, 0.05].map((ratio) => Math.round(weeklyFrequency * ratio))} labels={["Seg", "Ter", "Qua", "Qui", "Sex", "Sab", "Dom"]} />
+          <BarChart values={nonEmptyValues(checkinsChart.values, checkinsChart.labels.length)} labels={checkinsChart.labels} />
         </Card>
       </div>
       <div className="mt-4 grid gap-4 lg:grid-cols-2 2xl:grid-cols-[1fr_.7fr_.85fr]">
@@ -61,7 +69,7 @@ export function OverviewReport({ overview }: { overview?: ReportOverview | null 
             <Button className="h-8">Diario</Button>
           </div>
           <div className="h-48">
-            <LineChart values={[0.58, 0.67, 0.72, 0.76, 0.81, 0.86, 0.92, 1].map((ratio) => Math.round(activeMembers * ratio))} />
+            <LineChart values={nonEmptyValues(activeClientsChart.values)} labels={activeClientsChart.labels} />
           </div>
         </Card>
         <Card className="p-4">
@@ -88,4 +96,8 @@ export function OverviewReport({ overview }: { overview?: ReportOverview | null 
       </div>
     </>
   );
+}
+
+function nonEmptyValues(values: number[], length = 1) {
+  return values.length ? values : new Array(Math.max(length, 1)).fill(0);
 }

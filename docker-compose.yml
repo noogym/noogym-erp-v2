@@ -60,7 +60,7 @@ services:
         - CMD
         - node
         - "-e"
-        - "require('http').get('http://127.0.0.1:3333/health',res=>{process.exit(res.statusCode<500?0:1)}).on('error',()=>process.exit(1))"
+        - "require('http').get('http://127.0.0.1:3333/health/live',res=>{process.exit(res.statusCode<500?0:1)}).on('error',()=>process.exit(1))"
       interval: 20s
       timeout: 5s
       retries: 10
@@ -78,6 +78,7 @@ services:
     restart: unless-stopped
     environment:
       NODE_ENV: production
+      NOOGYM_API_URL: "${NOOGYM_API_URL:-https://apiv1.noogym.com}"
       NEXT_PUBLIC_NOOGYM_API_URL: "${NEXT_PUBLIC_NOOGYM_API_URL:-https://apiv1.noogym.com}"
       NEXT_PUBLIC_NOOGYM_HTTP_ONLY_AUTH: "${NEXT_PUBLIC_NOOGYM_HTTP_ONLY_AUTH:-true}"
     expose:

@@ -28,14 +28,20 @@ export const authApiUrl = (path: string) =>
   `${(process.env.NOOGYM_API_URL ?? process.env.NEXT_PUBLIC_NOOGYM_API_URL ?? DEFAULT_API_URL).replace(/\/+$/, "")}${path}`;
 
 export const postAuth = async <T>(path: string, body: unknown) => {
-  const response = await fetch(authApiUrl(path), {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body),
-    cache: "no-store",
-  });
+  let response: Response;
+
+  try {
+    response = await fetch(authApiUrl(path), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+      cache: "no-store",
+    });
+  } catch {
+    return { payload: null, status: 503 };
+  }
 
   const payload = (await response
     .json()

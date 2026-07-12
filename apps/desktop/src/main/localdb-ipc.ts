@@ -35,6 +35,10 @@ export function registerLocalDbIpc(ipcMain: IpcMain) {
     return { success: true };
   });
 
+  ipcMain.handle("localdb:danger:clear-local-data", () => {
+    return getSQLiteLocalDb().clearLocalData();
+  });
+
   ipcMain.handle("localdb:collections:get", (_event, key) => {
     if (typeof key !== "string" || !key.trim()) {
       return { success: false, message: "Chave local invalida." };
