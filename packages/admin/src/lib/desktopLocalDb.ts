@@ -76,6 +76,32 @@ export type DesktopSyncConflict = {
   resolvedAt?: string;
 };
 
+export type DesktopLocalDbStatus = {
+  success: boolean;
+  path: string;
+  pendingSync: number;
+  failedSync?: number;
+  conflictSync?: number;
+  binding?: DesktopBinding | null;
+};
+
+export type DesktopLocalDataClearResult = {
+  success: boolean;
+  message: string;
+  before?: {
+    path: string;
+    pendingSync: number;
+    failedSync?: number;
+    conflictSync?: number;
+  };
+  after?: {
+    path: string;
+    pendingSync: number;
+    failedSync?: number;
+    conflictSync?: number;
+  };
+};
+
 const clientRecord = (value: unknown): ClientRecord | null => {
   if (!value || typeof value !== "object") return null;
   const record = value as Partial<ClientRecord>;
@@ -96,6 +122,20 @@ export const getDesktopBinding = async () => {
 
   const response = await bridge.binding.get();
   return response.binding ?? null;
+};
+
+export const getDesktopLocalDbStatus = async () => {
+  const bridge = desktopLocalDb();
+  if (!bridge?.status) return null;
+
+  return bridge.status() as Promise<DesktopLocalDbStatus>;
+};
+
+export const clearDesktopLocalData = async () => {
+  const bridge = desktopLocalDb();
+  if (!bridge?.danger?.clearLocalData) return null;
+
+  return bridge.danger.clearLocalData() as Promise<DesktopLocalDataClearResult>;
 };
 
 export const saveDesktopBinding = async (binding: DesktopBindingInput) => {

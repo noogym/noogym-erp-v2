@@ -25,6 +25,9 @@ contextBridge.exposeInMainWorld("noogym", {
   },
   localDb: {
     status: () => ipcRenderer.invoke("localdb:status"),
+    danger: {
+      clearLocalData: () => ipcRenderer.invoke("localdb:danger:clear-local-data")
+    },
     binding: {
       get: () => ipcRenderer.invoke("localdb:binding:get"),
       save: (binding: unknown) => ipcRenderer.invoke("localdb:binding:save", binding),

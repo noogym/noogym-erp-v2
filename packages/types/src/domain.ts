@@ -252,6 +252,7 @@ export interface FinanceRecord {
   date: string;
   status: string;
   note?: string;
+  memberId?: string;
   accountId?: string;
   accountName?: string;
   method?: string;
