@@ -95,6 +95,7 @@ export default function Relatorios() {
   }), [checkins, classes, clients, employees, finance, plans, products, sales, workouts]);
   const filteredReportsInput = useMemo(() => filterReportsByDate(localReportsInput, activeRange), [activeRange, localReportsInput]);
   const overview = useMemo(() => buildLocalReportOverview(filteredReportsInput), [filteredReportsInput]);
+  const overviewCharts = useMemo(() => buildOverviewCharts(filteredReportsInput, activeRange), [activeRange, filteredReportsInput]);
   const configs = useMemo(() => buildLocalReportConfigs(filteredReportsInput), [filteredReportsInput]);
   const showComparison = comparePeriod !== compareOptions[1];
   const activeKey = reportKeyByTab[tab];
@@ -195,7 +196,7 @@ export default function Relatorios() {
         {isLoading ? <span className="ml-3 text-noogym-lime">Sincronizando API...</span> : null}
       </div>
       <ReportsTabs active={tab} onChange={setTab} />
-      {tab === reportsTabs[0] ? <OverviewReport overview={overview} /> : null}
+      {tab === reportsTabs[0] ? <OverviewReport overview={overview} charts={overviewCharts} /> : null}
       {activeConfig ? <ReportTabContent config={activeConfig} factor={1} showComparison={showComparison} /> : null}
       <ExportReportModal
         open={exportOpen}
@@ -330,4 +331,107 @@ function addDays(date: Date, days: number) {
 
 function formatDate(date: Date) {
   return new Intl.DateTimeFormat("pt-AO", { day: "2-digit", month: "2-digit", year: "numeric" }).format(date);
+}
+
+interface OverviewCharts {
+  revenue: { labels: string[]; values: number[] };
+  checkinsByWeekday: { labels: string[]; values: number[] };
+  activeClients: { labels: string[]; values: number[] };
+}
+
+function buildOverviewCharts(input: ReportsInput, rangeDates: { start: Date | null; end: Date | null }): OverviewCharts {
+  const buckets = buildDateBuckets(rangeDates);
+  const revenueValues = new Array(buckets.length).fill(0);
+  const activeClientIncrements = new Array(buckets.length).fill(0);
+  const weekdayLabels = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sab", "Dom"];
+  const weekdayValues = new Array(weekdayLabels.length).fill(0);
+
+  input.finance.forEach((record) => {
+    if (record.kind !== "Receita" || !isPaidStatus(record.status)) return;
+    revenueValues[bucketIndexForDate(readRecordDate(record.paidAt ?? record.date), buckets)] += record.value;
+  });
+
+  input.sales.forEach((sale) => {
+    if (isCancelledSale(sale.status) || isQuoteSale(`${sale.type} ${sale.status ?? ""}`)) return;
+    revenueValues[bucketIndexForDate(readRecordDate(sale.soldAtIso ?? sale.dateTime), buckets)] += sale.total;
+  });
+
+  input.clients.forEach((client) => {
+    if (client.status !== "Ativo") return;
+    activeClientIncrements[bucketIndexForDate(readRecordDate(client.createdAt), buckets)] += 1;
+  });
+
+  input.checkins.forEach((checkin, index) => {
+    const date = readRecordDate(checkin.checkedAtIso ?? checkin.dateTime);
+    const weekdayIndex = date ? (date.getDay() + 6) % 7 : index % 7;
+    weekdayValues[weekdayIndex] += 1;
+  });
+
+  let activeRunningTotal = 0;
+  const activeClientValues = activeClientIncrements.map((value) => {
+    activeRunningTotal += value;
+    return activeRunningTotal;
+  });
+
+  return {
+    revenue: {
+      labels: buckets.map((bucket) => shortDate(bucket.start)),
+      values: revenueValues.map((value) => Math.round(value))
+    },
+    checkinsByWeekday: {
+      labels: weekdayLabels,
+      values: weekdayValues
+    },
+    activeClients: {
+      labels: buckets.map((bucket) => shortDate(bucket.start)),
+      values: activeClientValues
+    }
+  };
+}
+
+function buildDateBuckets(rangeDates: { start: Date | null; end: Date | null }) {
+  const end = rangeDates.end ? new Date(rangeDates.end) : new Date();
+  const start = rangeDates.start ? new Date(rangeDates.start) : addDays(end, -6);
+  start.setHours(0, 0, 0, 0);
+  end.setHours(23, 59, 59, 999);
+
+  const totalDays = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / 86_400_000));
+  const bucketCount = Math.min(8, totalDays);
+  const bucketMs = Math.max(1, (end.getTime() - start.getTime()) / bucketCount);
+
+  return Array.from({ length: bucketCount }, (_, index) => {
+    const bucketStart = new Date(start.getTime() + bucketMs * index);
+    const bucketEnd = index === bucketCount - 1 ? new Date(end) : new Date(start.getTime() + bucketMs * (index + 1) - 1);
+    return { start: bucketStart, end: bucketEnd };
+  });
+}
+
+function bucketIndexForDate(date: Date | null, buckets: Array<{ start: Date; end: Date }>) {
+  if (!buckets.length) return 0;
+  if (!date) return 0;
+  const index = buckets.findIndex((bucket) => date >= bucket.start && date <= bucket.end);
+  if (index >= 0) return index;
+  if (date < buckets[0].start) return 0;
+  return buckets.length - 1;
+}
+
+function shortDate(date: Date) {
+  return new Intl.DateTimeFormat("pt-AO", { day: "2-digit", month: "2-digit" }).format(date);
+}
+
+function isPaidStatus(status: string) {
+  return includesAny(status, ["recebido", "pago", "conclu"]);
+}
+
+function isCancelledSale(status?: string) {
+  return includesAny(status ?? "", ["cancel", "reembolso"]);
+}
+
+function isQuoteSale(value: string) {
+  return includesAny(value, ["orcamento", "orçamento"]);
+}
+
+function includesAny(value: string, needles: string[]) {
+  const normalized = value.toLocaleLowerCase("pt-AO");
+  return needles.some((needle) => normalized.includes(needle));
 }

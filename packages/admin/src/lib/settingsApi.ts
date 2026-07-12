@@ -49,14 +49,16 @@ export interface UserSettings {
 export type OrganizationSettingsPayload = Partial<Pick<OrganizationSettings, "name" | "slug" | "email" | "phone" | "website" | "logoUrl" | "country" | "currency" | "timezone">>;
 export type GymSettingsPayload = Partial<Pick<GymSettings, "name" | "slug" | "email" | "phone" | "address" | "city" | "province" | "country" | "logoUrl" | "isActive">>;
 
+const API_PAGE_LIMIT = 100;
+const API_MAX_PAGES = 1_000;
+
 export const getOrganizationSettings = (token: string) => apiRequest<OrganizationSettings>("/organizations/me", { token });
 
 export const updateOrganizationSettings = (token: string, body: OrganizationSettingsPayload) =>
   apiRequest<OrganizationSettings>("/organizations/me", { method: "PATCH", token, body });
 
 export const listGymSettings = async (token: string) => {
-  const response = await apiRequest<PaginatedResponse<GymSettings>>(apiPath("/gyms", { limit: 100 }), { token });
-  return response.items;
+  return listPaginated<GymSettings>("/gyms", token);
 };
 
 export const createGymSettings = (token: string, body: GymSettingsPayload) =>
@@ -66,8 +68,7 @@ export const updateGymSettings = (token: string, id: string, body: GymSettingsPa
   apiRequest<GymSettings>(`/gyms/${id}`, { method: "PATCH", token, body });
 
 export const listUserSettings = async (token: string) => {
-  const response = await apiRequest<PaginatedResponse<UserSettings>>(apiPath("/users", { limit: 100 }), { token });
-  return response.items;
+  return listPaginated<UserSettings>("/users", token);
 };
 
 export const getOperationalSettings = (token: string) => apiRequest<OperationalSettings>("/settings/operational", { token });
@@ -77,3 +78,18 @@ export const updateOperationalSettings = (token: string, settings: OperationalSe
 
 export const resetOperationalSettingsApi = (token: string) =>
   apiRequest<OperationalSettings>("/settings/operational", { method: "DELETE", token });
+
+async function listPaginated<T>(path: string, token: string) {
+  const items: T[] = [];
+  let page = 1;
+  let pages = 1;
+
+  do {
+    const response = await apiRequest<PaginatedResponse<T>>(apiPath(path, { page, limit: API_PAGE_LIMIT }), { token });
+    items.push(...response.items);
+    pages = Math.min(API_MAX_PAGES, Math.max(1, Number(response.meta.pages) || 1));
+    page += 1;
+  } while (page <= pages);
+
+  return items;
+}

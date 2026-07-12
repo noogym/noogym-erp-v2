@@ -1,6 +1,6 @@
 import { Download, Gift, Mail, Plus, Upload, UsersRound } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import type { ClientRecord } from "@noogym/types";
+import type { ClientRecord, FinanceAccountRecord, PlanRecord } from "@noogym/types";
 import { ConfirmModal } from "../components/modals/ConfirmModal";
 import { ExportModal } from "../components/modals/ExportModal";
 import { ImportModal } from "../components/modals/ImportModal";
@@ -12,6 +12,7 @@ import { Button } from "@noogym/ui";
 import { Card } from "@noogym/ui";
 import { DonutChart } from "../components/ui/Charts";
 import { DropdownMenu } from "@noogym/ui";
+import { FormInput } from "@noogym/ui";
 import { FormSelect } from "@noogym/ui";
 import { FormTextarea } from "@noogym/ui";
 import { MetricCard } from "@noogym/ui";
@@ -23,10 +24,12 @@ import { ListPagination, ListToolbar, paginateRows } from "../components/tables/
 import { TableActions } from "../components/tables/TableActions";
 import { useCheckinsStore } from "../store/checkinsStore";
 import { useClientsStore } from "../store/clientsStore";
+import { useFinanceStore } from "../store/financeStore";
+import { usePlansStore } from "../store/plansStore";
 import { toastInfo, toastSuccess } from "../store/toastStore";
 
 const badgeTone = (tone?: string) => (["lime", "yellow", "purple", "blue", "orange", "red", "gray", "green"].includes(tone ?? "") ? tone as "lime" | "yellow" | "purple" | "blue" | "orange" | "red" | "gray" | "green" : "lime");
-type ClientModal = "new" | "import" | "export" | "message" | "view" | "edit" | "history" | "deactivate" | null;
+type ClientModal = "new" | "import" | "export" | "message" | "view" | "edit" | "payment" | "history" | "deactivate" | null;
 
 const planColors = ["#B6FF00", "#A78BFA", "#FACC15", "#38BDF8", "#84CC16", "#F97316"];
 const csvHeaders = ["Nome completo", "E-mail", "Telefone", "Data de nascimento", "Plano", "Codigo do cliente", "Documento", "Status"];
@@ -47,6 +50,9 @@ const monthAliases = new Map([
 
 const escapeCsv = (value?: string) => `"${String(value ?? "").replace(/"/g, '""')}"`;
 const normalize = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+const planSituationOptions = ["Todas as situacoes", "Em dia", "A vencer", "Vence hoje", "Vencido", "Sem plano", "Sem vencimento"] as const;
+type PlanSituation = typeof planSituationOptions[number] extends "Todas as situacoes" ? never : Exclude<typeof planSituationOptions[number], "Todas as situacoes">;
+const expiringSoonDays = 7;
 const isRecentClient = (client: ClientRecord) => {
   if (!client.createdAt) return false;
   const createdAt = new Date(client.createdAt);
@@ -72,6 +78,95 @@ const formatBirthday = (birthday?: string) => {
   const month = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"][date.getMonth()];
   return `${String(date.getDate()).padStart(2, "0")} ${month}`;
 };
+const parseClientDate = (value?: string) => {
+  if (!value || normalize(value).includes("sem")) return null;
+  const normalized = normalize(value);
+  const numeric = normalized.match(/^(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?/);
+  if (numeric) {
+    const day = Number(numeric[1]);
+    const month = Number(numeric[2]) - 1;
+    const rawYear = numeric[3] ? Number(numeric[3]) : new Date().getFullYear();
+    const year = rawYear < 100 ? 2000 + rawYear : rawYear;
+    const date = new Date(year, month, day);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  const textMonth = Array.from(monthAliases.entries()).find(([label]) => normalized.includes(label))?.[1];
+  const day = Number(normalized.match(/\d{1,2}/)?.[0]);
+  if (textMonth !== undefined && day) {
+    const date = new Date(new Date().getFullYear(), textMonth, day);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+const daysUntilExpiry = (client: ClientRecord) => {
+  const expiry = parseClientDate(client.expires);
+  if (!expiry) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  expiry.setHours(0, 0, 0, 0);
+  return Math.ceil((expiry.getTime() - today.getTime()) / 86_400_000);
+};
+const planSituation = (client: ClientRecord): PlanSituation => {
+  if (!client.plan || normalize(client.plan) === "sem plano") return "Sem plano";
+  if (normalize(client.status).includes("atras")) return "Vencido";
+  const days = daysUntilExpiry(client);
+  if (days === null) return "Sem vencimento";
+  if (days < 0) return "Vencido";
+  if (days === 0) return "Vence hoje";
+  if (days <= expiringSoonDays) return "A vencer";
+  return "Em dia";
+};
+const planSituationTone = (situation: PlanSituation) => {
+  if (situation === "Vencido") return "red";
+  if (situation === "A vencer" || situation === "Vence hoje") return "orange";
+  if (situation === "Sem plano" || situation === "Sem vencimento") return "gray";
+  return "lime";
+};
+const planSituationDetail = (client: ClientRecord) => {
+  const situation = planSituation(client);
+  const days = daysUntilExpiry(client);
+  if (situation === "Vencido" && days !== null) return `${Math.abs(days)} dia(s) em atraso`;
+  if (situation === "A vencer" && days !== null) return `${days} dia(s) restantes`;
+  if (situation === "Vence hoje") return "Vence hoje";
+  return situation;
+};
+const parseMoneyValue = (value?: string | number) => {
+  if (typeof value === "number") return value;
+  const parsed = Number(String(value ?? "").replace(/[^\d,.-]/g, "").replace(/\./g, "").replace(",", "."));
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+const formatMoneyValue = (value: number) => value.toLocaleString("pt-AO");
+const isUuidLike = (value?: string) =>
+  Boolean(value && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value));
+const isoDateInput = (date = new Date()) => {
+  const copy = new Date(date);
+  copy.setMinutes(copy.getMinutes() - copy.getTimezoneOffset());
+  return copy.toISOString().slice(0, 10);
+};
+const formatDatePt = (date: Date) =>
+  new Intl.DateTimeFormat("pt-AO", { day: "2-digit", month: "2-digit", year: "numeric" }).format(date);
+const planDurationDays = (value?: string) => {
+  const normalized = normalize(value ?? "");
+  if (normalized.includes("anual") || normalized.includes("ano")) return 365;
+  if (normalized.includes("semestr")) return 180;
+  if (normalized.includes("trimestr") || normalized.includes("3 meses")) return 90;
+  if (normalized.includes("quinzen")) return 15;
+  if (normalized.includes("dia")) return 1;
+  return 30;
+};
+const nextExpiryDate = (client: ClientRecord, durationDays: number) => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const currentExpiry = parseClientDate(client.expires);
+  currentExpiry?.setHours(0, 0, 0, 0);
+  const base = currentExpiry && currentExpiry > today ? currentExpiry : today;
+  const next = new Date(base);
+  next.setDate(next.getDate() + durationDays);
+  return next;
+};
 
 function downloadFile(filename: string, content: string, type: string) {
   const blob = new Blob([content], { type });
@@ -94,9 +189,10 @@ function clientsToCsv(clients: ClientRecord[]) {
     client.document,
     client.status,
     client.lastCheckin,
-    client.expires
+    client.expires,
+    planSituation(client)
   ]);
-  return [["Nome", "E-mail", "Telefone", "Nascimento", "Plano", "Codigo", "Documento", "Status", "Ultimo check-in", "Vencimento"], ...rows]
+  return [["Nome", "E-mail", "Telefone", "Nascimento", "Plano", "Codigo", "Documento", "Status", "Ultimo check-in", "Vencimento", "Situacao do plano"], ...rows]
     .map((row) => row.map(escapeCsv).join(","))
     .join("\n");
 }
@@ -154,6 +250,7 @@ export default function Clientes() {
   const [query, setQuery] = useState("");
   const [planFilter, setPlanFilter] = useState("Todos os planos");
   const [statusFilter, setStatusFilter] = useState("Todos");
+  const [planStatusFilter, setPlanStatusFilter] = useState<(typeof planSituationOptions)[number]>("Todas as situacoes");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const [modal, setModal] = useState<ClientModal>(null);
@@ -165,6 +262,10 @@ export default function Clientes() {
   const clients = useClientsStore((state) => state.clients);
   const addClient = useClientsStore((state) => state.addClient);
   const deactivateClient = useClientsStore((state) => state.deactivateClient);
+  const updateClient = useClientsStore((state) => state.updateClient);
+  const addRevenue = useFinanceStore((state) => state.addRevenue);
+  const financeAccounts = useFinanceStore((state) => state.accounts);
+  const availablePlans = usePlansStore((state) => state.plans);
   const checkins = useCheckinsStore((state) => state.checkins);
   const lastCheckinsByClient = useMemo(() => {
     const latest = new Map<string, string>();
@@ -180,17 +281,20 @@ export default function Clientes() {
     const matchesQuery = `${client.name} ${client.phone} ${client.email} ${client.plan}`.toLowerCase().includes(query.toLowerCase());
     const matchesPlan = planFilter === "Todos os planos" || client.plan === planFilter;
     const matchesStatus = statusFilter === "Todos" || client.status === statusFilter;
-    return matchesQuery && matchesPlan && matchesStatus;
-  }), [clientsWithCheckins, planFilter, query, statusFilter]);
+    const matchesPlanStatus = planStatusFilter === "Todas as situacoes" || planSituation(client) === planStatusFilter;
+    return matchesQuery && matchesPlan && matchesStatus && matchesPlanStatus;
+  }), [clientsWithCheckins, planFilter, planStatusFilter, query, statusFilter]);
   const pageData = useMemo(() => paginateRows(filtered, page, pageSize), [filtered, page, pageSize]);
-  useEffect(() => setPage(1), [pageSize, planFilter, query, statusFilter]);
+  useEffect(() => setPage(1), [pageSize, planFilter, planStatusFilter, query, statusFilter]);
   const selectedClients = useMemo(() => clientsWithCheckins.filter((client) => selectedIds.includes(client.id)), [clientsWithCheckins, selectedIds]);
   const allFilteredSelected = filtered.length > 0 && filtered.every((client) => selectedIds.includes(client.id));
   const metrics = useMemo(() => {
     const active = clientsWithCheckins.filter((client) => client.status === "Ativo").length;
     const inactive = clientsWithCheckins.filter((client) => client.status !== "Ativo").length;
+    const overdue = clientsWithCheckins.filter((client) => planSituation(client) === "Vencido").length;
+    const expiring = clientsWithCheckins.filter((client) => ["A vencer", "Vence hoje"].includes(planSituation(client))).length;
     const total = clientsWithCheckins.length;
-    return { active, inactive, total, recent: clientsWithCheckins.filter(isRecentClient).length };
+    return { active, inactive, overdue, expiring, total, recent: clientsWithCheckins.filter(isRecentClient).length };
   }, [clientsWithCheckins]);
   const planDistribution = useMemo(() => {
     const counts = new Map<string, number>();
@@ -267,15 +371,16 @@ export default function Clientes() {
     <div className="page-grid">
       <div className="panel p-6">
         <PageHeader title="Clientes" subtitle="Gerencie os clientes da sua academia." actions={<><Button icon={<Upload className="h-4 w-4" />} onClick={() => setModal("import")}>Importar</Button><Button icon={<Download className="h-4 w-4" />} onClick={() => setModal("export")}>Exportar</Button><Button icon={<Mail className="h-4 w-4" />} onClick={() => setModal("message")}>Enviar mensagem</Button><Button variant="primary" icon={<Plus className="h-4 w-4" />} onClick={() => setModal("new")}>Novo cliente</Button></>} />
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
           <MetricCard title="Clientes ativos" value={String(metrics.active)} change={`${metrics.total ? Math.round((metrics.active / metrics.total) * 100) : 0}% do total`} icon={<UsersRound className="h-5 w-5" />} tone="yellow" />
           <MetricCard title="Novos clientes" value={String(metrics.recent)} change="Últimos 30 dias" icon={<UsersRound className="h-5 w-5" />} />
-          <MetricCard title="Clientes inativos" value={String(metrics.inactive)} change={`${metrics.total ? Math.round((metrics.inactive / metrics.total) * 100) : 0}% do total`} icon={<UsersRound className="h-5 w-5" />} tone="purple" />
-          <MetricCard title="Total de clientes" value={String(metrics.total)} change="Total registrado" icon={<UsersRound className="h-5 w-5" />} tone="purple" />
+          <MetricCard title="Mensalidades vencidas" value={String(metrics.overdue)} change="Planos em atraso" icon={<UsersRound className="h-5 w-5" />} tone="red" />
+          <MetricCard title="A vencer" value={String(metrics.expiring)} change={`Proximos ${expiringSoonDays} dias`} icon={<UsersRound className="h-5 w-5" />} tone="orange" />
+          <MetricCard title="Total de clientes" value={String(metrics.total)} change={`${metrics.inactive} inativo(s)`} icon={<UsersRound className="h-5 w-5" />} tone="purple" />
         </div>
         <Card className="mt-4 p-4">
           <div className="mb-4">
-            <ListToolbar query={query} onQueryChange={setQuery} queryPlaceholder="Buscar por nome, telefone ou e-mail..." pageSize={pageSize} onPageSizeChange={setPageSize} onClear={() => { setQuery(""); setPlanFilter("Todos os planos"); setStatusFilter("Todos"); setSelectedIds([]); }}>
+            <ListToolbar query={query} onQueryChange={setQuery} queryPlaceholder="Buscar por nome, telefone ou e-mail..." pageSize={pageSize} onPageSizeChange={setPageSize} onClear={() => { setQuery(""); setPlanFilter("Todos os planos"); setStatusFilter("Todos"); setPlanStatusFilter("Todas as situacoes"); setSelectedIds([]); }}>
             <Select value={planFilter} onChange={(event) => setPlanFilter(event.target.value)}>
               <option>Todos os planos</option>
               {plans.map((plan) => <option key={plan}>{plan}</option>)}
@@ -283,6 +388,9 @@ export default function Clientes() {
             <Select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
               <option>Todos</option>
               {statuses.map((status) => <option key={status}>{status}</option>)}
+            </Select>
+            <Select value={planStatusFilter} onChange={(event) => setPlanStatusFilter(event.target.value as (typeof planSituationOptions)[number])}>
+              {planSituationOptions.map((status) => <option key={status}>{status}</option>)}
             </Select>
             </ListToolbar>
           </div>
@@ -294,8 +402,8 @@ export default function Clientes() {
                 <td className="px-4 py-3"><Badge tone={badgeTone(client.planTone)}>{client.plan}</Badge></td>
                 <td className="px-4 py-3"><StatusDot label={client.status} tone={client.status === "Ativo" ? "lime" : "red"} /></td>
                 <td className="px-4 py-3">{client.lastCheckin}</td>
-                <td className="px-4 py-3">{client.expires}</td>
-                <td className="px-4 py-3"><TableActions onView={() => openClientModal("view", client)} onEdit={() => openClientModal("edit", client)} onMessage={() => openClientModal("message", client)} onHistory={() => openClientModal("history", client)} onDeactivate={() => openClientModal("deactivate", client)} /></td>
+                <td className="px-4 py-3"><PlanExpiryCell client={client} /></td>
+                <td className="px-4 py-3"><TableActions onView={() => openClientModal("view", client)} onEdit={() => openClientModal("edit", client)} onMessage={() => openClientModal("message", client)} onPayment={() => openClientModal("payment", client)} onHistory={() => openClientModal("history", client)} onDeactivate={() => openClientModal("deactivate", client)} /></td>
               </tr>
             ))}
           </Table>
@@ -316,9 +424,155 @@ export default function Clientes() {
       {selectedClient ? <ClientMessageModal open={modal === "message"} client={selectedClient} onClose={closeModal} /> : <BulkClientMessageModal open={modal === "message"} clients={clientsWithCheckins} filteredClients={filtered} selectedClients={selectedClients} onClose={closeModal} />}
       <ClientDetailsModal open={modal === "view"} client={selectedClient} onClose={closeModal} />
       <NewClientModal open={modal === "edit"} client={selectedClient} onClose={closeModal} />
+      <ClientPaymentModal open={modal === "payment"} client={selectedClient} plans={availablePlans} accounts={financeAccounts} onClose={closeModal} onConfirm={({ amount, method, paidAt, accountId, note, renewPlan, nextExpires }) => {
+        if (!selectedClient) return;
+        const remoteId = (selectedClient as ClientRecord & { remoteId?: string }).remoteId;
+        const memberId = remoteId ?? (isUuidLike(selectedClient.id) ? selectedClient.id : undefined);
+        addRevenue({
+          memberId,
+          category: "Mensalidades",
+          value: amount,
+          date: paidAt,
+          status: "Recebido",
+          method,
+          accountId,
+          note,
+        });
+        if (renewPlan && nextExpires) {
+          const nextStatus = normalize(selectedClient.status).includes("atras") ? "Ativo" : selectedClient.status;
+          updateClient(selectedClient.id, { expires: nextExpires, status: nextStatus, planTone: "lime" });
+        }
+        toastSuccess("Pagamento registrado", `${selectedClient.name} - ${formatMoneyValue(amount)} Kz.`);
+        closeModal();
+      }} />
       <ClientHistoryModal open={modal === "history"} client={selectedClient} onClose={closeModal} />
       <ConfirmModal open={modal === "deactivate"} title="Desativar cliente" message={`Deseja desativar ${selectedClient?.name ?? "este cliente"}?`} confirmLabel="Desativar" danger onClose={closeModal} onConfirm={() => { if (selectedClient) deactivateClient(selectedClient.id); toastSuccess("Cliente desativado com sucesso"); closeModal(); }} details={selectedClient ? <div className="space-y-1 text-sm"><p>{selectedClient.name}</p><p className="text-zinc-400">{selectedClient.phone}</p><p className="text-zinc-400">{selectedClient.plan}</p></div> : null} />
     </div>
+  );
+}
+
+function PlanExpiryCell({ client }: { client: ClientRecord }) {
+  const situation = planSituation(client);
+  const tone = planSituationTone(situation);
+
+  return (
+    <div className="min-w-[150px] space-y-1">
+      <p className="text-sm text-zinc-100">{client.expires ?? "Sem vencimento"}</p>
+      <StatusDot label={planSituationDetail(client)} tone={tone} />
+    </div>
+  );
+}
+
+function ClientPaymentModal({
+  open,
+  client,
+  plans,
+  accounts,
+  onClose,
+  onConfirm,
+}: {
+  open: boolean;
+  client: ClientRecord | null;
+  plans: PlanRecord[];
+  accounts: FinanceAccountRecord[];
+  onClose: () => void;
+  onConfirm: (payment: {
+    amount: number;
+    method: string;
+    paidAt: string;
+    accountId?: string;
+    note: string;
+    renewPlan: boolean;
+    nextExpires?: string;
+  }) => void;
+}) {
+  const [paymentMode, setPaymentMode] = useState("Pagar mensalidade");
+  const [amount, setAmount] = useState("");
+  const [method, setMethod] = useState("Dinheiro");
+  const [paidAt, setPaidAt] = useState(isoDateInput());
+  const [accountId, setAccountId] = useState("");
+  const [note, setNote] = useState("");
+
+  const selectedPlan = useMemo(() => {
+    if (!client) return undefined;
+    return plans.find((plan) => plan.id === client.planId) ?? plans.find((plan) => normalize(plan.name) === normalize(client.plan));
+  }, [client, plans]);
+  const durationDays = planDurationDays(selectedPlan?.duration ?? client?.plan);
+  const nextExpires = client ? formatDatePt(nextExpiryDate(client, durationDays)) : undefined;
+  const renewPlan = paymentMode !== "Valor personalizado";
+
+  useEffect(() => {
+    if (!open || !client) return;
+    const suggestedAmount = parseMoneyValue(selectedPlan?.price);
+    setPaymentMode(planSituation(client) === "Vencido" ? "Pagar mensalidade" : "Renovar plano");
+    setAmount(suggestedAmount ? String(suggestedAmount) : "");
+    setMethod("Dinheiro");
+    setPaidAt(isoDateInput());
+    setAccountId(accounts.find((account) => account.isDefault)?.id ?? "");
+    setNote(`Mensalidade - ${client.name} - ${client.plan}`);
+  }, [accounts, client, open, selectedPlan]);
+
+  const confirm = () => {
+    if (!client) return;
+    const parsedAmount = parseMoneyValue(amount);
+    if (parsedAmount <= 0) {
+      toastInfo("Valor obrigatorio", "Informe o valor pago antes de registrar.");
+      return;
+    }
+
+    onConfirm({
+      amount: parsedAmount,
+      method,
+      paidAt,
+      accountId: accountId || undefined,
+      note: note.trim() || `Mensalidade - ${client.name}`,
+      renewPlan,
+      nextExpires: renewPlan ? nextExpires : undefined,
+    });
+  };
+
+  return (
+    <Modal
+      open={open}
+      title="Registrar pagamento"
+      description={client ? `${client.name} - ${client.plan}` : "Pagamento de mensalidade"}
+      size="md"
+      onClose={onClose}
+      footer={<><Button onClick={onClose}>Cancelar</Button><Button variant="primary" onClick={confirm}>Registrar pagamento</Button></>}
+    >
+      {client ? (
+        <div className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="rounded-md border border-white/10 bg-white/[0.03] p-3 text-sm">
+              <p className="text-zinc-400">Vencimento atual</p>
+              <p className="mt-1 font-medium">{client.expires ?? "Sem vencimento"}</p>
+            </div>
+            <div className="rounded-md border border-white/10 bg-white/[0.03] p-3 text-sm">
+              <p className="text-zinc-400">Situacao</p>
+              <p className="mt-1 font-medium">{planSituationDetail(client)}</p>
+            </div>
+            <div className="rounded-md border border-white/10 bg-white/[0.03] p-3 text-sm">
+              <p className="text-zinc-400">Proximo vencimento</p>
+              <p className="mt-1 font-medium">{renewPlan ? nextExpires : "Nao altera"}</p>
+            </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <FormSelect label="Operacao" value={paymentMode} onChange={(event) => setPaymentMode(event.target.value)} options={["Pagar mensalidade", "Renovar plano", "Valor personalizado"]} />
+            <FormInput label="Valor pago (Kz)" type="number" min="0" step="1" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0" />
+            <FormSelect label="Metodo" value={method} onChange={(event) => setMethod(event.target.value)} options={["Dinheiro", "Transferencia", "Cartao", "Multicaixa", "Outro"]} />
+            <FormInput label="Data do pagamento" type="date" value={paidAt} onChange={(event) => setPaidAt(event.target.value)} />
+            <FormSelect label="Conta" value={accountId} onChange={(event) => setAccountId(event.target.value)}>
+              <option value="">Conta padrao</option>
+              {accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}
+            </FormSelect>
+            <FormInput label="Duracao renovada" value={`${durationDays} dia(s)`} disabled />
+          </div>
+
+          <FormTextarea label="Observacao" value={note} onChange={(event) => setNote(event.target.value)} />
+        </div>
+      ) : null}
+    </Modal>
   );
 }
 

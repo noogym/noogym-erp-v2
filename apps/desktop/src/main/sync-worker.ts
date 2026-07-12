@@ -17,7 +17,12 @@ type Entity = Record<string, unknown>;
 
 type PaginatedResponse<T> = {
   items: T[];
-  meta?: Record<string, unknown>;
+  meta?: {
+    total?: number;
+    page?: number;
+    limit?: number;
+    pages?: number;
+  };
 };
 
 type DesktopBootstrap = {
@@ -79,6 +84,8 @@ type ClientPayload = Record<string, unknown> & {
 };
 
 const API_TIMEOUT_MS = 20_000;
+const API_MAX_PAGE_LIMIT = 100;
+const API_MAX_PAGES = 1_000;
 const CONFLICT_MESSAGE = "Conflito detectado: o servidor foi alterado depois da base local.";
 
 export async function runSQLiteSync(options: SQLiteSyncOptions): Promise<SQLiteSyncResult> {
@@ -376,8 +383,24 @@ async function apiList<T extends Entity>(
   path: string,
   query?: Record<string, string | number | boolean | undefined>
 ) {
-  const response = await apiRequest<PaginatedResponse<T>>(options, apiPath(path, { limit: options.limit ?? 500, ...query }));
-  return response.items ?? [];
+  const limit = apiPageLimit(options.limit);
+  const items: T[] = [];
+  let page = 1;
+  let pages = 1;
+
+  do {
+    const response = await apiRequest<PaginatedResponse<T>>(options, apiPath(path, { ...query, page, limit }));
+    items.push(...(response.items ?? []));
+    pages = Math.min(API_MAX_PAGES, Math.max(1, Number(response.meta?.pages) || 1));
+    page += 1;
+  } while (page <= pages);
+
+  return items;
+}
+
+function apiPageLimit(limit?: number) {
+  if (!Number.isFinite(limit) || !limit) return API_MAX_PAGE_LIMIT;
+  return Math.min(Math.max(Math.floor(limit), 1), API_MAX_PAGE_LIMIT);
 }
 
 async function listFinanceRecords(options: SQLiteSyncOptions, query?: Record<string, string | number | boolean | undefined>) {
@@ -915,10 +938,12 @@ function financeAccountToDto(account: Entity) {
 
 function financeRecordToPaymentDto(record: Entity) {
   return {
+    memberId: cleanString(record.memberId),
     amount: asNumber(record.value),
     method: paymentMethodValue(record.method),
     status: record.status === "Pendente" ? "PENDING" : "PAID",
     dueDate: dateToIso(record.date),
+    reference: cleanString(record.note),
     notes: cleanString(record.note)
   };
 }

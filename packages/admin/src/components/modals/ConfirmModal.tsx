@@ -9,11 +9,12 @@ interface ConfirmModalProps {
   confirmLabel: string;
   danger?: boolean;
   details?: React.ReactNode;
+  confirmDisabled?: boolean;
   onClose: () => void;
   onConfirm: () => void;
 }
 
-export function ConfirmModal({ open, title, message, confirmLabel, danger, details, onClose, onConfirm }: ConfirmModalProps) {
+export function ConfirmModal({ open, title, message, confirmLabel, danger, details, confirmDisabled, onClose, onConfirm }: ConfirmModalProps) {
   return (
     <Modal
       open={open}
@@ -23,7 +24,7 @@ export function ConfirmModal({ open, title, message, confirmLabel, danger, detai
       footer={
         <>
           <Button onClick={onClose}>Cancelar</Button>
-          <Button variant={danger ? "danger" : "primary"} onClick={onConfirm}>{confirmLabel}</Button>
+          <Button variant={danger ? "danger" : "primary"} disabled={confirmDisabled} onClick={onConfirm}>{confirmLabel}</Button>
         </>
       }
     >
