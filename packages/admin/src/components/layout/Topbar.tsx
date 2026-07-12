@@ -315,9 +315,9 @@ export function Topbar() {
           <span className="hidden sm:inline">{connectionLabel}</span>
           <span className={`h-2.5 w-2.5 rounded-full ${isOnline ? "bg-green-500" : "bg-orange-400"}`} />
         </button>
-        <div className="hidden min-w-0 items-center gap-2 truncate text-zinc-200 xl:flex">
-          <RefreshCw className="h-4 w-4" />
-          {syncLabel}
+        <div className="hidden min-w-0 max-w-[280px] items-center gap-2 text-zinc-200 xl:flex 2xl:max-w-[360px]" title={syncLabel}>
+          <RefreshCw className="h-4 w-4 shrink-0" />
+          <span className="min-w-0 truncate">{syncLabel}</span>
         </div>
         <div ref={notificationsRef} className="relative shrink-0">
           <button

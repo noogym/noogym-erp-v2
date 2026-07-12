@@ -5,7 +5,7 @@
   "author": "Noogym",
   "main": "dist/main/main.js",
   "scripts": {
-    "dev": "pnpm build:main && concurrently -k \"vite --host 127.0.0.1\" \"wait-on tcp:5173 && node scripts/start-electron-dev.cjs\"",
+    "dev": "pnpm build:main && cross-env VITE_NOOGYM_API_URL=http://127.0.0.1:3333 VITE_NOOGYM_WEB_URL=http://localhost:3000/register concurrently -k \"vite --host 127.0.0.1\" \"wait-on tcp:5173 && node scripts/start-electron-dev.cjs\"",
     "build:main": "tsc -p tsconfig.electron.json",
     "build": "tsc -p tsconfig.json && vite build && tsc -p tsconfig.electron.json",
     "build:prod": "cross-env VITE_NOOGYM_API_URL=https://apiv1.noogym.com VITE_NOOGYM_WEB_URL=https://admin.noogym.com/register pnpm build",

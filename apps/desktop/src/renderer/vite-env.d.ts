@@ -26,6 +26,14 @@ interface Window {
     };
     localDb?: {
       status: () => Promise<{ success: boolean; path: string; pendingSync: number; failedSync?: number; conflictSync?: number; binding?: DesktopBinding | null }>;
+      danger?: {
+        clearLocalData: () => Promise<{
+          success: boolean;
+          message: string;
+          before?: { path: string; pendingSync: number; failedSync?: number; conflictSync?: number };
+          after?: { path: string; pendingSync: number; failedSync?: number; conflictSync?: number };
+        }>;
+      };
       binding: {
         get: () => Promise<{ success: boolean; binding: DesktopBinding | null }>;
         save: (binding: DesktopBindingInput) => Promise<{ success: boolean; message?: string; binding?: DesktopBinding | null }>;
