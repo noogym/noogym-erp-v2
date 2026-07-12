@@ -5,7 +5,7 @@ import { MAX_ZOOM_FACTOR, MIN_ZOOM_FACTOR, useAppStore } from "../../store/appSt
 import { useAuthStore } from "../../store/authStore";
 import { useClassesStore } from "../../store/classesStore";
 import { useClientsStore } from "../../store/clientsStore";
-import { allowedGymsForUser, canAccessRoute, canSwitchGym } from "../../lib/permissions";
+import { allowedGymsForUser, canAccessRoute } from "../../lib/permissions";
 import { useEmployeesStore } from "../../store/employeesStore";
 import { useFinanceStore } from "../../store/financeStore";
 import { useNotificationsStore } from "../../store/notificationsStore";
@@ -97,11 +97,27 @@ export function Topbar() {
           ? "Online"
           : "Offline";
   const zoomPercent = Math.round(zoomFactor * 100);
-  const allowedGyms = useMemo(() => allowedGymsForUser(user, employees, gyms), [employees, gyms, user]);
-  const fallbackGymName = allowedGyms[0]?.name ?? user?.gyms?.[0]?.name ?? user?.gym ?? "Noogym Fitness Center";
+  const settingsAllowedGyms = useMemo(() => allowedGymsForUser(user, employees, gyms), [employees, gyms, user]);
+  const userGymOptions = useMemo(
+    () =>
+      (user?.gyms ?? [])
+        .flatMap((gym) =>
+          gym.id && gym.name
+            ? [{
+                id: gym.id,
+                name: gym.name,
+                slug: gym.name,
+                isActive: true,
+              }]
+            : [],
+        ),
+    [user?.gyms],
+  );
+  const allowedGyms = settingsAllowedGyms.length ? settingsAllowedGyms : userGymOptions;
+  const fallbackGymName = allowedGyms[0]?.name ?? user?.gym ?? "Noogym Fitness Center";
   const activeGym = allowedGyms.find((gym) => gym.id === activeGymId) ?? allowedGyms[0];
   const activeGymValue = activeGym?.id ?? "";
-  const canChangeGym = canSwitchGym(user, employees, gyms);
+  const canChangeGym = allowedGyms.length > 1;
   const automaticNotifications = useMemo<NotificationInput[]>(() => {
     const generated: NotificationInput[] = [];
     const activeClients = clients.filter((client) => client.status === "Ativo");

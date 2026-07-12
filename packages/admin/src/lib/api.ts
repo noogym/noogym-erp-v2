@@ -1,5 +1,6 @@
 const DEFAULT_API_URL = "https://apiv1.noogym.com";
 const DEFAULT_WEB_PORTAL_URL = "https://admin.noogym.com/register";
+const API_TIMEOUT_MS = 20_000;
 
 type ApiEnvelope<T> =
   | {
@@ -176,11 +177,14 @@ export const apiRequest = async <T>(
   } = {},
 ) => {
   let response: Response;
+  const controller = new AbortController();
+  const timeout = globalThis.setTimeout(() => controller.abort(), API_TIMEOUT_MS);
 
   try {
     response = await fetch(`${options.baseUrl ?? apiBaseUrl()}${path}`, {
       method: options.method ?? "GET",
       credentials: options.credentials,
+      signal: controller.signal,
       headers: {
         "Content-Type": "application/json",
         ...(options.token ? { Authorization: `Bearer ${options.token}` } : {}),
@@ -194,6 +198,8 @@ export const apiRequest = async <T>(
       undefined,
       "API_UNREACHABLE",
     );
+  } finally {
+    globalThis.clearTimeout(timeout);
   }
 
   let payload: ApiEnvelope<T> | null = null;

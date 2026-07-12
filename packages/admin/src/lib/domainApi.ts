@@ -17,9 +17,11 @@ type Entity = Record<string, unknown>;
 
 export type ResourceName = "members" | "plans" | "plan-categories" | "products" | "checkins" | "sales" | "classes" | "employees" | "workouts";
 
+const API_PAGE_LIMIT = 100;
+const API_MAX_PAGES = 1_000;
+
 export const listResource = async <T>(resource: ResourceName, token: string, query?: Record<string, string | number | boolean | undefined>) => {
-  const response = await apiRequest<PaginatedResponse<T>>(apiPath(`/${resource}`, { limit: 100, ...query }), { token });
-  return response.items;
+  return listPaginated<T>(`/${resource}`, token, query);
 };
 
 export const createResource = <T>(resource: ResourceName, token: string, body: unknown) =>
@@ -36,15 +38,30 @@ export const createSubscription = (token: string, body: { memberId: string; plan
 
 export const listFinanceRecords = async (token: string, query?: { startDate?: string; endDate?: string; method?: string; gymId?: string }) => {
   const [payments, expenses] = await Promise.all([
-    apiRequest<PaginatedResponse<Entity>>(apiPath("/payments", { limit: 100, ...query }), { token }),
-    apiRequest<PaginatedResponse<Entity>>(apiPath("/expenses", { limit: 100, ...query }), { token })
+    listPaginated<Entity>("/payments", token, query),
+    listPaginated<Entity>("/expenses", token, query)
   ]);
 
   return [
-    ...payments.items.map(paymentToFinanceRecord),
-    ...expenses.items.map(expenseToFinanceRecord)
+    ...payments.map(paymentToFinanceRecord),
+    ...expenses.map(expenseToFinanceRecord)
   ].sort((a, b) => b.id.localeCompare(a.id));
 };
+
+async function listPaginated<T>(path: string, token: string, query?: Record<string, string | number | boolean | undefined>) {
+  const items: T[] = [];
+  let page = 1;
+  let pages = 1;
+
+  do {
+    const response = await apiRequest<PaginatedResponse<T>>(apiPath(path, { ...query, page, limit: API_PAGE_LIMIT }), { token });
+    items.push(...response.items);
+    pages = Math.min(API_MAX_PAGES, Math.max(1, Number(response.meta.pages) || 1));
+    page += 1;
+  } while (page <= pages);
+
+  return items;
+}
 
 export const createRevenue = (token: string, record: Partial<FinanceRecord>) =>
   apiRequest<Entity>("/payments", { method: "POST", token, body: financeRecordToPaymentDto(record) });
@@ -391,10 +408,12 @@ function expenseToFinanceRecord(expense: Entity): FinanceRecord {
 
 function financeRecordToPaymentDto(record: Partial<FinanceRecord>) {
   return {
+    memberId: record.memberId,
     amount: record.value ?? 0,
-    method: paymentMethodValue(record.note),
+    method: paymentMethodValue(record.method),
     status: record.status === "Pendente" ? "PENDING" : "PAID",
     dueDate: dateToIso(record.date),
+    reference: record.note,
     notes: record.note
   };
 }

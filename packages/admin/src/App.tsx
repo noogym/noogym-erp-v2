@@ -207,7 +207,10 @@ export default function App({ onlineOnly = false }: AdminAppProps) {
   const renderedRoute = canAccessActiveRoute ? activeRoute : allowedRoute;
   const canOpenSettings = canAccessRoute("configuracoes", user, employees, roles);
   const activeGymName =
-    gyms.find((gym) => gym.id === activeGymId)?.name ?? user?.gym ?? "Noogym";
+    gyms.find((gym) => gym.id === activeGymId)?.name ??
+    user?.gyms?.find((gym) => gym.id === activeGymId)?.name ??
+    user?.gym ??
+    "Noogym";
   const loadDesktopLocalModules = useCallback(
     () =>
       Promise.allSettled([

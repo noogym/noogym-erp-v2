@@ -85,6 +85,7 @@ type ClientPayload = Record<string, unknown> & {
 
 const API_TIMEOUT_MS = 20_000;
 const API_MAX_PAGE_LIMIT = 100;
+const API_MAX_PAGES = 1_000;
 const CONFLICT_MESSAGE = "Conflito detectado: o servidor foi alterado depois da base local.";
 
 export async function runSQLiteSync(options: SQLiteSyncOptions): Promise<SQLiteSyncResult> {
@@ -390,7 +391,7 @@ async function apiList<T extends Entity>(
   do {
     const response = await apiRequest<PaginatedResponse<T>>(options, apiPath(path, { ...query, page, limit }));
     items.push(...(response.items ?? []));
-    pages = Math.max(1, Number(response.meta?.pages) || 1);
+    pages = Math.min(API_MAX_PAGES, Math.max(1, Number(response.meta?.pages) || 1));
     page += 1;
   } while (page <= pages);
 
@@ -937,10 +938,12 @@ function financeAccountToDto(account: Entity) {
 
 function financeRecordToPaymentDto(record: Entity) {
   return {
+    memberId: cleanString(record.memberId),
     amount: asNumber(record.value),
     method: paymentMethodValue(record.method),
     status: record.status === "Pendente" ? "PENDING" : "PAID",
     dueDate: dateToIso(record.date),
+    reference: cleanString(record.note),
     notes: cleanString(record.note)
   };
 }
