@@ -25,8 +25,8 @@ export class CheckinsController {
   }
 
   @Get('today')
-  today(@CurrentUser() user: AuthUser) {
-    return this.checkinsService.today(user.organizationId);
+  today(@CurrentUser() user: AuthUser, @Query() query: PaginationQueryDto) {
+    return this.checkinsService.today(user.organizationId, query);
   }
 
   @Post()

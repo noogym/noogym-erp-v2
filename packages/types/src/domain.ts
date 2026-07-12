@@ -212,7 +212,10 @@ export interface EmployeeRecord {
   supervisor?: string;
   shift?: string;
   accessStatus?: string;
-  accountMode?: "Sem acesso" | "Convidar nova conta" | "Vincular usuario existente";
+  accountMode?:
+    | "Sem acesso"
+    | "Convidar nova conta"
+    | "Vincular usuario existente";
   accountEmail?: string;
   accountStatus?: string;
   gymScope?: "Organizacao" | "Unidade especifica" | "Multiunidade";
@@ -249,6 +252,11 @@ export interface FinanceRecord {
   kind: "Receita" | "Despesa";
   category: string;
   value: number;
+  grossValue?: number;
+  discountValue?: number;
+  lateFeeValue?: number;
+  outstandingValue?: number;
+  receiptNumber?: string;
   date: string;
   status: string;
   note?: string;
@@ -265,7 +273,13 @@ export interface FinanceAccountRecord {
   id: string;
   name: string;
   bank?: string;
-  type: "Caixa" | "Corrente" | "Poupanca" | "Carteira movel" | "Cartao" | "Outro";
+  type:
+    | "Caixa"
+    | "Corrente"
+    | "Poupanca"
+    | "Carteira movel"
+    | "Cartao"
+    | "Outro";
   openingBalance: number;
   balance: number;
   status: "Ativa" | "Inativa";

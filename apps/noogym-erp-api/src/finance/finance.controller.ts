@@ -106,17 +106,20 @@ export class FinanceController {
 
   @Get('cash-sessions')
   @Roles(...financeRoles)
-  cashSessions(@CurrentUser() user: AuthUser) {
-    return this.financeService.listCashSessions(user.organizationId);
+  cashSessions(
+    @CurrentUser() user: AuthUser,
+    @Query() query: PaginationQueryDto,
+  ) {
+    return this.financeService.listCashSessions(user.organizationId, query);
   }
 
   @Get('cash-sessions/current')
   @Roles(...financeRoles)
   currentCashSession(
     @CurrentUser() user: AuthUser,
-    @Query('gymId') gymId?: string,
+    @Query() query: PaginationQueryDto,
   ) {
-    return this.financeService.currentCashSession(user.organizationId, gymId);
+    return this.financeService.currentCashSession(user.organizationId, query);
   }
 
   @Post('cash-sessions/open')

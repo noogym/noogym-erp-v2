@@ -5,6 +5,7 @@ import type { FinanceLocalData } from "../../lib/localFinance";
 
 export interface FinanceTabProps {
   openAction: (action: FinanceActionContent) => void;
+  onAddAccount?: () => void;
   records?: FinanceRecord[];
   data: FinanceLocalData;
 }

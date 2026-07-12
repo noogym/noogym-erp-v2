@@ -48,7 +48,7 @@ describe('PaymentsService', () => {
     });
   });
 
-  it('uses subscription tenant data instead of trusting payment amount', async () => {
+  it('uses subscription tenant data as gross amount without overriding paid amount', async () => {
     const { prisma, service } = createService();
     prisma.subscription.findFirst.mockResolvedValue({
       id: 'subscription-1',
@@ -77,9 +77,52 @@ describe('PaymentsService', () => {
         organizationId,
         subscriptionId: 'subscription-1',
         memberId: 'member-1',
-        amount: 3500,
+        amount: 1,
+        grossAmount: 3500,
+        outstandingAmount: 3499,
       }),
     });
+  });
+
+  it('persists discount, late fee, outstanding balance and receipt number', async () => {
+    const { prisma, service } = createService();
+    prisma.payment.create.mockResolvedValue({ id: 'payment-1' });
+
+    await service.create(organizationId, {
+      memberId: undefined,
+      amount: 8000,
+      grossAmount: 10000,
+      discountAmount: 1500,
+      lateFeeAmount: 500,
+      outstandingAmount: 1000,
+      receiptNumber: 'NG-001',
+      method: PaymentMethod.CASH,
+      status: PaymentStatus.PAID,
+    });
+
+    expect(prisma.payment.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        amount: 8000,
+        grossAmount: 10000,
+        discountAmount: 1500,
+        lateFeeAmount: 500,
+        outstandingAmount: 1000,
+        receiptNumber: 'NG-001',
+      }),
+    });
+  });
+
+  it('rejects discounts greater than gross amount', async () => {
+    const { service } = createService();
+
+    await expect(
+      service.create(organizationId, {
+        amount: 1000,
+        grossAmount: 1000,
+        discountAmount: 1001,
+        method: PaymentMethod.CASH,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('throws when payment member does not belong to tenant', async () => {

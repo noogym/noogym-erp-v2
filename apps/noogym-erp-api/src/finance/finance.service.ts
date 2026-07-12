@@ -12,6 +12,12 @@ import {
   SubscriptionStatus,
 } from '@prisma/client';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
+import {
+  directGymScope,
+  hasScope,
+  paymentGymScope,
+  saleGymScope,
+} from '../common/utils/gym-scope';
 import { PrismaService } from '../prisma/prisma.service';
 import { CloseCashSessionDto } from './dto/close-cash-session.dto';
 import { CreateFinanceAccountDto } from './dto/create-finance-account.dto';
@@ -50,6 +56,8 @@ export class FinanceService {
   async summary(organizationId: string, query: PaginationQueryDto) {
     await this.ensureDefaults(organizationId);
     const dateRange = this.dateRange(query);
+    const paymentScope = paymentGymScope(query);
+    const saleScope = saleGymScope(query);
     const methodFilter = query.method
       ? { method: query.method as PaymentMethod }
       : {};
@@ -60,6 +68,7 @@ export class FinanceService {
         this.prisma.payment.findMany({
           where: {
             organizationId,
+            ...(hasScope(paymentScope) ? { AND: [paymentScope] } : {}),
             ...methodFilter,
             ...(dateRange ? { createdAt: dateRange } : {}),
           },
@@ -81,6 +90,7 @@ export class FinanceService {
         this.prisma.sale.findMany({
           where: {
             organizationId,
+            ...(hasScope(saleScope) ? { AND: [saleScope] } : {}),
             ...(query.method
               ? { paymentMethod: query.method as PaymentMethod }
               : {}),
@@ -92,6 +102,7 @@ export class FinanceService {
         this.prisma.member.findMany({
           where: {
             organizationId,
+            ...directGymScope(query),
             OR: [
               { status: { in: [MemberStatus.OVERDUE, MemberStatus.BLOCKED] } },
               {
@@ -138,8 +149,10 @@ export class FinanceService {
     const completedSales = sales.filter(
       (sale) => sale.status === SaleStatus.COMPLETED,
     );
-    const cancelledSales = sales.filter((sale) =>
-      sale.status === SaleStatus.CANCELLED || sale.status === SaleStatus.REFUNDED,
+    const cancelledSales = sales.filter(
+      (sale) =>
+        sale.status === SaleStatus.CANCELLED ||
+        sale.status === SaleStatus.REFUNDED,
     );
 
     const paymentsRevenue = sum(paidPayments, (payment) =>
@@ -244,7 +257,8 @@ export class FinanceService {
             CANCELLED: 'Cancelado',
             REFUNDED: 'Reembolsado',
           }),
-          note: payment.member?.name ?? payment.reference ?? payment.notes ?? '-',
+          note:
+            payment.member?.name ?? payment.reference ?? payment.notes ?? '-',
           method: methodLabel(payment.method),
         })),
         ...expenses.map((expense) => ({
@@ -310,8 +324,18 @@ export class FinanceService {
           kpi('Receita total', money(totalRevenue), 'Pagamentos + POS', 'lime'),
           kpi('Receita recebida', money(totalReceived), 'Recebida', 'green'),
           kpi('Receita a receber', money(receivable), 'Pendente', 'yellow'),
-          kpi('Despesas totais', money(totalExpenses), 'Pagas + pendentes', 'red'),
-          kpi('Lucro liquido', money(net), net >= 0 ? 'Positivo' : 'Negativo', net >= 0 ? 'lime' : 'red'),
+          kpi(
+            'Despesas totais',
+            money(totalExpenses),
+            'Pagas + pendentes',
+            'red',
+          ),
+          kpi(
+            'Lucro liquido',
+            money(net),
+            net >= 0 ? 'Positivo' : 'Negativo',
+            net >= 0 ? 'lime' : 'red',
+          ),
         ],
         evolution: [revenueSeries, expenseSeries, netSeries],
         categorySlices: slicesFromGroup(revenueGroups, totalRevenue),
@@ -320,10 +344,25 @@ export class FinanceService {
       revenues: {
         kpis: [
           kpi('Receita total', money(totalRevenue), 'Periodo atual', 'lime'),
-          kpi('Recebido', money(totalReceived), `${percent(totalReceived, totalRevenue)}% do total`, 'green'),
+          kpi(
+            'Recebido',
+            money(totalReceived),
+            `${percent(totalReceived, totalRevenue)}% do total`,
+            'green',
+          ),
           kpi('A receber', money(receivable), 'Pendente', 'yellow'),
-          kpi('Vendas POS', money(posRevenue), `${completedSales.length} transacoes`, 'purple'),
-          kpi('Ticket medio POS', money(div(posRevenue, completedSales.length || 1)), 'Media por venda', 'blue'),
+          kpi(
+            'Vendas POS',
+            money(posRevenue),
+            `${completedSales.length} transacoes`,
+            'purple',
+          ),
+          kpi(
+            'Ticket medio POS',
+            money(div(posRevenue, completedSales.length || 1)),
+            'Media por venda',
+            'blue',
+          ),
         ],
         evolution: [revenueSeries, movingAverageSeries(revenueSeries)],
         weekday: weekdayTotals([
@@ -368,11 +407,31 @@ export class FinanceService {
       },
       expenses: {
         kpis: [
-          kpi('Despesas totais', money(totalExpenses), 'Pagas + pendentes', 'red'),
+          kpi(
+            'Despesas totais',
+            money(totalExpenses),
+            'Pagas + pendentes',
+            'red',
+          ),
           kpi('Despesas pagas', money(expensesPaidTotal), 'Confirmadas', 'red'),
-          kpi('Despesas pendentes', money(expensesPendingTotal), 'A pagar', 'yellow'),
-          kpi('% da receita', `${percent(totalExpenses, totalRevenue)}%`, 'Despesas / receita', 'blue'),
-          kpi('Maior categoria', topLabel(expenseGroups) || '-', 'Maior gasto', 'purple'),
+          kpi(
+            'Despesas pendentes',
+            money(expensesPendingTotal),
+            'A pagar',
+            'yellow',
+          ),
+          kpi(
+            '% da receita',
+            `${percent(totalExpenses, totalRevenue)}%`,
+            'Despesas / receita',
+            'blue',
+          ),
+          kpi(
+            'Maior categoria',
+            topLabel(expenseGroups) || '-',
+            'Maior gasto',
+            'purple',
+          ),
         ],
         evolution: [expenseSeries, movingAverageSeries(expenseSeries)],
         weekday: weekdayTotals(
@@ -402,9 +461,24 @@ export class FinanceService {
         kpis: [
           kpi('Entradas', money(totalReceived), 'Recebidas', 'lime'),
           kpi('Saidas', money(expensesPaidTotal), 'Pagas', 'red'),
-          kpi('Fluxo liquido', money(net), 'Entradas - saidas', net >= 0 ? 'lime' : 'red'),
-          kpi('Saldo atual', money(accountData.currentBalance), 'Contas', 'blue'),
-          kpi('Pendente', money(receivable - expensesPendingTotal), 'A receber - a pagar', 'yellow'),
+          kpi(
+            'Fluxo liquido',
+            money(net),
+            'Entradas - saidas',
+            net >= 0 ? 'lime' : 'red',
+          ),
+          kpi(
+            'Saldo atual',
+            money(accountData.currentBalance),
+            'Contas',
+            'blue',
+          ),
+          kpi(
+            'Pendente',
+            money(receivable - expensesPendingTotal),
+            'A receber - a pagar',
+            'yellow',
+          ),
         ],
         evolution: [revenueSeries, expenseSeries, netSeries],
         weekdayEntries: weekdayTotals([
@@ -431,7 +505,10 @@ export class FinanceService {
             money(entries),
             money(exits),
             signedMoney(entries - exits),
-            money(accountData.initialBalance + sum(netSeries.values.slice(0, index + 1), (value) => value)),
+            money(
+              accountData.initialBalance +
+                sum(netSeries.values.slice(0, index + 1), (value) => value),
+            ),
           ];
         }),
         origins: slicesFromGroup(revenueGroups, totalRevenue),
@@ -444,9 +521,24 @@ export class FinanceService {
         kpis: [
           kpi('Receita por metodos', money(posRevenue), 'Vendas POS', 'lime'),
           kpi('Transacoes', int(completedSales.length), 'Concluidas', 'blue'),
-          kpi('Ticket medio', money(div(posRevenue, completedSales.length || 1)), 'Por metodo', 'yellow'),
-          kpi('Metodo lider', topLabel(methodGroups) || '-', 'Maior volume', 'purple'),
-          kpi('Reembolsos/cancel.', money(sum(cancelledSales, (sale) => Number(sale.total))), 'Fora do total', 'red'),
+          kpi(
+            'Ticket medio',
+            money(div(posRevenue, completedSales.length || 1)),
+            'Por metodo',
+            'yellow',
+          ),
+          kpi(
+            'Metodo lider',
+            topLabel(methodGroups) || '-',
+            'Maior volume',
+            'purple',
+          ),
+          kpi(
+            'Reembolsos/cancel.',
+            money(sum(cancelledSales, (sale) => Number(sale.total))),
+            'Fora do total',
+            'red',
+          ),
         ],
         evolution: topEntries(methodGroups, 4).map(([label, value], index) => ({
           name: label,
@@ -454,7 +546,9 @@ export class FinanceService {
           color: colors[index % colors.length],
         })),
         distribution: slicesFromGroup(methodGroups, posRevenue),
-        transactions: topEntries(methodTransactions, 4).map(([, value]) => value),
+        transactions: topEntries(methodTransactions, 4).map(
+          ([, value]) => value,
+        ),
         performanceRows: topEntries(methodGroups, 6).map(([label, value]) => {
           const transactions = methodTransactions.get(label) ?? 0;
           return [
@@ -469,7 +563,13 @@ export class FinanceService {
         cardForms: slicesFromGroup(
           groupValue(
             completedSales
-              .filter((sale) => includesAny(methodLabel(sale.paymentMethod), ['cartao', 'card', 'multi']))
+              .filter((sale) =>
+                includesAny(methodLabel(sale.paymentMethod), [
+                  'cartao',
+                  'card',
+                  'multi',
+                ]),
+              )
               .map((sale) => ({
                 key: methodLabel(sale.paymentMethod),
                 value: Number(sale.total),
@@ -480,30 +580,96 @@ export class FinanceService {
       },
       overdue: {
         kpis: [
-          kpi('Total em atraso', money(overdueTotal), `${members.length} clientes`, 'red'),
-          kpi('Clientes em atraso', int(members.length), 'Status/vencimento', 'yellow'),
-          kpi('Ticket em atraso', money(div(overdueTotal, members.length || 1)), 'Media por cliente', 'yellow'),
-          kpi('Taxa', `${percent(members.length, Math.max(members.length, 1))}%`, 'Da base de clientes', 'purple'),
+          kpi(
+            'Total em atraso',
+            money(overdueTotal),
+            `${members.length} clientes`,
+            'red',
+          ),
+          kpi(
+            'Clientes em atraso',
+            int(members.length),
+            'Status/vencimento',
+            'yellow',
+          ),
+          kpi(
+            'Ticket em atraso',
+            money(div(overdueTotal, members.length || 1)),
+            'Media por cliente',
+            'yellow',
+          ),
+          kpi(
+            'Taxa',
+            `${percent(members.length, Math.max(members.length, 1))}%`,
+            'Da base de clientes',
+            'purple',
+          ),
           kpi('A recuperar', money(overdueTotal), 'Potencial', 'lime'),
         ],
         evolution: [
-          { name: 'Valor em atraso', values: distributeSlots(overdueTotal), color: palette.red },
-          { name: 'Clientes', values: distributeSlots(members.length), color: palette.gray },
+          {
+            name: 'Valor em atraso',
+            values: distributeSlots(overdueTotal),
+            color: palette.red,
+          },
+          {
+            name: 'Clientes',
+            values: distributeSlots(members.length),
+            color: palette.gray,
+          },
         ],
         delayRanges: this.delayRanges(members),
         origin: slicesFromGroup(this.overdueByPlan(members), overdueTotal),
-        clients: members.slice(0, 10).map((member) => [
-          member.name,
-          member.subscriptions[0]?.plan?.name ?? 'Sem plano',
-          String(this.daysOverdue(member.subscriptions[0]?.endDate)),
-          money(this.overdueAmount(member)),
-          member.subscriptions[0]?.endDate ? this.dateLabel(member.subscriptions[0].endDate) : '-',
-        ]),
+        clients: members
+          .slice(0, 10)
+          .map((member) => [
+            member.name,
+            member.subscriptions[0]?.plan?.name ?? 'Sem plano',
+            String(this.daysOverdue(member.subscriptions[0]?.endDate)),
+            money(this.overdueAmount(member)),
+            member.subscriptions[0]?.endDate
+              ? this.dateLabel(member.subscriptions[0].endDate)
+              : '-',
+          ]),
         byPlan: slicesFromGroup(this.overdueByPlan(members), overdueTotal),
         actions: [
-          ['Enviar lembrete', 'Clientes com vencimento recente', `${members.filter((member) => this.daysOverdue(member.subscriptions[0]?.endDate) <= 15).length} contas`, money(sum(members.filter((member) => this.daysOverdue(member.subscriptions[0]?.endDate) <= 15), (member) => this.overdueAmount(member))), 'Enviar'],
-          ['Ligar para cliente', 'Atraso acima de 30 dias', `${members.filter((member) => this.daysOverdue(member.subscriptions[0]?.endDate) > 30).length} contas`, money(sum(members.filter((member) => this.daysOverdue(member.subscriptions[0]?.endDate) > 30), (member) => this.overdueAmount(member))), 'Ligar'],
-          ['Negociar acordo', 'Planos bloqueados ou vencidos', `${members.length} contas`, money(overdueTotal), 'Negociar'],
+          [
+            'Enviar lembrete',
+            'Clientes com vencimento recente',
+            `${members.filter((member) => this.daysOverdue(member.subscriptions[0]?.endDate) <= 15).length} contas`,
+            money(
+              sum(
+                members.filter(
+                  (member) =>
+                    this.daysOverdue(member.subscriptions[0]?.endDate) <= 15,
+                ),
+                (member) => this.overdueAmount(member),
+              ),
+            ),
+            'Enviar',
+          ],
+          [
+            'Ligar para cliente',
+            'Atraso acima de 30 dias',
+            `${members.filter((member) => this.daysOverdue(member.subscriptions[0]?.endDate) > 30).length} contas`,
+            money(
+              sum(
+                members.filter(
+                  (member) =>
+                    this.daysOverdue(member.subscriptions[0]?.endDate) > 30,
+                ),
+                (member) => this.overdueAmount(member),
+              ),
+            ),
+            'Ligar',
+          ],
+          [
+            'Negociar acordo',
+            'Planos bloqueados ou vencidos',
+            `${members.length} contas`,
+            money(overdueTotal),
+            'Negociar',
+          ],
         ],
         total: overdueTotal,
         count: members.length,
@@ -605,29 +771,33 @@ export class FinanceService {
     return this.prisma.financeCategory.delete({ where: { id } });
   }
 
-  async listCashSessions(organizationId: string) {
+  async listCashSessions(organizationId: string, query: PaginationQueryDto) {
     const sessions = await this.prisma.cashSession.findMany({
-      where: { organizationId },
+      where: { organizationId, ...directGymScope(query) },
       orderBy: { openedAt: 'desc' },
       take: 50,
       include: {
         gym: { select: { id: true, name: true } },
         openedBy: { select: { id: true, name: true, email: true } },
         closing: {
-          include: { closedBy: { select: { id: true, name: true, email: true } } },
+          include: {
+            closedBy: { select: { id: true, name: true, email: true } },
+          },
         },
       },
     });
 
-    return Promise.all(sessions.map((session) => this.cashSessionPayload(session)));
+    return Promise.all(
+      sessions.map((session) => this.cashSessionPayload(session)),
+    );
   }
 
-  async currentCashSession(organizationId: string, gymId?: string) {
+  async currentCashSession(organizationId: string, query: PaginationQueryDto) {
     const session = await this.prisma.cashSession.findFirst({
       where: {
         organizationId,
         status: CashSessionStatus.OPEN,
-        ...(gymId ? { gymId } : {}),
+        ...directGymScope(query),
       },
       orderBy: { openedAt: 'desc' },
       include: {
@@ -743,7 +913,9 @@ export class FinanceService {
         gym: { select: { id: true, name: true } },
         openedBy: { select: { id: true, name: true, email: true } },
         closing: {
-          include: { closedBy: { select: { id: true, name: true, email: true } } },
+          include: {
+            closedBy: { select: { id: true, name: true, email: true } },
+          },
         },
       },
     });
@@ -827,10 +999,7 @@ export class FinanceService {
         where: {
           organizationId,
           status: PaymentStatus.PAID,
-          OR: [
-            { paidAt: dateRange },
-            { paidAt: null, createdAt: dateRange },
-          ],
+          OR: [{ paidAt: dateRange }, { paidAt: null, createdAt: dateRange }],
           ...(input.gymId ? { sale: { gymId: input.gymId } } : {}),
         },
         select: { amount: true, method: true },
@@ -839,10 +1008,7 @@ export class FinanceService {
         where: {
           organizationId,
           status: PaymentStatus.PAID,
-          OR: [
-            { paidAt: dateRange },
-            { paidAt: null, createdAt: dateRange },
-          ],
+          OR: [{ paidAt: dateRange }, { paidAt: null, createdAt: dateRange }],
         },
         select: { amount: true, method: true },
       }),
@@ -860,9 +1026,8 @@ export class FinanceService {
       expected[this.cashBucket(payment.method)] += Number(payment.amount);
     });
     expenses.forEach((expense) => {
-      expected[this.cashBucket(expense.method ?? PaymentMethod.OTHER)] -= Number(
-        expense.amount,
-      );
+      expected[this.cashBucket(expense.method ?? PaymentMethod.OTHER)] -=
+        Number(expense.amount);
     });
 
     return { ...expected, total: this.cashTotal(expected) };
@@ -871,7 +1036,11 @@ export class FinanceService {
   private cashBucket(method: PaymentMethod) {
     if (method === PaymentMethod.CASH) return 'cash' as const;
     if (method === PaymentMethod.CARD) return 'card' as const;
-    if (method === PaymentMethod.BANK_TRANSFER || method === PaymentMethod.DIRECT_DEBIT) return 'transfer' as const;
+    if (
+      method === PaymentMethod.BANK_TRANSFER ||
+      method === PaymentMethod.DIRECT_DEBIT
+    )
+      return 'transfer' as const;
     if (method === PaymentMethod.MULTICAIXA) return 'multicaixa' as const;
     if (method === PaymentMethod.PIX) return 'pix' as const;
     return 'other' as const;
@@ -938,7 +1107,11 @@ export class FinanceService {
       const entries =
         sum(
           input.payments.filter((payment) =>
-            this.methodMatchesAccount(payment.method, account.name, account.type),
+            this.methodMatchesAccount(
+              payment.method,
+              account.name,
+              account.type,
+            ),
           ),
           (payment) => Number(payment.amount),
         ) +
@@ -1063,14 +1236,54 @@ export class FinanceService {
 
     await this.prisma.financeCategory.createMany({
       data: [
-        { organizationId, kind: 'Receita', name: 'Mensalidades', color: palette.lime },
-        { organizationId, kind: 'Receita', name: 'Vendas POS', color: palette.orange },
-        { organizationId, kind: 'Receita', name: 'Aulas avulsas', color: palette.purple },
-        { organizationId, kind: 'Despesa', name: 'Salarios', color: palette.red },
-        { organizationId, kind: 'Despesa', name: 'Aluguel', color: palette.orange },
-        { organizationId, kind: 'Despesa', name: 'Marketing', color: palette.blue },
-        { organizationId, kind: 'Despesa', name: 'Manutencao', color: palette.yellow },
-        { organizationId, kind: 'Despesa', name: 'Operacional', color: palette.gray },
+        {
+          organizationId,
+          kind: 'Receita',
+          name: 'Mensalidades',
+          color: palette.lime,
+        },
+        {
+          organizationId,
+          kind: 'Receita',
+          name: 'Vendas POS',
+          color: palette.orange,
+        },
+        {
+          organizationId,
+          kind: 'Receita',
+          name: 'Aulas avulsas',
+          color: palette.purple,
+        },
+        {
+          organizationId,
+          kind: 'Despesa',
+          name: 'Salarios',
+          color: palette.red,
+        },
+        {
+          organizationId,
+          kind: 'Despesa',
+          name: 'Aluguel',
+          color: palette.orange,
+        },
+        {
+          organizationId,
+          kind: 'Despesa',
+          name: 'Marketing',
+          color: palette.blue,
+        },
+        {
+          organizationId,
+          kind: 'Despesa',
+          name: 'Manutencao',
+          color: palette.yellow,
+        },
+        {
+          organizationId,
+          kind: 'Despesa',
+          name: 'Operacional',
+          color: palette.gray,
+        },
       ],
     });
   }
@@ -1161,7 +1374,11 @@ export class FinanceService {
     return status === PaymentStatus.PAID;
   }
 
-  private methodMatchesAccount(method: unknown, accountName: string, type: string) {
+  private methodMatchesAccount(
+    method: unknown,
+    accountName: string,
+    type: string,
+  ) {
     const methodText = methodLabel(method).toLocaleLowerCase('pt-AO');
     const accountText = `${accountName} ${type}`.toLocaleLowerCase('pt-AO');
     if (accountText.includes('cart') || accountText.includes('pos')) {
@@ -1184,7 +1401,9 @@ export class FinanceService {
     return Number(member.subscriptions[0]?.plan?.price ?? 10000);
   }
 
-  private delayRanges(members: Array<{ subscriptions: Array<{ endDate: Date }> }>) {
+  private delayRanges(
+    members: Array<{ subscriptions: Array<{ endDate: Date }> }>,
+  ) {
     const ranges = [0, 0, 0, 0, 0];
     members.forEach((member) => {
       const days = this.daysOverdue(member.subscriptions[0]?.endDate);
@@ -1248,7 +1467,9 @@ function groupValue(items: Array<{ key: string; value: number }>) {
 
 function groupCount(items: string[]) {
   const group = new Map<string, number>();
-  items.forEach((item) => group.set(item || 'Sem dados', (group.get(item || 'Sem dados') ?? 0) + 1));
+  items.forEach((item) =>
+    group.set(item || 'Sem dados', (group.get(item || 'Sem dados') ?? 0) + 1),
+  );
   return group;
 }
 
@@ -1281,7 +1502,12 @@ function movingAverageSeries(series: { name: string; values: number[] }) {
     values: series.values.map((_, index) => {
       const start = Math.max(0, index - 2);
       const slice = series.values.slice(start, index + 1);
-      return Math.round(div(sum(slice, (value) => value), slice.length || 1));
+      return Math.round(
+        div(
+          sum(slice, (value) => value),
+          slice.length || 1,
+        ),
+      );
     }),
   };
 }

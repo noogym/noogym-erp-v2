@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
+import { gymIdScope } from '../common/utils/gym-scope';
 import { getPagination, paginated } from '../common/utils/pagination';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateGymDto } from './dto/create-gym.dto';
@@ -18,6 +19,7 @@ export class GymsService {
     const { page, limit, skip, take } = getPagination(query.page, query.limit);
     const where: Prisma.GymWhereInput = {
       organizationId,
+      ...gymIdScope(query),
       ...(query.search
         ? {
             OR: [

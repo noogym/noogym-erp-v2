@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { MemberStatus, Prisma } from '@prisma/client';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
+import { directGymScope } from '../common/utils/gym-scope';
 import { getPagination, paginated } from '../common/utils/pagination';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateMemberDto } from './dto/create-member.dto';
@@ -19,7 +20,7 @@ export class MembersService {
     const where: Prisma.MemberWhereInput = {
       organizationId,
       ...(query.status ? { status: query.status as MemberStatus } : {}),
-      ...(query.gymId ? { gymId: query.gymId } : {}),
+      ...directGymScope(query),
       ...(query.search
         ? {
             OR: [

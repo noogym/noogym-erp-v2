@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
+import { planGymScope } from '../common/utils/gym-scope';
 import { getPagination, paginated } from '../common/utils/pagination';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreatePlanDto } from './dto/create-plan.dto';
@@ -14,17 +15,8 @@ export class PlansService {
     const { page, limit, skip, take } = getPagination(query.page, query.limit);
     const where: Prisma.PlanWhereInput = {
       organizationId,
-      ...(query.gymId
-        ? {
-            OR: [
-              { gyms: { none: {} } },
-              { gyms: { some: { gymId: query.gymId } } },
-            ],
-          }
-        : {}),
-      ...(query.search
-        ? { name: { contains: query.search } }
-        : {}),
+      ...planGymScope(query),
+      ...(query.search ? { name: { contains: query.search } } : {}),
     };
     const [items, total] = await this.prisma.$transaction([
       this.prisma.plan.findMany({

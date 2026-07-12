@@ -5,7 +5,9 @@ import { FinanceCell, FinanceTable } from "../FinanceTable";
 import { FinancePanelSection, FinanceRightPanel, SummaryRow } from "../FinanceRightPanel";
 import type { FinanceTabProps, FinanceTabView } from "../types";
 
-export function AccountsTab({ openAction, data }: FinanceTabProps): FinanceTabView {
+export function AccountsTab({ openAction, onAddAccount, data }: FinanceTabProps): FinanceTabView {
+  const openAddAccount = onAddAccount ?? (() => openAction({ title: "Adicionar conta", confirmLabel: "Adicionar", rows: [["Tipo", "Conta virtual"], ["Saldo inicial", "0 Kz"]] }));
+
   return {
     subtitle: "Acompanhe contas virtuais, saldos e movimentacoes.",
     main: (
@@ -31,7 +33,7 @@ export function AccountsTab({ openAction, data }: FinanceTabProps): FinanceTabVi
               <span className="mt-3 inline-flex items-center gap-2 text-sm text-noogym-lime">Ver detalhes <ArrowRight className="h-4 w-4" /></span>
             </button>
           ))}
-          <button className="panel flex min-h-[166px] flex-col items-center justify-center border-dashed text-center transition hover:border-noogym-lime/50" onClick={() => openAction({ title: "Adicionar conta", confirmLabel: "Adicionar", rows: [["Tipo", "Conta virtual"], ["Saldo inicial", "0 Kz"]] })}>
+          <button className="panel flex min-h-[166px] flex-col items-center justify-center border-dashed text-center transition hover:border-noogym-lime/50" onClick={openAddAccount}>
             <Plus className="h-9 w-9 rounded-full border border-white/10 p-2 text-zinc-200" />
             <span className="mt-3">Adicionar conta</span>
             <span className="mt-1 text-xs text-zinc-500">Regista uma conta local</span>
@@ -83,7 +85,7 @@ export function AccountsTab({ openAction, data }: FinanceTabProps): FinanceTabVi
         </FinancePanelSection>
         <FinancePanelSection title="Acoes rapidas">
           {["Nova transferencia", "Conciliacao bancaria", "Adicionar conta", "Relatorio de contas"].map((label, index) => (
-            <button key={`${label}-${index}`} className="flex w-full items-center justify-between rounded-md border border-white/10 bg-white/[0.025] px-3 py-3 text-left text-sm hover:border-noogym-lime/40" onClick={() => openAction({ title: label, confirmLabel: label === "Relatorio de contas" ? "Gerar" : "Salvar", rows: [["Periodo", data.period], ["Status", "Local"]] })}>
+            <button key={`${label}-${index}`} className="flex w-full items-center justify-between rounded-md border border-white/10 bg-white/[0.025] px-3 py-3 text-left text-sm hover:border-noogym-lime/40" onClick={() => label === "Adicionar conta" ? openAddAccount() : openAction({ title: label, confirmLabel: label === "Relatorio de contas" ? "Gerar" : "Salvar", rows: [["Periodo", data.period], ["Status", "Local"]] })}>
               {label}
               <ArrowRight className="h-4 w-4 text-zinc-500" />
             </button>

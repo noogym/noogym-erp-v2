@@ -1,5 +1,6 @@
 import { Type } from 'class-transformer';
 import {
+  IsArray,
   IsDateString,
   IsInt,
   IsOptional,
@@ -33,6 +34,11 @@ export class PaginationQueryDto {
   @IsOptional()
   @IsString()
   gymId?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  scopeGymIds?: string[];
 
   @IsOptional()
   @IsString()

@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { CheckInMethod, Prisma, SubscriptionStatus } from '@prisma/client';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
+import { directGymScope } from '../common/utils/gym-scope';
 import { getPagination, paginated } from '../common/utils/pagination';
 import { assertActiveMember } from '../members/member-status';
 import { PrismaService } from '../prisma/prisma.service';
@@ -22,7 +23,7 @@ export class CheckinsService {
     const { page, limit, skip, take } = getPagination(query.page, query.limit);
     const where: Prisma.CheckInWhereInput = {
       organizationId,
-      ...(query.gymId ? { gymId: query.gymId } : {}),
+      ...directGymScope(query),
       ...(query.startDate || query.endDate
         ? {
             checkedAt: {
@@ -31,9 +32,7 @@ export class CheckinsService {
             },
           }
         : {}),
-      ...(query.search
-        ? { member: { name: { contains: query.search } } }
-        : {}),
+      ...(query.search ? { member: { name: { contains: query.search } } } : {}),
     };
     const [items, total] = await this.prisma.$transaction([
       this.prisma.checkIn.findMany({
@@ -49,14 +48,18 @@ export class CheckinsService {
     return paginated(items, total, page, limit);
   }
 
-  async today(organizationId: string) {
+  async today(organizationId: string, query: PaginationQueryDto) {
     const start = new Date();
     start.setHours(0, 0, 0, 0);
     const end = new Date(start);
     end.setDate(end.getDate() + 1);
 
     return this.prisma.checkIn.findMany({
-      where: { organizationId, checkedAt: { gte: start, lt: end } },
+      where: {
+        organizationId,
+        ...directGymScope(query),
+        checkedAt: { gte: start, lt: end },
+      },
       orderBy: { checkedAt: 'desc' },
       include: { member: true, gym: true },
     });
