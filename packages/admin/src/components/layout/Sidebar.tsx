@@ -107,7 +107,7 @@ export function Sidebar() {
             <p className="text-xs leading-6 text-zinc-300">
               {statusDescription}
             </p>
-            <Button className="mt-4 w-full" variant="secondary" onClick={() => void syncNow()}>
+            <Button className="mt-4 w-full" variant="secondary" onClick={() => void syncNow().catch(() => undefined)}>
               {onlineOnly ? "Ver estado online" : "Ver sincronizacao"}
             </Button>
           </>

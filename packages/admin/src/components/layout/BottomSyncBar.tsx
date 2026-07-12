@@ -70,7 +70,7 @@ export function BottomSyncBar() {
         className="ml-auto h-12 min-w-[220px] text-sm 2xl:min-w-[280px] 2xl:text-base"
         variant="primary"
         icon={<RefreshCw className={`h-5 w-5 ${syncState === "syncing" ? "animate-spin" : ""}`} />}
-        onClick={() => void syncNow()}
+        onClick={() => void syncNow().catch(() => undefined)}
         disabled={syncState === "syncing"}
       >
         {syncState === "syncing" ? "Sincronizando..." : "Sincronizar agora"}
