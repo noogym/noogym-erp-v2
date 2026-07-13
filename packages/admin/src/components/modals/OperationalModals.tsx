@@ -1,4 +1,4 @@
-import { Barcode, Check, CheckCircle2, Clock, CreditCard, Dumbbell, Info, QrCode, Search, ShieldCheck, Tag, UploadCloud, UsersRound } from "lucide-react";
+import { Barcode, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock, CreditCard, Dumbbell, Info, QrCode, Search, ShieldCheck, Tag, UploadCloud, UsersRound } from "lucide-react";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { Avatar } from "../ui/Avatar";
@@ -50,6 +50,11 @@ const formatDateTimeLabel = (value: string) => {
   if (date.toDateString() === now.toDateString()) return `Hoje, ${time}`;
   return new Intl.DateTimeFormat("pt-AO", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(date);
 };
+const parseAmountInput = (value: string) => {
+  const normalized = value.replace(/\s/g, "").replace(/\./g, "").replace(",", ".");
+  const amount = Number(normalized);
+  return Number.isFinite(amount) && amount > 0 ? amount : 0;
+};
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -63,6 +68,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 export function ManualCheckinModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const clients = useClientsStore((state) => state.clients);
   const addCheckin = useCheckinsStore((state) => state.addCheckin);
+  const validateCheckin = useCheckinsStore((state) => state.validateCheckin);
   const [query, setQuery] = useState("");
   const [accessType, setAccessType] = useState("Entrada");
   const selected = clients.find((client) => `${client.name} ${client.id} ${client.email} ${client.phone}`.toLowerCase().includes(query.toLowerCase())) ?? clients[0];
@@ -72,8 +78,14 @@ export function ManualCheckinModal({ open, onClose }: { open: boolean; onClose: 
       toastInfo("Sem clientes", "Cadastre um cliente antes de realizar check-in.");
       return;
     }
-    if (!addCheckin({ clientName: selected.name, clientId: selected.id, type: "Manual", accessType, dateTime: today })) {
-      toastInfo("Check-in bloqueado", "Este cliente nao esta ativo.");
+    const payload = { clientName: selected.name, clientId: selected.id, type: "Manual", accessType, dateTime: today };
+    const validation = validateCheckin(payload);
+    if (!validation.allowed) {
+      toastInfo(validation.title, validation.message);
+      return;
+    }
+    if (!addCheckin(payload)) {
+      toastInfo("Check-in bloqueado", "Nao foi possivel registrar o check-in agora.");
       return;
     }
     toastSuccess("Check-in realizado", `${selected.name} registado com sucesso.`);
@@ -136,6 +148,7 @@ export function ManualCheckinModal({ open, onClose }: { open: boolean; onClose: 
 export function QrScannerModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const clients = useClientsStore((state) => state.clients);
   const addCheckin = useCheckinsStore((state) => state.addCheckin);
+  const validateCheckin = useCheckinsStore((state) => state.validateCheckin);
   const [scanned, setScanned] = useState(false);
   const client = clients[0];
   const confirm = () => {
@@ -143,8 +156,14 @@ export function QrScannerModal({ open, onClose }: { open: boolean; onClose: () =
       toastInfo("Sem clientes", "Cadastre um cliente antes de realizar check-in.");
       return;
     }
-    if (!addCheckin({ clientName: client.name, clientId: client.id, type: "QR Code", accessType: "Entrada", dateTime: today })) {
-      toastInfo("Check-in bloqueado", "Este cliente nao esta ativo.");
+    const payload = { clientName: client.name, clientId: client.id, type: "QR Code", accessType: "Entrada", dateTime: today };
+    const validation = validateCheckin(payload);
+    if (!validation.allowed) {
+      toastInfo(validation.title, validation.message);
+      return;
+    }
+    if (!addCheckin(payload)) {
+      toastInfo("Check-in bloqueado", "Nao foi possivel registrar o check-in agora.");
       return;
     }
     toastSuccess("Check-in realizado", "QR Code confirmado com sucesso.");
@@ -171,21 +190,48 @@ export function QrScannerModal({ open, onClose }: { open: boolean; onClose: () =
 export function NewCheckinModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const clients = useClientsStore((state) => state.clients);
   const addCheckin = useCheckinsStore((state) => state.addCheckin);
+  const validateCheckin = useCheckinsStore((state) => state.validateCheckin);
+  const addRevenue = useFinanceStore((state) => state.addRevenue);
   const [tab, setTab] = useState("Buscar cliente");
   const [query, setQuery] = useState("");
   const [selectedClientId, setSelectedClientId] = useState("");
   const [dateTime, setDateTime] = useState(dateTimeInputValue);
   const [checkinType, setCheckinType] = useState("Presencial");
+  const [guestAmount, setGuestAmount] = useState("");
+  const [guestPaymentMethod, setGuestPaymentMethod] = useState("Dinheiro");
   const [observation, setObservation] = useState("");
+  const [clientPage, setClientPage] = useState(1);
+  const clientPageSize = 8;
   const filteredClients = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
-    if (!normalizedQuery) return clients.slice(0, 6);
+    const visibleClients = clients
+      .slice()
+      .sort((a, b) => Number(b.status === "Ativo") - Number(a.status === "Ativo") || a.name.localeCompare(b.name, "pt-AO"));
+    if (!normalizedQuery) return visibleClients;
 
-    return clients.filter((client) =>
+    return visibleClients.filter((client) =>
       `${client.name} ${client.id} ${client.phone} ${client.email} ${client.document ?? ""}`.toLowerCase().includes(normalizedQuery)
-    ).slice(0, 6);
+    );
   }, [clients, query]);
-  const selectedClient = clients.find((client) => client.id === selectedClientId) ?? filteredClients[0];
+  const totalClientPages = Math.max(1, Math.ceil(filteredClients.length / clientPageSize));
+  const clientPageRows = useMemo(() => {
+    const start = (clientPage - 1) * clientPageSize;
+    return filteredClients.slice(start, start + clientPageSize);
+  }, [clientPage, filteredClients]);
+  const clientRangeStart = filteredClients.length ? (clientPage - 1) * clientPageSize + 1 : 0;
+  const clientRangeEnd = Math.min(clientPage * clientPageSize, filteredClients.length);
+  const selectedClient = clients.find((client) => client.id === selectedClientId) ?? clientPageRows[0] ?? filteredClients[0];
+  const selectedValidation = useMemo(() => {
+    if (!selectedClient) return null;
+    const parsedDate = new Date(dateTime);
+    return validateCheckin({
+      clientName: selectedClient.name,
+      clientId: selectedClient.id,
+      type: tab === "Check-in avulso" ? "Avulso" : checkinType,
+      accessType: "Entrada",
+      checkedAtIso: Number.isNaN(parsedDate.getTime()) ? undefined : parsedDate.toISOString()
+    });
+  }, [checkinType, dateTime, selectedClient, tab, validateCheckin]);
 
   useEffect(() => {
     if (!open) return;
@@ -194,8 +240,15 @@ export function NewCheckinModal({ open, onClose }: { open: boolean; onClose: () 
     setSelectedClientId("");
     setDateTime(dateTimeInputValue());
     setCheckinType("Presencial");
+    setGuestAmount("");
+    setGuestPaymentMethod("Dinheiro");
     setObservation("");
+    setClientPage(1);
   }, [open]);
+
+  useEffect(() => {
+    if (clientPage > totalClientPages) setClientPage(totalClientPages);
+  }, [clientPage, totalClientPages]);
 
   const confirm = () => {
     if (!selectedClient) {
@@ -208,39 +261,108 @@ export function NewCheckinModal({ open, onClose }: { open: boolean; onClose: () 
       return;
     }
 
-    const created = addCheckin({
+    const payload = {
       clientName: selectedClient.name,
       clientId: selectedClient.id,
-      type: tab === "Check-in avulso" ? "Manual" : checkinType,
+      type: tab === "Check-in avulso" ? "Avulso" : checkinType,
       accessType: "Entrada",
       dateTime: formatDateTimeLabel(dateTime),
       checkedAtIso: parsedDate.toISOString(),
       observation: observation.trim() || undefined
-    });
-    if (!created) {
-      toastInfo("Check-in bloqueado", "Este cliente nao esta ativo.");
+    };
+    const validation = validateCheckin(payload);
+    if (!validation.allowed) {
+      toastInfo(validation.title, validation.message);
       return;
+    }
+    if (!addCheckin(payload)) {
+      toastInfo("Check-in bloqueado", "Nao foi possivel registrar o check-in agora.");
+      return;
+    }
+    const guestValue = tab === "Check-in avulso" ? parseAmountInput(guestAmount) : 0;
+    if (guestValue > 0) {
+      addRevenue({
+        category: "Entrada avulsa",
+        value: guestValue,
+        date: formatDateTimeLabel(dateTime),
+        status: "Recebido",
+        note: `${selectedClient.name} - check-in avulso`,
+        memberId: selectedClient.id,
+        method: guestPaymentMethod,
+        paidAt: parsedDate.toISOString()
+      });
     }
     toastSuccess("Check-in realizado", "Resumo do dia atualizado.");
     onClose();
   };
 
   return (
-    <Modal open={open} title="Novo check-in" description="Selecione o cliente e registre o check-in na unidade." size="lg" onClose={onClose} footer={<><Button onClick={onClose}>Cancelar</Button><Button variant="primary" onClick={confirm}>Confirmar check-in</Button></>}>
+    <Modal open={open} title="Novo check-in" description="Selecione o cliente e registre o check-in na unidade." size="xl" onClose={onClose} footer={<><Button onClick={onClose}>Cancelar</Button><Button variant="primary" onClick={confirm}>Confirmar check-in</Button></>}>
       <Section title="1. Cliente">
         <div className="flex gap-6 border-b border-white/10 text-sm">
           {["Buscar cliente", "Check-in avulso"].map((item) => <button key={item} type="button" onClick={() => setTab(item)} className={`py-2 ${tab === item ? "border-b border-noogym-lime text-noogym-lime" : "text-zinc-400"}`}>{item}</button>)}
         </div>
-        <FormInput label="Busca por nome, CPF/BI ou codigo" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Digite o nome ou BI do cliente..." />
-        <div className="space-y-2">
-          {filteredClients.length ? filteredClients.map((client) => (
-            <button key={client.id} type="button" onClick={() => setSelectedClientId(client.id)} className={`flex w-full items-center gap-4 rounded-lg border p-4 text-left transition ${selectedClient?.id === client.id ? "border-noogym-lime bg-noogym-lime/10" : "border-white/10 bg-white/[0.03] hover:border-white/20"}`}>
-              <Avatar label={client.avatar ?? "CL"} className="h-14 w-14" />
-              <div className="min-w-0 flex-1"><p className="font-semibold">{client.name}</p><p className="truncate text-sm text-zinc-400">BI: {client.document ?? "-"} - {client.plan}</p></div>
-              <Badge>{client.status}</Badge>
+        <div className="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-end">
+          <FormInput label="Busca por nome, CPF/BI, telefone, e-mail ou codigo" value={query} onChange={(event) => { setQuery(event.target.value); setClientPage(1); setSelectedClientId(""); }} placeholder="Digite nome, BI, telefone ou codigo..." />
+          <div className="rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-zinc-300">
+            <span className="block text-zinc-500">Clientes encontrados</span>
+            <strong className="text-sm text-zinc-100">{filteredClients.length} de {clients.length}</strong>
+          </div>
+        </div>
+        <div className="max-h-[360px] space-y-2 overflow-y-auto pr-1">
+          {filteredClients.length ? clientPageRows.map((client) => (
+            <button key={client.id} type="button" onClick={() => setSelectedClientId(client.id)} className={`flex w-full items-center gap-3 rounded-lg border p-3 text-left transition sm:gap-4 ${selectedClient?.id === client.id ? "border-noogym-lime bg-noogym-lime/10" : "border-white/10 bg-white/[0.03] hover:border-white/20"}`}>
+              <Avatar label={client.avatar ?? "CL"} className="h-12 w-12 shrink-0 sm:h-14 sm:w-14" />
+              <div className="min-w-0 flex-1">
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <p className="truncate font-semibold">{client.name}</p>
+                  <Badge>{client.status}</Badge>
+                </div>
+                <p className="truncate text-sm text-zinc-400">BI: {client.document ?? "-"} - {client.id}</p>
+                <p className="truncate text-sm text-zinc-400">{client.phone} - {client.plan}</p>
+              </div>
+              <div className="hidden text-right text-xs text-zinc-400 sm:block">
+                <span className="block">Ultimo check-in</span>
+                <strong className="font-medium text-zinc-200">{client.lastCheckin ?? "Sem check-in"}</strong>
+                <span className="mt-1 block">Vence: {client.expires ?? "-"}</span>
+              </div>
             </button>
           )) : <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4 text-sm text-zinc-300">Nenhum cliente encontrado com estes dados.</div>}
         </div>
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-white/10 bg-white/[0.025] px-3 py-2 text-xs text-zinc-400">
+          <span>
+            Mostrando {clientRangeStart}-{clientRangeEnd} de {filteredClients.length}
+          </span>
+          <div className="flex items-center gap-2">
+            <button type="button" className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-white/10 text-zinc-200 disabled:cursor-not-allowed disabled:opacity-40" aria-label="Pagina anterior" disabled={clientPage <= 1} onClick={() => { setClientPage((page) => Math.max(1, page - 1)); setSelectedClientId(""); }}>
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            <span className="min-w-16 text-center text-zinc-200">
+              {clientPage} / {totalClientPages}
+            </span>
+            <button type="button" className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-white/10 text-zinc-200 disabled:cursor-not-allowed disabled:opacity-40" aria-label="Proxima pagina" disabled={clientPage >= totalClientPages} onClick={() => { setClientPage((page) => Math.min(totalClientPages, page + 1)); setSelectedClientId(""); }}>
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+        {selectedClient ? (
+          <div className={`rounded-md border p-3 text-sm ${selectedValidation?.allowed ? "border-noogym-lime/30 bg-noogym-lime/10 text-zinc-200" : "border-red-400/30 bg-red-500/10 text-red-100"}`}>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="font-medium">{selectedClient.name}</span>
+              <span>{selectedValidation?.allowed ? "Liberado para check-in" : selectedValidation?.title}</span>
+            </div>
+            {!selectedValidation?.allowed ? <p className="mt-1 text-xs opacity-90">{selectedValidation?.message}</p> : null}
+          </div>
+        ) : null}
+        {tab === "Check-in avulso" ? (
+          <div className="rounded-lg border border-noogym-lime/25 bg-noogym-lime/10 p-3">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <FormInput label="Valor pago pela entrada avulsa" inputMode="decimal" value={guestAmount} onChange={(event) => setGuestAmount(event.target.value)} placeholder="0" />
+              <FormSelect label="Metodo de pagamento" value={guestPaymentMethod} onChange={(event) => setGuestPaymentMethod(event.target.value)} options={["Dinheiro", "Cartao", "Transferencia", "TPA", "Outro"]} />
+            </div>
+            <p className="mt-2 text-xs text-zinc-300">Quando informado, o valor sera lancado em Financas como receita de Entrada avulsa.</p>
+          </div>
+        ) : null}
       </Section>
       <Section title="2. Detalhes do check-in">
         <div className="grid grid-cols-2 gap-3">

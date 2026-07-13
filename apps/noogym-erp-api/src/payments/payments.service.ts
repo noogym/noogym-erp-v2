@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { PaymentMethod, PaymentStatus, Prisma } from '@prisma/client';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
+import { hasScope, paymentGymScope } from '../common/utils/gym-scope';
 import { getPagination, paginated } from '../common/utils/pagination';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
@@ -15,8 +16,10 @@ export class PaymentsService {
 
   async findAll(organizationId: string, query: PaginationQueryDto) {
     const { page, limit, skip, take } = getPagination(query.page, query.limit);
+    const scope = paymentGymScope(query);
     const where: Prisma.PaymentWhereInput = {
       organizationId,
+      ...(hasScope(scope) ? { AND: [scope] } : {}),
       ...(query.status ? { status: query.status as PaymentStatus } : {}),
       ...(query.method ? { method: query.method as PaymentMethod } : {}),
       ...(query.startDate || query.endDate
@@ -60,10 +63,23 @@ export class PaymentsService {
 
   async create(organizationId: string, dto: CreatePaymentDto) {
     const relationData = await this.resolveRelationData(organizationId, dto);
-    const amount = relationData.amount ?? dto.amount;
+    const amount = dto.amount;
+    const grossAmount = dto.grossAmount ?? relationData.grossAmount ?? amount;
+    const discountAmount = dto.discountAmount ?? 0;
+    const lateFeeAmount = dto.lateFeeAmount ?? 0;
+    const expectedOutstanding = Math.max(
+      0,
+      grossAmount - discountAmount + lateFeeAmount - amount,
+    );
+    const outstandingAmount = dto.outstandingAmount ?? expectedOutstanding;
 
     if (amount <= 0) {
       throw new BadRequestException('Payment amount must be positive');
+    }
+    if (discountAmount > grossAmount) {
+      throw new BadRequestException(
+        'Payment discount cannot exceed gross amount',
+      );
     }
 
     return this.prisma.payment.create({
@@ -71,6 +87,11 @@ export class PaymentsService {
         ...dto,
         ...relationData,
         amount,
+        grossAmount,
+        discountAmount,
+        lateFeeAmount,
+        outstandingAmount,
+        receiptNumber: dto.receiptNumber ?? dto.reference,
         organizationId,
         paidAt: dto.status === 'PAID' ? new Date() : undefined,
       },
@@ -98,7 +119,7 @@ export class PaymentsService {
     dto: CreatePaymentDto,
   ) {
     let memberId = dto.memberId;
-    let amount: number | undefined;
+    let grossAmount: number | undefined;
 
     if (dto.memberId) {
       const member = await this.prisma.member.findFirst({
@@ -125,7 +146,7 @@ export class PaymentsService {
       }
 
       memberId = subscription.memberId;
-      amount = Number(subscription.plan.price);
+      grossAmount = Number(subscription.plan.price);
     }
 
     if (dto.saleId) {
@@ -151,12 +172,12 @@ export class PaymentsService {
       }
 
       memberId = memberId ?? sale.memberId ?? undefined;
-      amount = Number(sale.total);
+      grossAmount = Number(sale.total);
     }
 
     return {
       memberId,
-      amount,
+      grossAmount,
     };
   }
 }

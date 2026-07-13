@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { plans as mockPlans } from "../data/mock";
 import { createResource, listResource, planCategoryFromApi, planCategoryToDto, planFromApi, planToDto, updateResource } from "../lib/domainApi";
+import { scopeByGym } from "../lib/gymScope";
 import { readLocal, readLocalDb, uid, writeLocal } from "../lib/storage";
 import { useAppStore } from "./appStore";
 import { useAuthStore } from "./authStore";
@@ -85,12 +86,12 @@ export const usePlansStore = create<{
   categoryDetails: readCategoryDetails(),
   categories: readCategoryDetails().map((category) => category.name),
   loadLocal: async () => {
-    const plans = await readLocalDb("noogym:plans", initialPlans);
-    const categoryDetails = uniqueCategoryDetails(await readLocalDb("noogym:plan-category-details", readCategoryDetails()));
+    const plans = scopeByGym(
+      await readLocalDb("noogym:plans", [] as PlanRecord[], { seedMissing: false }),
+      useAppStore.getState().activeGymId,
+    );
+    const categoryDetails = uniqueCategoryDetails(await readLocalDb("noogym:plan-category-details", [] as PlanCategory[], { seedMissing: false }));
     const categories = categoryDetails.map((category) => category.name);
-    persist(plans);
-    persistCategories(categories);
-    persistCategoryDetails(categoryDetails, true);
     set({ plans, categories, categoryDetails });
   },
   loadOnline: async () => {
@@ -119,9 +120,9 @@ export const usePlansStore = create<{
     }
     categoryDetails = uniqueCategoryDetails(categoryDetails);
     const categories = categoryDetails.map((category) => category.name);
-    persist(plans, true);
+    persist(plans);
     persistCategories(categories);
-    persistCategoryDetails(categoryDetails, true);
+    persistCategoryDetails(categoryDetails);
     set({ plans, categories, categoryDetails });
   },
   addPlan: (plan) => set((state) => {
@@ -143,9 +144,9 @@ export const usePlansStore = create<{
     const plans = [created, ...state.plans];
     const categories = created.category && !state.categories.some((category) => category.toLowerCase() === created.category.toLowerCase()) ? [...state.categories, created.category] : state.categories;
     const categoryDetails = created.category && !state.categoryDetails.some((category) => category.name.toLowerCase() === created.category.toLowerCase()) ? [...state.categoryDetails, categoryFromName(created.category, state.categoryDetails.length)] : state.categoryDetails;
-    persist(plans);
-    persistCategories(categories);
-    persistCategoryDetails(categoryDetails);
+    persist(plans, true);
+    persistCategories(categories, true);
+    persistCategoryDetails(categoryDetails, true);
     useAppStore.getState().addPendingSync();
 
     const token = useAuthStore.getState().accessToken;
@@ -165,7 +166,7 @@ export const usePlansStore = create<{
   updatePlan: (id, plan) => set((state) => {
     const nextPlan = { ...state.plans.find((item) => item.id === id), ...plan };
     const plans = state.plans.map((item) => item.id === id ? { ...item, ...plan } : item);
-    persist(plans);
+    persist(plans, true);
     useAppStore.getState().addPendingSync();
 
     const token = useAuthStore.getState().accessToken;
@@ -203,8 +204,8 @@ export const usePlansStore = create<{
     };
     const categoryDetails = uniqueCategoryDetails([...get().categoryDetails, category]);
     const categories = categoryDetails.map((item) => item.name);
-    persistCategories(categories);
-    persistCategoryDetails(categoryDetails);
+    persistCategories(categories, true);
+    persistCategoryDetails(categoryDetails, true);
     set({ categories, categoryDetails });
     const token = useAuthStore.getState().accessToken;
     if (useAppStore.getState().onlineOnly && token) {

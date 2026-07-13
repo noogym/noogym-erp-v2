@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { apiRequest } from "../lib/api";
 import { createResource, listResource, saleFromApi, saleToDto } from "../lib/domainApi";
+import { scopeByGym } from "../lib/gymScope";
 import { readLocal, readLocalDb, uid, writeLocal } from "../lib/storage";
 import { useAppStore } from "./appStore";
 import { useAuthStore } from "./authStore";
@@ -23,8 +24,10 @@ export const useSalesStore = create<{
   sales: initialSales,
   revenue: initialSales.reduce((sum, sale) => sum + sale.total, 0),
   loadLocal: async () => {
-    const sales = await readLocalDb("noogym:sales", [] as SaleRecord[]);
-    persist(sales);
+    const sales = scopeByGym(
+      await readLocalDb("noogym:sales", [] as SaleRecord[], { seedMissing: false }),
+      useAppStore.getState().activeGymId,
+    );
     set({ sales, revenue: sales.reduce((sum, sale) => sum + sale.total, 0) });
   },
   loadOnline: async () => {
@@ -33,7 +36,7 @@ export const useSalesStore = create<{
     const activeGymId = useAppStore.getState().activeGymId ?? undefined;
     const apiSales = await listResource<Record<string, unknown>>("sales", token, { gymId: activeGymId });
     const sales = apiSales.map(saleFromApi);
-    persist(sales, true);
+    persist(sales);
     set({ sales, revenue: sales.reduce((sum, sale) => sum + sale.total, 0) });
   },
   addSale: (sale, items = []) => set((state) => {
@@ -115,7 +118,7 @@ export const useSalesStore = create<{
   }),
   convertQuote: (id) => set((state) => {
     const sales = state.sales.map((sale) => sale.id === id ? { ...sale, type: "Venda normal", status: "Concluida" } : sale);
-    persist(sales);
+    persist(sales, true);
     useAppStore.getState().addPendingSync();
     return { sales, revenue: sales.reduce((sum, sale) => sale.status === "Cancelada" ? sum : sum + sale.total, 0) };
   })

@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { apiBaseUrl, isHttpOnlyAuthEnabled } from "../lib/api";
-import { runDesktopSync } from "../lib/desktopLocalDb";
+import { runDesktopSync, saveDesktopBinding } from "../lib/desktopLocalDb";
 import { useAuthStore } from "./authStore";
 
 export type ThemeMode = "dark" | "light";
@@ -183,6 +183,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     })),
   setActiveGymId: (gymId) => {
     persistActiveGymId(gymId);
+    if (gymId && desktopBridge()?.binding) {
+      void saveDesktopBinding({ activeGymId: gymId }).catch(console.error);
+    }
     set({ activeGymId: gymId });
   },
   setGymDataLoading: (isGymDataLoading) => set({ isGymDataLoading }),

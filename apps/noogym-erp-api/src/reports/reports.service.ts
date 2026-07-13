@@ -9,13 +9,26 @@ import {
   SubscriptionStatus,
   WorkoutStatus,
 } from '@prisma/client';
+import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
+import {
+  directGymScope,
+  hasScope,
+  memberGymScope,
+  paymentGymScope,
+  planGymScope,
+  saleGymScope,
+} from '../common/utils/gym-scope';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class ReportsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async overview(organizationId: string) {
+  async overview(organizationId: string, query: PaginationQueryDto) {
+    const directScope = directGymScope(query);
+    const memberScope = memberGymScope(query);
+    const paymentScope = paymentGymScope(query);
+    const saleScope = saleGymScope(query);
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
     const tomorrow = new Date(todayStart);
@@ -36,15 +49,19 @@ export class ReportsService {
       completedSales,
       activeProducts,
     ] = await this.prisma.$transaction([
-      this.prisma.member.count({ where: { organizationId } }),
+      this.prisma.member.count({ where: { organizationId, ...directScope } }),
       this.prisma.member.count({
-        where: { organizationId, status: MemberStatus.ACTIVE },
+        where: { organizationId, ...directScope, status: MemberStatus.ACTIVE },
       }),
       this.prisma.member.count({
-        where: { organizationId, status: MemberStatus.OVERDUE },
+        where: { organizationId, ...directScope, status: MemberStatus.OVERDUE },
       }),
       this.prisma.payment.aggregate({
-        where: { organizationId, status: PaymentStatus.PAID },
+        where: {
+          organizationId,
+          ...(hasScope(paymentScope) ? { AND: [paymentScope] } : {}),
+          status: PaymentStatus.PAID,
+        },
         _sum: { amount: true },
       }),
       this.prisma.expense.aggregate({
@@ -52,10 +69,18 @@ export class ReportsService {
         _sum: { amount: true },
       }),
       this.prisma.checkIn.count({
-        where: { organizationId, checkedAt: { gte: todayStart, lt: tomorrow } },
+        where: {
+          organizationId,
+          ...directScope,
+          checkedAt: { gte: todayStart, lt: tomorrow },
+        },
       }),
       this.prisma.checkIn.count({
-        where: { organizationId, checkedAt: { gte: weekStart, lt: tomorrow } },
+        where: {
+          organizationId,
+          ...directScope,
+          checkedAt: { gte: weekStart, lt: tomorrow },
+        },
       }),
       this.prisma.workout.count({
         where: { organizationId, status: WorkoutStatus.ACTIVE },
@@ -63,15 +88,20 @@ export class ReportsService {
       this.prisma.subscription.count({
         where: {
           organizationId,
+          ...(Object.keys(memberScope).length ? { member: memberScope } : {}),
           status: SubscriptionStatus.ACTIVE,
           endDate: { gte: new Date() },
         },
       }),
       this.prisma.sale.count({
-        where: { organizationId, status: SaleStatus.COMPLETED },
+        where: {
+          organizationId,
+          ...(hasScope(saleScope) ? { AND: [saleScope] } : {}),
+          status: SaleStatus.COMPLETED,
+        },
       }),
       this.prisma.product.count({
-        where: { organizationId, status: ProductStatus.ACTIVE },
+        where: { organizationId, ...directScope, status: ProductStatus.ACTIVE },
       }),
     ]);
 
@@ -94,16 +124,25 @@ export class ReportsService {
     };
   }
 
-  async financial(organizationId: string) {
+  async financial(organizationId: string, query: PaginationQueryDto) {
+    const paymentScope = paymentGymScope(query);
     const [paidPayments, pendingPayments, paidExpenses, pendingExpenses] =
       await this.prisma.$transaction([
         this.prisma.payment.aggregate({
-          where: { organizationId, status: PaymentStatus.PAID },
+          where: {
+            organizationId,
+            ...(hasScope(paymentScope) ? { AND: [paymentScope] } : {}),
+            status: PaymentStatus.PAID,
+          },
           _sum: { amount: true },
           _count: { id: true },
         }),
         this.prisma.payment.aggregate({
-          where: { organizationId, status: PaymentStatus.PENDING },
+          where: {
+            organizationId,
+            ...(hasScope(paymentScope) ? { AND: [paymentScope] } : {}),
+            status: PaymentStatus.PENDING,
+          },
           _sum: { amount: true },
           _count: { id: true },
         }),
@@ -135,27 +174,48 @@ export class ReportsService {
     };
   }
 
-  async members(organizationId: string) {
+  async members(organizationId: string, query: PaginationQueryDto) {
+    const directScope = directGymScope(query);
     const [total, active, inactive, overdue, blocked, cancelled, recent] =
       await this.prisma.$transaction([
-        this.prisma.member.count({ where: { organizationId } }),
+        this.prisma.member.count({ where: { organizationId, ...directScope } }),
         this.prisma.member.count({
-          where: { organizationId, status: MemberStatus.ACTIVE },
+          where: {
+            organizationId,
+            ...directScope,
+            status: MemberStatus.ACTIVE,
+          },
         }),
         this.prisma.member.count({
-          where: { organizationId, status: MemberStatus.INACTIVE },
+          where: {
+            organizationId,
+            ...directScope,
+            status: MemberStatus.INACTIVE,
+          },
         }),
         this.prisma.member.count({
-          where: { organizationId, status: MemberStatus.OVERDUE },
+          where: {
+            organizationId,
+            ...directScope,
+            status: MemberStatus.OVERDUE,
+          },
         }),
         this.prisma.member.count({
-          where: { organizationId, status: MemberStatus.BLOCKED },
+          where: {
+            organizationId,
+            ...directScope,
+            status: MemberStatus.BLOCKED,
+          },
         }),
         this.prisma.member.count({
-          where: { organizationId, status: MemberStatus.CANCELLED },
+          where: {
+            organizationId,
+            ...directScope,
+            status: MemberStatus.CANCELLED,
+          },
         }),
         this.prisma.member.findMany({
-          where: { organizationId },
+          where: { organizationId, ...directScope },
           orderBy: { createdAt: 'desc' },
           take: 5,
           select: {
@@ -176,7 +236,8 @@ export class ReportsService {
     };
   }
 
-  async workouts(organizationId: string) {
+  async workouts(organizationId: string, query: PaginationQueryDto) {
+    const memberScope = memberGymScope(query);
     const [total, active, draft, paused, archived, assignments] =
       await this.prisma.$transaction([
         this.prisma.workout.count({ where: { organizationId } }),
@@ -193,7 +254,11 @@ export class ReportsService {
           where: { organizationId, status: WorkoutStatus.ARCHIVED },
         }),
         this.prisma.workoutAssignment.count({
-          where: { workout: { organizationId }, isActive: true },
+          where: {
+            workout: { organizationId },
+            ...(Object.keys(memberScope).length ? { member: memberScope } : {}),
+            isActive: true,
+          },
         }),
       ]);
 
@@ -204,7 +269,8 @@ export class ReportsService {
     };
   }
 
-  async checkins(organizationId: string) {
+  async checkins(organizationId: string, query: PaginationQueryDto) {
+    const directScope = directGymScope(query);
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
     const tomorrow = new Date(todayStart);
@@ -219,16 +285,28 @@ export class ReportsService {
 
     const [today, week, month, recent] = await this.prisma.$transaction([
       this.prisma.checkIn.count({
-        where: { organizationId, checkedAt: { gte: todayStart, lt: tomorrow } },
+        where: {
+          organizationId,
+          ...directScope,
+          checkedAt: { gte: todayStart, lt: tomorrow },
+        },
       }),
       this.prisma.checkIn.count({
-        where: { organizationId, checkedAt: { gte: weekStart, lt: tomorrow } },
+        where: {
+          organizationId,
+          ...directScope,
+          checkedAt: { gte: weekStart, lt: tomorrow },
+        },
       }),
       this.prisma.checkIn.count({
-        where: { organizationId, checkedAt: { gte: monthStart, lt: tomorrow } },
+        where: {
+          organizationId,
+          ...directScope,
+          checkedAt: { gte: monthStart, lt: tomorrow },
+        },
       }),
       this.prisma.checkIn.findMany({
-        where: { organizationId },
+        where: { organizationId, ...directScope },
         orderBy: { checkedAt: 'desc' },
         take: 10,
         include: { member: true, gym: true },
@@ -238,27 +316,46 @@ export class ReportsService {
     return { today, week, month, recent };
   }
 
-  async sales(organizationId: string) {
+  async sales(organizationId: string, query: PaginationQueryDto) {
+    const memberScope = memberGymScope(query);
+    const paymentScope = paymentGymScope(query);
+    const saleScope = saleGymScope(query);
     const [subscriptions, payments, posSales, topPlans, recentSales] =
       await this.prisma.$transaction([
-        this.prisma.subscription.count({ where: { organizationId } }),
+        this.prisma.subscription.count({
+          where: {
+            organizationId,
+            ...(Object.keys(memberScope).length ? { member: memberScope } : {}),
+          },
+        }),
         this.prisma.payment.aggregate({
-          where: { organizationId, status: PaymentStatus.PAID },
+          where: {
+            organizationId,
+            ...(hasScope(paymentScope) ? { AND: [paymentScope] } : {}),
+            status: PaymentStatus.PAID,
+          },
           _sum: { amount: true },
           _count: { id: true },
         }),
         this.prisma.sale.aggregate({
-          where: { organizationId, status: SaleStatus.COMPLETED },
+          where: {
+            organizationId,
+            ...(hasScope(saleScope) ? { AND: [saleScope] } : {}),
+            status: SaleStatus.COMPLETED,
+          },
           _sum: { total: true },
           _count: { id: true },
         }),
         this.prisma.plan.findMany({
-          where: { organizationId },
+          where: { organizationId, ...planGymScope(query) },
           include: { _count: { select: { subscriptions: true } } },
           orderBy: { createdAt: 'desc' },
         }),
         this.prisma.sale.findMany({
-          where: { organizationId },
+          where: {
+            organizationId,
+            ...(hasScope(saleScope) ? { AND: [saleScope] } : {}),
+          },
           orderBy: { soldAt: 'desc' },
           take: 10,
           include: { member: true, seller: true, items: true },
@@ -283,36 +380,53 @@ export class ReportsService {
     };
   }
 
-  async products(organizationId: string) {
+  async products(organizationId: string, query: PaginationQueryDto) {
+    const directScope = directGymScope(query);
+    const saleScope = saleGymScope(query);
     const [total, active, inactive, lowStock, inventory, saleItems, recent] =
       await this.prisma.$transaction([
-        this.prisma.product.count({ where: { organizationId } }),
         this.prisma.product.count({
-          where: { organizationId, status: ProductStatus.ACTIVE },
+          where: { organizationId, ...directScope },
         }),
         this.prisma.product.count({
-          where: { organizationId, status: ProductStatus.INACTIVE },
+          where: {
+            organizationId,
+            ...directScope,
+            status: ProductStatus.ACTIVE,
+          },
+        }),
+        this.prisma.product.count({
+          where: {
+            organizationId,
+            ...directScope,
+            status: ProductStatus.INACTIVE,
+          },
         }),
         this.prisma.product.findMany({
           where: {
             organizationId,
+            ...directScope,
             trackStock: true,
           },
           orderBy: { stock: 'asc' },
           take: 10,
         }),
         this.prisma.product.findMany({
-          where: { organizationId },
+          where: { organizationId, ...directScope },
           select: { stock: true, price: true, cost: true },
         }),
         this.prisma.saleItem.findMany({
           where: {
-            sale: { organizationId, status: SaleStatus.COMPLETED },
+            sale: {
+              organizationId,
+              ...(hasScope(saleScope) ? { AND: [saleScope] } : {}),
+              status: SaleStatus.COMPLETED,
+            },
           },
           select: { productName: true, quantity: true, total: true },
         }),
         this.prisma.product.findMany({
-          where: { organizationId },
+          where: { organizationId, ...directScope },
           orderBy: { createdAt: 'desc' },
           take: 10,
         }),
@@ -335,24 +449,43 @@ export class ReportsService {
     };
   }
 
-  async classes(organizationId: string) {
+  async classes(organizationId: string, query: PaginationQueryDto) {
+    const directScope = directGymScope(query);
     const [total, scheduled, inProgress, completed, cancelled, upcoming] =
       await this.prisma.$transaction([
-        this.prisma.gymClass.count({ where: { organizationId } }),
         this.prisma.gymClass.count({
-          where: { organizationId, status: GymClassStatus.SCHEDULED },
+          where: { organizationId, ...directScope },
         }),
         this.prisma.gymClass.count({
-          where: { organizationId, status: GymClassStatus.IN_PROGRESS },
+          where: {
+            organizationId,
+            ...directScope,
+            status: GymClassStatus.SCHEDULED,
+          },
         }),
         this.prisma.gymClass.count({
-          where: { organizationId, status: GymClassStatus.COMPLETED },
+          where: {
+            organizationId,
+            ...directScope,
+            status: GymClassStatus.IN_PROGRESS,
+          },
         }),
         this.prisma.gymClass.count({
-          where: { organizationId, status: GymClassStatus.CANCELLED },
+          where: {
+            organizationId,
+            ...directScope,
+            status: GymClassStatus.COMPLETED,
+          },
+        }),
+        this.prisma.gymClass.count({
+          where: {
+            organizationId,
+            ...directScope,
+            status: GymClassStatus.CANCELLED,
+          },
         }),
         this.prisma.gymClass.findMany({
-          where: { organizationId },
+          where: { organizationId, ...directScope },
           orderBy: [{ startAt: 'asc' }, { createdAt: 'desc' }],
           take: 10,
           include: { instructor: true, room: true, gym: true },
@@ -366,24 +499,43 @@ export class ReportsService {
     };
   }
 
-  async employees(organizationId: string) {
+  async employees(organizationId: string, query: PaginationQueryDto) {
+    const directScope = directGymScope(query);
     const [total, active, inactive, onLeave, terminated, recent] =
       await this.prisma.$transaction([
-        this.prisma.employee.count({ where: { organizationId } }),
         this.prisma.employee.count({
-          where: { organizationId, status: EmployeeStatus.ACTIVE },
+          where: { organizationId, ...directScope },
         }),
         this.prisma.employee.count({
-          where: { organizationId, status: EmployeeStatus.INACTIVE },
+          where: {
+            organizationId,
+            ...directScope,
+            status: EmployeeStatus.ACTIVE,
+          },
         }),
         this.prisma.employee.count({
-          where: { organizationId, status: EmployeeStatus.ON_LEAVE },
+          where: {
+            organizationId,
+            ...directScope,
+            status: EmployeeStatus.INACTIVE,
+          },
         }),
         this.prisma.employee.count({
-          where: { organizationId, status: EmployeeStatus.TERMINATED },
+          where: {
+            organizationId,
+            ...directScope,
+            status: EmployeeStatus.ON_LEAVE,
+          },
+        }),
+        this.prisma.employee.count({
+          where: {
+            organizationId,
+            ...directScope,
+            status: EmployeeStatus.TERMINATED,
+          },
         }),
         this.prisma.employee.findMany({
-          where: { organizationId },
+          where: { organizationId, ...directScope },
           orderBy: { createdAt: 'desc' },
           take: 10,
           include: {

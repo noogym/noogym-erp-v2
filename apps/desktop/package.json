@@ -7,8 +7,9 @@
   "scripts": {
     "dev": "pnpm build:main && cross-env VITE_NOOGYM_API_URL=http://127.0.0.1:3333 VITE_NOOGYM_WEB_URL=http://localhost:3000/register concurrently -k \"vite --host 127.0.0.1\" \"wait-on tcp:5173 && node scripts/start-electron-dev.cjs\"",
     "build:main": "tsc -p tsconfig.electron.json",
-    "build": "tsc -p tsconfig.json && vite build && tsc -p tsconfig.electron.json",
-    "build:prod": "cross-env VITE_NOOGYM_API_URL=https://apiv1.noogym.com VITE_NOOGYM_WEB_URL=https://admin.noogym.com/register pnpm build",
+    "build:base": "tsc -p tsconfig.json && vite build && tsc -p tsconfig.electron.json",
+    "build": "cross-env VITE_NOOGYM_API_URL=http://127.0.0.1:3333 VITE_NOOGYM_WEB_URL=http://localhost:3000/register pnpm build:base",
+    "build:prod": "cross-env VITE_NOOGYM_API_URL=https://apiv1.noogym.com VITE_NOOGYM_WEB_URL=https://admin.noogym.com/register pnpm build:base",
     "dist": "pnpm build && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder",
     "dist:win": "pnpm build && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false ELECTRON_BUILDER_DISABLE_BUILD_CACHE=true electron-builder --win nsis --x64",
     "dist:win:prod": "pnpm build:prod && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false ELECTRON_BUILDER_DISABLE_BUILD_CACHE=true electron-builder --win nsis --x64",

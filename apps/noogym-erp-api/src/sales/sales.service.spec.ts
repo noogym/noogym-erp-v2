@@ -128,9 +128,14 @@ describe('SalesService', () => {
         organizationId,
         saleId: 'sale-1',
         amount: 3000,
+        grossAmount: 3000,
+        discountAmount: 0,
+        lateFeeAmount: 0,
+        outstandingAmount: 0,
         method: PaymentMethod.CASH,
         status: PaymentStatus.PAID,
         paidAt: soldAt,
+        receiptNumber: 'sale-1',
       }),
     });
   });

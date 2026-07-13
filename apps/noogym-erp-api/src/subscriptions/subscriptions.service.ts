@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { Prisma, SubscriptionStatus } from '@prisma/client';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
+import { memberGymScope } from '../common/utils/gym-scope';
 import { getPagination, paginated } from '../common/utils/pagination';
 import { assertActiveMember } from '../members/member-status';
 import { PrismaService } from '../prisma/prisma.service';
@@ -16,6 +17,7 @@ export class SubscriptionsService {
 
   async findAll(organizationId: string, query: PaginationQueryDto) {
     const { page, limit, skip, take } = getPagination(query.page, query.limit);
+    const memberScope = memberGymScope(query);
     const where: Prisma.SubscriptionWhereInput = {
       organizationId,
       ...(query.status ? { status: query.status as SubscriptionStatus } : {}),
@@ -27,8 +29,13 @@ export class SubscriptionsService {
             },
           }
         : {}),
-      ...(query.search
-        ? { member: { name: { contains: query.search } } }
+      ...(query.search || Object.keys(memberScope).length
+        ? {
+            member: {
+              ...memberScope,
+              ...(query.search ? { name: { contains: query.search } } : {}),
+            },
+          }
         : {}),
     };
     const [items, total] = await this.prisma.$transaction([
@@ -93,6 +100,10 @@ export class SubscriptionsService {
             memberId: dto.memberId,
             subscriptionId: subscription.id,
             amount: plan.price,
+            grossAmount: plan.price,
+            discountAmount: 0,
+            lateFeeAmount: 0,
+            outstandingAmount: plan.price,
             method: 'CASH',
             status: 'PENDING',
             dueDate: startDate,

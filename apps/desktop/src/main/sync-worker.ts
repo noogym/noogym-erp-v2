@@ -1,4 +1,8 @@
-import { getSQLiteLocalDb, type DesktopBinding, type SyncQueueEvent } from "./sqlite-localdb";
+import {
+  getSQLiteLocalDb,
+  type DesktopBinding,
+  type SyncQueueEvent,
+} from "./sqlite-localdb";
 
 type ApiEnvelope<T> =
   | {
@@ -86,9 +90,12 @@ type ClientPayload = Record<string, unknown> & {
 const API_TIMEOUT_MS = 20_000;
 const API_MAX_PAGE_LIMIT = 100;
 const API_MAX_PAGES = 1_000;
-const CONFLICT_MESSAGE = "Conflito detectado: o servidor foi alterado depois da base local.";
+const CONFLICT_MESSAGE =
+  "Conflito detectado: o servidor foi alterado depois da base local.";
 
-export async function runSQLiteSync(options: SQLiteSyncOptions): Promise<SQLiteSyncResult> {
+export async function runSQLiteSync(
+  options: SQLiteSyncOptions,
+): Promise<SQLiteSyncResult> {
   const db = getSQLiteLocalDb();
   const errors: string[] = [];
   let pushed = 0;
@@ -100,7 +107,7 @@ export async function runSQLiteSync(options: SQLiteSyncOptions): Promise<SQLiteS
     binding = db.saveDesktopBinding({
       apiUrl: options.apiUrl,
       user: options.session.user,
-      activeGymId: options.gymId
+      activeGymId: options.gymId,
     });
   }
 
@@ -134,7 +141,10 @@ export async function runSQLiteSync(options: SQLiteSyncOptions): Promise<SQLiteS
       gyms: result.bootstrap.data?.gyms ?? [],
       users: result.bootstrap.data?.users ?? [],
       activeGymId: options.gymId,
-      lastBootstrapAt: asString(result.bootstrap.generatedAt, new Date().toISOString())
+      lastBootstrapAt: asString(
+        result.bootstrap.generatedAt,
+        new Date().toISOString(),
+      ),
     });
   } catch (error) {
     failed += 1;
@@ -160,11 +170,14 @@ export async function runSQLiteSync(options: SQLiteSyncOptions): Promise<SQLiteS
     failedSync: db.getFailedSyncCount(),
     conflictSync: db.getOpenSyncConflictCount(),
     errors,
-    binding: binding ?? db.getDesktopBinding()
+    binding: binding ?? db.getDesktopBinding(),
   };
 }
 
-async function pushEvent(options: SQLiteSyncOptions, event: SyncQueueEvent): Promise<"synced" | "conflict"> {
+async function pushEvent(
+  options: SQLiteSyncOptions,
+  event: SyncQueueEvent,
+): Promise<"synced" | "conflict"> {
   if (event.entity !== "clients") {
     return pushGenericEvent(options, event);
   }
@@ -190,7 +203,7 @@ async function pushEvent(options: SQLiteSyncOptions, event: SyncQueueEvent): Pro
         operation: event.operation,
         localPayload: event.payload,
         remotePayload: clientFromApi(remote, event.payload.id),
-        error: CONFLICT_MESSAGE
+        error: CONFLICT_MESSAGE,
       });
       getSQLiteLocalDb().markSyncEventConflict(event.id, CONFLICT_MESSAGE);
       return "conflict";
@@ -200,43 +213,70 @@ async function pushEvent(options: SQLiteSyncOptions, event: SyncQueueEvent): Pro
   const response = remoteId
     ? await apiRequest<Entity>(options, `/members/${remoteId}`, {
         method: "PATCH",
-        body
+        body,
       })
     : await apiRequest<Entity>(options, "/members", {
         method: "POST",
-        body
+        body,
       });
 
   const synced = clientFromApi(response, event.payload.id);
   getSQLiteLocalDb().markClientSynced(event.payload.id, String(response.id), {
     ...event.payload,
-    ...synced
+    ...synced,
   });
   return "synced";
 }
 
-async function pushGenericEvent(options: SQLiteSyncOptions, event: SyncQueueEvent): Promise<"synced" | "conflict"> {
+async function pushGenericEvent(
+  options: SQLiteSyncOptions,
+  event: SyncQueueEvent,
+): Promise<"synced" | "conflict"> {
   const config = syncConfigFor(event.entity, event.payload);
   if (!config) throw new Error(`Sync de ${event.entity} ainda nao suportado.`);
 
   const remoteId = remoteIdForGeneric(event.payload);
   if (event.operation === "delete") {
     if (!remoteId || !config.deletePath) return "synced";
-    await apiRequest(options, config.deletePath(remoteId), { method: "DELETE" });
+    await apiRequest(options, config.deletePath(remoteId), {
+      method: "DELETE",
+    });
     return "synced";
   }
 
-  const specialResponse = await pushSpecialGenericEvent(options, event, remoteId);
+  const specialResponse = await pushSpecialGenericEvent(
+    options,
+    event,
+    remoteId,
+  );
   if (specialResponse.handled) {
-    const responseId = asString(specialResponse.response?.id, remoteId ?? undefined);
-    if (responseId) getSQLiteLocalDb().markLocalEntitySynced(event.entity, event.entityId, responseId, specialResponse.response);
+    const responseId = asString(
+      specialResponse.response?.id,
+      remoteId ?? undefined,
+    );
+    if (responseId)
+      getSQLiteLocalDb().markLocalEntitySynced(
+        event.entity,
+        event.entityId,
+        responseId,
+        specialResponse.response,
+      );
     return "synced";
   }
 
-  const method = config.method ?? (remoteId && config.patchPath ? "PATCH" : "POST");
-  const path = method === "PATCH" && config.patchPath ? config.patchPath(remoteId ?? event.entityId) : config.postPath;
+  const method =
+    config.method ?? (remoteId && config.patchPath ? "PATCH" : "POST");
+  const path =
+    method === "PATCH" && config.patchPath
+      ? config.patchPath(remoteId ?? event.entityId)
+      : config.postPath;
 
-  if (method === "PATCH" && remoteId && config.getPath && shouldCheckRemoteConflict(event.payload)) {
+  if (
+    method === "PATCH" &&
+    remoteId &&
+    config.getPath &&
+    shouldCheckRemoteConflict(event.payload)
+  ) {
     const remote = await apiRequest<Entity>(options, config.getPath(remoteId));
     if (hasRemoteConflict(event.payload, remote)) {
       getSQLiteLocalDb().createSyncConflict({
@@ -246,8 +286,10 @@ async function pushGenericEvent(options: SQLiteSyncOptions, event: SyncQueueEven
         remoteId,
         operation: event.operation,
         localPayload: event.payload,
-        remotePayload: config.fromApi ? config.fromApi(remote, event.entityId) : remote,
-        error: CONFLICT_MESSAGE
+        remotePayload: config.fromApi
+          ? config.fromApi(remote, event.entityId)
+          : remote,
+        error: CONFLICT_MESSAGE,
       });
       getSQLiteLocalDb().markSyncEventConflict(event.id, CONFLICT_MESSAGE);
       return "conflict";
@@ -256,32 +298,58 @@ async function pushGenericEvent(options: SQLiteSyncOptions, event: SyncQueueEven
 
   const response = await apiRequest<Entity>(options, path, {
     method,
-    body: config.toDto(event.payload, options.gymId)
+    body: config.toDto(event.payload, options.gymId),
   });
   const responseId = asString(response.id, undefined);
-  if (responseId) getSQLiteLocalDb().markLocalEntitySynced(event.entity, event.entityId, responseId, response);
+  if (responseId)
+    getSQLiteLocalDb().markLocalEntitySynced(
+      event.entity,
+      event.entityId,
+      responseId,
+      response,
+    );
   return "synced";
 }
 
-async function pushSpecialGenericEvent(options: SQLiteSyncOptions, event: SyncQueueEvent, remoteId?: string) {
-  if (!remoteId || event.operation !== "update") return { handled: false as const };
+async function pushSpecialGenericEvent(
+  options: SQLiteSyncOptions,
+  event: SyncQueueEvent,
+  remoteId?: string,
+) {
+  if (!remoteId || event.operation !== "update")
+    return { handled: false as const };
 
   if (event.entity === "sales") {
     if (event.payload.status === "Cancelada") {
-      const response = await apiRequest<Entity>(options, `/sales/${remoteId}/cancel`, { method: "PATCH" });
+      const response = await apiRequest<Entity>(
+        options,
+        `/sales/${remoteId}/cancel`,
+        { method: "PATCH" },
+      );
       return { handled: true as const, response };
     }
 
-    throw new Error("Alteracao de venda existente ainda nao tem endpoint de sincronizacao suportado.");
+    throw new Error(
+      "Alteracao de venda existente ainda nao tem endpoint de sincronizacao suportado.",
+    );
   }
 
   if (event.entity === "finance-records" && event.payload.kind !== "Despesa") {
-    if (event.payload.status === "Recebido" || event.payload.status === "Pago") {
-      const response = await apiRequest<Entity>(options, `/payments/${remoteId}/mark-paid`, { method: "PATCH" });
+    if (
+      event.payload.status === "Recebido" ||
+      event.payload.status === "Pago"
+    ) {
+      const response = await apiRequest<Entity>(
+        options,
+        `/payments/${remoteId}/mark-paid`,
+        { method: "PATCH" },
+      );
       return { handled: true as const, response };
     }
 
-    throw new Error("Alteracao de pagamento existente ainda nao tem endpoint de sincronizacao suportado.");
+    throw new Error(
+      "Alteracao de pagamento existente ainda nao tem endpoint de sincronizacao suportado.",
+    );
   }
 
   return { handled: false as const };
@@ -291,7 +359,7 @@ async function pullRemoteClients(options: SQLiteSyncOptions) {
   const params = new URLSearchParams({ limit: String(options.limit ?? 500) });
   const bootstrap = await apiRequest<DesktopBootstrap>(
     options,
-    `/entrypoints/desktop/sync/bootstrap?${params.toString()}`
+    `/entrypoints/desktop/sync/bootstrap?${params.toString()}`,
   );
 
   const members = bootstrap.data?.members ?? [];
@@ -318,11 +386,11 @@ async function pullRemoteCollections(options: SQLiteSyncOptions) {
     entityName: string,
     path: string,
     mapper: (item: Entity) => Record<string, unknown>,
-    query?: Record<string, string | number | boolean | undefined>
+    query?: Record<string, string | number | boolean | undefined>,
   ) => {
     try {
       const items = await apiList<Entity>(options, path, query);
-      pulled += db.mergeRemoteCollection(entityName, items.map(mapper));
+      pulled += db.mergeRemoteCollection(entityName, items.map(mapper), query?.gymId ? String(query.gymId) : undefined);
     } catch (error) {
       errors.push(`${label}: ${errorMessage(error)}`);
     }
@@ -330,32 +398,52 @@ async function pullRemoteCollections(options: SQLiteSyncOptions) {
 
   await Promise.all([
     pullList("Planos", "plans", "/plans", planFromApi, scopedQuery),
-    pullList("Categorias de planos", "plan-categories", "/plan-categories", planCategoryFromApi),
+    pullList(
+      "Categorias de planos",
+      "plan-categories",
+      "/plan-categories",
+      planCategoryFromApi,
+    ),
     pullList("Produtos", "products", "/products", productFromApi, scopedQuery),
     pullList("Vendas", "sales", "/sales", saleFromApi, scopedQuery),
     pullList("Check-ins", "checkins", "/checkins", checkinFromApi, scopedQuery),
     pullList("Aulas", "classes", "/classes", classFromApi, scopedQuery),
-    pullList("Funcionarios", "employees", "/employees", employeeFromApi, scopedQuery),
-    pullList("Treinos", "workouts", "/workouts", workoutFromApi)
+    pullList(
+      "Funcionarios",
+      "employees",
+      "/employees",
+      employeeFromApi,
+      scopedQuery,
+    ),
+    pullList("Treinos", "workouts", "/workouts", workoutFromApi),
   ]);
 
   try {
     const records = await listFinanceRecords(options, scopedQuery);
-    pulled += db.mergeRemoteCollection("finance-records", records);
+    pulled += db.mergeRemoteCollection("finance-records", records, options.gymId);
   } catch (error) {
     errors.push(`Financeiro: ${errorMessage(error)}`);
   }
 
   try {
     const accounts = await apiRequest<Entity[]>(options, "/finance/accounts");
-    pulled += db.mergeRemoteCollection("finance-accounts", accounts.map(financeAccountFromApi));
+    pulled += db.mergeRemoteCollection(
+      "finance-accounts",
+      accounts.map(financeAccountFromApi),
+    );
   } catch (error) {
     errors.push(`Contas financeiras: ${errorMessage(error)}`);
   }
 
   try {
-    const categories = await apiRequest<Entity[]>(options, "/finance/categories");
-    pulled += db.mergeRemoteCollection("finance-categories", categories.map(financeCategoryFromApi));
+    const categories = await apiRequest<Entity[]>(
+      options,
+      "/finance/categories",
+    );
+    pulled += db.mergeRemoteCollection(
+      "finance-categories",
+      categories.map(financeCategoryFromApi),
+    );
   } catch (error) {
     errors.push(`Categorias financeiras: ${errorMessage(error)}`);
   }
@@ -367,12 +455,20 @@ async function pullRemoteCollections(options: SQLiteSyncOptions) {
     errors.push(`Configuracoes operacionais: ${errorMessage(error)}`);
   }
 
-  const productCategories = deriveProductCategories(db.getLocalCollection("noogym:products"));
-  if (productCategories.length) db.setLocalCollection("noogym:product-categories", productCategories);
+  const productCategories = deriveProductCategories(
+    db.getLocalCollection("noogym:products"),
+  );
+  if (productCategories.length)
+    db.setLocalCollection("noogym:product-categories", productCategories);
 
   const planCategories = db.getLocalCollection("noogym:plan-category-details");
   if (Array.isArray(planCategories)) {
-    db.setLocalCollection("noogym:plan-categories", planCategories.map((category) => asString(entity(category)?.name)).filter(Boolean));
+    db.setLocalCollection(
+      "noogym:plan-categories",
+      planCategories
+        .map((category) => asString(entity(category)?.name))
+        .filter(Boolean),
+    );
   }
 
   return { pulled, errors };
@@ -381,7 +477,7 @@ async function pullRemoteCollections(options: SQLiteSyncOptions) {
 async function apiList<T extends Entity>(
   options: SQLiteSyncOptions,
   path: string,
-  query?: Record<string, string | number | boolean | undefined>
+  query?: Record<string, string | number | boolean | undefined>,
 ) {
   const limit = apiPageLimit(options.limit);
   const items: T[] = [];
@@ -389,9 +485,15 @@ async function apiList<T extends Entity>(
   let pages = 1;
 
   do {
-    const response = await apiRequest<PaginatedResponse<T>>(options, apiPath(path, { ...query, page, limit }));
+    const response = await apiRequest<PaginatedResponse<T>>(
+      options,
+      apiPath(path, { ...query, page, limit }),
+    );
     items.push(...(response.items ?? []));
-    pages = Math.min(API_MAX_PAGES, Math.max(1, Number(response.meta?.pages) || 1));
+    pages = Math.min(
+      API_MAX_PAGES,
+      Math.max(1, Number(response.meta?.pages) || 1),
+    );
     page += 1;
   } while (page <= pages);
 
@@ -403,15 +505,18 @@ function apiPageLimit(limit?: number) {
   return Math.min(Math.max(Math.floor(limit), 1), API_MAX_PAGE_LIMIT);
 }
 
-async function listFinanceRecords(options: SQLiteSyncOptions, query?: Record<string, string | number | boolean | undefined>) {
+async function listFinanceRecords(
+  options: SQLiteSyncOptions,
+  query?: Record<string, string | number | boolean | undefined>,
+) {
   const [payments, expenses] = await Promise.all([
     apiList<Entity>(options, "/payments", query),
-    apiList<Entity>(options, "/expenses", query)
+    apiList<Entity>(options, "/expenses", query),
   ]);
 
   return [
     ...payments.map(paymentFromApi),
-    ...expenses.map(expenseFromApi)
+    ...expenses.map(expenseFromApi),
   ].sort((a, b) => asString(b.id).localeCompare(asString(a.id)));
 }
 
@@ -427,7 +532,7 @@ function clientToMemberDto(client: ClientPayload, fallbackGymId?: string) {
     address: cleanString(client.address),
     city: cleanString(client.city),
     avatarUrl: cleanString(client.avatar),
-    notes: cleanString(client.observations)
+    notes: cleanString(client.observations),
   };
 }
 
@@ -448,13 +553,15 @@ function clientFromApi(member: Entity, localId?: string): ClientPayload {
     planId: asString(subscription?.planId ?? plan?.id, undefined),
     planTone: member.status === "OVERDUE" ? "red" : "lime",
     status: statusLabel(member.status),
-    lastCheckin: checkIn ? relativeDate(asDate(checkIn.checkedAt)) : "Sem check-in",
+    lastCheckin: checkIn
+      ? relativeDate(asDate(checkIn.checkedAt))
+      : "Sem check-in",
     expires: formatDate(asDate(subscription?.endDate)),
     birthday: formatBirthday(asDate(member.birthDate)),
     avatar: initials(name),
     document: asString(member.documentNumber, ""),
     createdAt: asString(member.createdAt, undefined),
-    updatedAt: asString(member.updatedAt, undefined)
+    updatedAt: asString(member.updatedAt, undefined),
   };
 }
 
@@ -464,15 +571,22 @@ function planFromApi(plan: Entity): Entity {
     id: asString(plan.id),
     name: asString(plan.name, "Plano"),
     description: asString(plan.description, ""),
-    category: asString(plan.category, plan.includesClasses === true ? "Aulas" : "Musculacao"),
+    category: asString(
+      plan.category,
+      plan.includesClasses === true ? "Aulas" : "Musculacao",
+    ),
     price: `${formatNumber(plan.price)} Kz/${durationLabel(Number(plan.durationDays ?? 30)).toLowerCase()}`,
     duration: durationLabel(Number(plan.durationDays ?? 30)),
     type: plan.isPopular === true ? "Popular" : "Recorrente",
     clients: 0,
     status: statusLabel(plan.status, { ACTIVE: "Ativo", INACTIVE: "Inativo" }),
     color: asString(plan.color, "#B6FF00"),
-    gymIds: gymLinks.map((link) => asString(link.gymId ?? entity(link.gym)?.id, "")).filter(Boolean),
-    gymNames: gymLinks.map((link) => asString(entity(link.gym)?.name, "")).filter(Boolean)
+    gymIds: gymLinks
+      .map((link) => asString(link.gymId ?? entity(link.gym)?.id, ""))
+      .filter(Boolean),
+    gymNames: gymLinks
+      .map((link) => asString(entity(link.gym)?.name, ""))
+      .filter(Boolean),
   });
 }
 
@@ -483,8 +597,11 @@ function planCategoryFromApi(category: Entity): Entity {
     icon: asString(category.icon, asString(category.name, "Categoria")),
     description: asString(category.description, undefined),
     color: asString(category.color, "#B6FF00"),
-    status: statusLabel(category.status, { ACTIVE: "Ativo", INACTIVE: "Inativo" }),
-    order: asNumber(category.displayOrder, 1)
+    status: statusLabel(category.status, {
+      ACTIVE: "Ativo",
+      INACTIVE: "Inativo",
+    }),
+    order: asNumber(category.displayOrder, 1),
   });
 }
 
@@ -500,10 +617,14 @@ function productFromApi(product: Entity): Entity {
     emoji: asString(product.label, "PRD"),
     sku: asString(product.sku, undefined),
     barcode: asString(product.barcode, undefined),
-    status: statusLabel(product.status, { ACTIVE: "Ativo", INACTIVE: "Inativo", ARCHIVED: "Arquivado" }),
+    status: statusLabel(product.status, {
+      ACTIVE: "Ativo",
+      INACTIVE: "Inativo",
+      ARCHIVED: "Arquivado",
+    }),
     description: asString(product.description, undefined),
     unit: asString(product.unit, "Unidade"),
-    minStock: asNumber(product.minStock, 10)
+    minStock: asNumber(product.minStock, 10),
   });
 }
 
@@ -515,16 +636,23 @@ function saleFromApi(sale: Entity): Entity {
     subtotal: asNumber(sale.subtotal),
     discountAmount: asNumber(sale.discountAmount),
     taxAmount: asNumber(sale.taxAmount),
-    customer: asString(sale.customerName, undefined) || asString(entity(sale.member)?.name, undefined),
+    customer:
+      asString(sale.customerName, undefined) ||
+      asString(entity(sale.member)?.name, undefined),
     memberId: asString(sale.memberId, undefined),
     seller: asString(sale.sellerName, "Admin"),
     type: saleTypeLabel(sale.type),
-    status: statusLabel(sale.status, { DRAFT: "Orcamento", COMPLETED: "Concluida", CANCELLED: "Cancelada", REFUNDED: "Reembolsada" }),
+    status: statusLabel(sale.status, {
+      DRAFT: "Orcamento",
+      COMPLETED: "Concluida",
+      CANCELLED: "Cancelada",
+      REFUNDED: "Reembolsada",
+    }),
     paymentMethod: paymentMethodLabel(sale.paymentMethod),
     dateTime: relativeDate(asDate(sale.soldAt)),
     soldAtIso: asDate(sale.soldAt)?.toISOString(),
     notes: asString(sale.notes, undefined),
-    items: rows(sale.items).map(saleItemFromApi)
+    items: rows(sale.items).map(saleItemFromApi),
   });
 }
 
@@ -535,7 +663,7 @@ function saleItemFromApi(item: Entity) {
     name: asString(item.productName, "Item POS"),
     sku: asString(item.sku, undefined),
     quantity: asNumber(item.quantity, 1),
-    unitPrice: asNumber(item.unitPrice)
+    unitPrice: asNumber(item.unitPrice),
   };
 }
 
@@ -551,7 +679,7 @@ function checkinFromApi(checkin: Entity): Entity {
     accessType: "Entrada",
     dateTime: relativeDate(checkedAt),
     checkedAtIso: checkedAt?.toISOString(),
-    observation: asString(checkin.notes, undefined)
+    observation: asString(checkin.notes, undefined),
   });
 }
 
@@ -567,14 +695,19 @@ function classFromApi(lesson: Entity): Entity {
     duration: `${asNumber(lesson.durationMinutes, 55)} min`,
     seats: asNumber(lesson.capacity),
     participants: asNumber(lesson.participants),
-    status: statusLabel(lesson.status, { SCHEDULED: "Agendada", IN_PROGRESS: "Em andamento", COMPLETED: "Encerrada", CANCELLED: "Cancelada" }),
+    status: statusLabel(lesson.status, {
+      SCHEDULED: "Agendada",
+      IN_PROGRESS: "Em andamento",
+      COMPLETED: "Encerrada",
+      CANCELLED: "Cancelada",
+    }),
     description: asString(lesson.description, undefined),
     equipment: asString(lesson.equipment, undefined),
     allowWaitlist: lesson.allowWaitlist === true,
     requiresCheckIn: lesson.requiresCheckIn === true,
     color: asString(lesson.color, undefined),
     startAtIso: asDate(lesson.startAt)?.toISOString(),
-    endAtIso: asDate(lesson.endAt)?.toISOString()
+    endAtIso: asDate(lesson.endAt)?.toISOString(),
   });
 }
 
@@ -585,7 +718,12 @@ function employeeFromApi(employee: Entity): Entity {
     role: asString(employee.role, "Recepcionista"),
     email: asString(employee.email, "funcionario@noogym.com"),
     phone: asString(employee.phone, "+244 900 000 000"),
-    status: statusLabel(employee.status, { ACTIVE: "Ativo", INACTIVE: "Inativo", ON_LEAVE: "Licenca", TERMINATED: "Desligado" }),
+    status: statusLabel(employee.status, {
+      ACTIVE: "Ativo",
+      INACTIVE: "Inativo",
+      ON_LEAVE: "Licenca",
+      TERMINATED: "Desligado",
+    }),
     salary: `${formatNumber(employee.salary)} Kz`,
     userId: asString(employee.userId ?? entity(employee.user)?.id, undefined),
     gymId: asString(employee.gymId ?? entity(employee.gym)?.id, undefined),
@@ -594,36 +732,51 @@ function employeeFromApi(employee: Entity): Entity {
     contractType: asString(employee.contractType, undefined),
     supervisor: asString(employee.supervisor, undefined),
     shift: asString(employee.shift, undefined),
-    accountEmail: asString(entity(employee.user)?.email, asString(employee.email, undefined)),
-    accountStatus: statusLabel(entity(employee.user)?.status, { ACTIVE: "Conta vinculada", INVITED: "Convite pendente", SUSPENDED: "Suspensa", INACTIVE: "Inativa" }),
-    accessStatus: statusLabel(entity(employee.user)?.status, { ACTIVE: "Liberado", INVITED: "Convite pendente", SUSPENDED: "Bloqueado", INACTIVE: "Bloqueado" }),
+    accountEmail: asString(
+      entity(employee.user)?.email,
+      asString(employee.email, undefined),
+    ),
+    accountStatus: statusLabel(entity(employee.user)?.status, {
+      ACTIVE: "Conta vinculada",
+      INVITED: "Convite pendente",
+      SUSPENDED: "Suspensa",
+      INACTIVE: "Inativa",
+    }),
+    accessStatus: statusLabel(entity(employee.user)?.status, {
+      ACTIVE: "Liberado",
+      INVITED: "Convite pendente",
+      SUSPENDED: "Bloqueado",
+      INACTIVE: "Bloqueado",
+    }),
     lastAccess: relativeDate(asDate(employee.lastLoginAt)),
-    notes: asString(employee.notes, undefined)
+    notes: asString(employee.notes, undefined),
   });
 }
 
 function workoutFromApi(workout: Entity): Entity {
   const assignmentMember = entity(first(workout.assignments)?.member);
   const blocks = Array.isArray(workout.exercises)
-    ? [{
-        id: "api-block",
-        name: "Exercicios",
-        exercises: workout.exercises.map((item, index) => {
-          const row = entity(item) ?? {};
-          const exercise = entity(row.exercise);
-          return {
-            id: asString(row.id, `api-exercise-${index}`),
-            name: asString(exercise?.name, `Exercicio ${index + 1}`),
-            group: asString(entity(exercise?.muscleGroup)?.name, "Geral"),
-            equipment: asString(exercise?.equipment, "Livre"),
-            sets: asNumber(row.sets, 3),
-            reps: asString(row.reps, "10"),
-            load: asString(row.load, ""),
-            rest: `${asNumber(row.restSeconds, 60)}s`,
-            notes: asString(row.notes, "")
-          };
-        })
-      }]
+    ? [
+        {
+          id: "api-block",
+          name: "Exercicios",
+          exercises: workout.exercises.map((item, index) => {
+            const row = entity(item) ?? {};
+            const exercise = entity(row.exercise);
+            return {
+              id: asString(row.id, `api-exercise-${index}`),
+              name: asString(exercise?.name, `Exercicio ${index + 1}`),
+              group: asString(entity(exercise?.muscleGroup)?.name, "Geral"),
+              equipment: asString(exercise?.equipment, "Livre"),
+              sets: asNumber(row.sets, 3),
+              reps: asString(row.reps, "10"),
+              load: asString(row.load, ""),
+              rest: `${asNumber(row.restSeconds, 60)}s`,
+              notes: asString(row.notes, ""),
+            };
+          }),
+        },
+      ]
     : undefined;
 
   return withRemoteFields(workout, {
@@ -634,12 +787,21 @@ function workoutFromApi(workout: Entity): Entity {
     goal: asString(workout.goal, "Condicionamento"),
     author: asString(entity(workout.createdBy)?.name, "Admin"),
     updated: relativeDate(asDate(workout.updatedAt)),
-    status: statusLabel(workout.status, { ACTIVE: "Ativo", PAUSED: "Pausado", DRAFT: "Rascunho", ARCHIVED: "Arquivado" }),
+    status: statusLabel(workout.status, {
+      ACTIVE: "Ativo",
+      PAUSED: "Pausado",
+      DRAFT: "Rascunho",
+      ARCHIVED: "Arquivado",
+    }),
     exercises: Array.isArray(workout.exercises) ? workout.exercises.length : 0,
-    level: statusLabel(workout.level, { BEGINNER: "Iniciante", INTERMEDIATE: "Intermediario", ADVANCED: "Avancado" }),
+    level: statusLabel(workout.level, {
+      BEGINNER: "Iniciante",
+      INTERMEDIATE: "Intermediario",
+      ADVANCED: "Avancado",
+    }),
     duration: `${asNumber(workout.durationMinutes, 60)} min`,
     notes: asString(workout.description, ""),
-    blocks
+    blocks,
   });
 }
 
@@ -651,9 +813,12 @@ function financeAccountFromApi(account: Entity): Entity {
     type: financeAccountType(account.type),
     openingBalance: asNumber(account.openingBalance),
     balance: asNumber(account.balance),
-    status: account.status === "INACTIVE" || account.status === "Inativa" ? "Inativa" : "Ativa",
+    status:
+      account.status === "INACTIVE" || account.status === "Inativa"
+        ? "Inativa"
+        : "Ativa",
     isDefault: account.isDefault === true,
-    color: asString(account.color, "#B6FF00")
+    color: asString(account.color, "#B6FF00"),
   });
 }
 
@@ -665,21 +830,40 @@ function financeCategoryFromApi(category: Entity): Entity {
     description: asString(category.description, undefined),
     color: asString(category.color, undefined),
     status: asString(category.status, undefined),
-    order: asNumber(category.displayOrder, 1)
+    order: asNumber(category.displayOrder, 1),
   });
 }
 
 function paymentFromApi(payment: Entity): Entity {
   return withRemoteFields(payment, {
     id: asString(payment.id),
-    gymId: asString(entity(payment.member)?.gymId ?? entity(entity(payment.sale)?.gym)?.id ?? entity(payment.sale)?.gymId, undefined),
+    gymId: asString(
+      entity(payment.member)?.gymId ??
+        entity(entity(payment.sale)?.gym)?.id ??
+        entity(payment.sale)?.gymId,
+      undefined,
+    ),
     kind: "Receita",
     category: "Receitas",
     value: asNumber(payment.amount),
     date: relativeDate(asDate(payment.paidAt) ?? asDate(payment.createdAt)),
-    status: statusLabel(payment.status, { PAID: "Recebido", PENDING: "Pendente", FAILED: "Falhou", CANCELLED: "Cancelado", REFUNDED: "Reembolsado" }),
+    status: statusLabel(payment.status, {
+      PAID: "Recebido",
+      PENDING: "Pendente",
+      FAILED: "Falhou",
+      CANCELLED: "Cancelado",
+      REFUNDED: "Reembolsado",
+    }),
     method: paymentMethodLabel(payment.method),
-    note: asString(payment.notes, asString(payment.reference, undefined))
+    grossValue: optionalNumber(payment.grossAmount),
+    discountValue: optionalNumber(payment.discountAmount),
+    lateFeeValue: optionalNumber(payment.lateFeeAmount),
+    outstandingValue: optionalNumber(payment.outstandingAmount),
+    receiptNumber: asString(
+      payment.receiptNumber ?? payment.reference,
+      undefined,
+    ),
+    note: asString(payment.notes, asString(payment.reference, undefined)),
   });
 }
 
@@ -691,10 +875,16 @@ function expenseFromApi(expense: Entity): Entity {
     category: asString(expense.category, "Operacional"),
     value: asNumber(expense.amount),
     date: relativeDate(asDate(expense.paidAt) ?? asDate(expense.createdAt)),
-    status: statusLabel(expense.status, { PAID: "Pago", PENDING: "Pendente", FAILED: "Falhou", CANCELLED: "Cancelado", REFUNDED: "Reembolsado" }),
+    status: statusLabel(expense.status, {
+      PAID: "Pago",
+      PENDING: "Pendente",
+      FAILED: "Falhou",
+      CANCELLED: "Cancelado",
+      REFUNDED: "Reembolsado",
+    }),
     method: paymentMethodLabel(expense.method),
     supplier: asString(expense.supplier, undefined),
-    note: asString(expense.description, asString(expense.notes, undefined))
+    note: asString(expense.description, asString(expense.notes, undefined)),
   });
 }
 
@@ -711,42 +901,56 @@ type SyncConfig = {
 function syncConfigFor(entity: string, payload: Entity): SyncConfig | null {
   const configs: Record<string, SyncConfig> = {
     plans: crudConfig("/plans", planToDto, { fromApi: planFromApi }),
-    "plan-categories": crudConfig("/plan-categories", planCategoryToDto, { fromApi: planCategoryFromApi }),
-    products: crudConfig("/products", productToDto, { canFetchOne: true, fromApi: productFromApi }),
+    "plan-categories": crudConfig("/plan-categories", planCategoryToDto, {
+      fromApi: planCategoryFromApi,
+    }),
+    products: crudConfig("/products", productToDto, {
+      canFetchOne: true,
+      fromApi: productFromApi,
+    }),
     sales: {
       postPath: "/sales",
       getPath: (id) => `/sales/${id}`,
       patchPath: (id) => `/sales/${id}`,
       deletePath: (id) => `/sales/${id}`,
       toDto: saleToDto,
-      fromApi: saleFromApi
+      fromApi: saleFromApi,
     },
     checkins: {
       postPath: "/checkins",
-      toDto: checkinToDto
+      toDto: checkinToDto,
     },
-    classes: crudConfig("/classes", classToDto, { canFetchOne: true, fromApi: classFromApi }),
-    employees: crudConfig("/employees", employeeToDto, { canFetchOne: true, fromApi: employeeFromApi }),
-    workouts: crudConfig("/workouts", workoutToDto, { canFetchOne: true, fromApi: workoutFromApi }),
+    classes: crudConfig("/classes", classToDto, {
+      canFetchOne: true,
+      fromApi: classFromApi,
+    }),
+    employees: crudConfig("/employees", employeeToDto, {
+      canFetchOne: true,
+      fromApi: employeeFromApi,
+    }),
+    workouts: crudConfig("/workouts", workoutToDto, {
+      canFetchOne: true,
+      fromApi: workoutFromApi,
+    }),
     "finance-categories": {
       postPath: "/finance/categories",
       patchPath: (id) => `/finance/categories/${id}`,
       deletePath: (id) => `/finance/categories/${id}`,
       toDto: financeCategoryToDto,
-      fromApi: financeCategoryFromApi
+      fromApi: financeCategoryFromApi,
     },
     "finance-accounts": {
       postPath: "/finance/accounts",
       patchPath: (id) => `/finance/accounts/${id}`,
       toDto: financeAccountToDto,
-      fromApi: financeAccountFromApi
+      fromApi: financeAccountFromApi,
     },
     "operational-settings": {
       postPath: "/settings/operational",
       patchPath: () => "/settings/operational",
       method: "PATCH",
-      toDto: (settings) => ({ settings })
-    }
+      toDto: (settings) => ({ settings }),
+    },
   };
 
   if (entity === "finance-records") {
@@ -756,14 +960,18 @@ function syncConfigFor(entity: string, payload: Entity): SyncConfig | null {
   return configs[entity] ?? null;
 }
 
-function crudConfig(path: string, toDto: SyncConfig["toDto"], options: { canFetchOne?: boolean; fromApi?: SyncConfig["fromApi"] } = {}): SyncConfig {
+function crudConfig(
+  path: string,
+  toDto: SyncConfig["toDto"],
+  options: { canFetchOne?: boolean; fromApi?: SyncConfig["fromApi"] } = {},
+): SyncConfig {
   return {
     postPath: path,
     getPath: options.canFetchOne ? (id) => `${path}/${id}` : undefined,
     patchPath: (id) => `${path}/${id}`,
     deletePath: (id) => `${path}/${id}`,
     toDto,
-    fromApi: options.fromApi
+    fromApi: options.fromApi,
   };
 }
 
@@ -774,14 +982,14 @@ function financeRecordConfig(payload: Entity): SyncConfig {
       patchPath: (id) => `/expenses/${id}`,
       deletePath: (id) => `/expenses/${id}`,
       toDto: financeRecordToExpenseDto,
-      fromApi: expenseFromApi
+      fromApi: expenseFromApi,
     };
   }
 
   return {
     postPath: "/payments",
     toDto: financeRecordToPaymentDto,
-    fromApi: paymentFromApi
+    fromApi: paymentFromApi,
   };
 }
 
@@ -795,9 +1003,11 @@ function planToDto(plan: Entity) {
     durationDays: durationDays(plan.duration),
     status: plan.status === "Inativo" ? "INACTIVE" : "ACTIVE",
     includesClasses: true,
-    includesWorkouts: String(plan.category ?? "").toLowerCase().includes("muscula"),
+    includesWorkouts: String(plan.category ?? "")
+      .toLowerCase()
+      .includes("muscula"),
     isPopular: plan.type === "Popular",
-    gymIds: Array.isArray(plan.gymIds) ? plan.gymIds : undefined
+    gymIds: Array.isArray(plan.gymIds) ? plan.gymIds : undefined,
   };
 }
 
@@ -808,7 +1018,7 @@ function planCategoryToDto(category: Entity) {
     description: cleanString(category.description),
     color: asString(category.color, "#B6FF00"),
     status: category.status === "Inativo" ? "INACTIVE" : "ACTIVE",
-    displayOrder: Number(category.order ?? 1)
+    displayOrder: Number(category.order ?? 1),
   };
 }
 
@@ -826,7 +1036,7 @@ function productToDto(product: Entity, fallbackGymId?: string) {
     unit: asString(product.unit, "Unidade"),
     gymId: cleanString(product.gymId) ?? cleanString(fallbackGymId),
     label: asString(product.emoji, "PRD"),
-    status: product.status === "Inativo" ? "INACTIVE" : "ACTIVE"
+    status: product.status === "Inativo" ? "INACTIVE" : "ACTIVE",
   };
 }
 
@@ -838,7 +1048,11 @@ function saleToDto(sale: Entity, fallbackGymId?: string) {
     sellerName: asString(sale.seller, "Admin"),
     gymId: cleanString(sale.gymId) ?? cleanString(fallbackGymId),
     type: saleTypeValue(sale.type),
-    status: String(sale.status).toLowerCase().includes("orc") ? "DRAFT" : sale.status === "Cancelada" ? "CANCELLED" : "COMPLETED",
+    status: String(sale.status).toLowerCase().includes("orc")
+      ? "DRAFT"
+      : sale.status === "Cancelada"
+        ? "CANCELLED"
+        : "COMPLETED",
     paymentMethod: paymentMethodValue(sale.paymentMethod),
     discountAmount: asNumber(sale.discountAmount),
     taxAmount: asNumber(sale.taxAmount),
@@ -850,9 +1064,15 @@ function saleToDto(sale: Entity, fallbackGymId?: string) {
           productName: asString(item.name, "Item POS"),
           sku: cleanString(item.sku),
           quantity: Math.max(1, asNumber(item.quantity, 1)),
-          unitPrice: asNumber(item.unitPrice)
+          unitPrice: asNumber(item.unitPrice),
         }))
-      : [{ productName: "Venda POS", quantity: 1, unitPrice: asNumber(sale.total) }]
+      : [
+          {
+            productName: "Venda POS",
+            quantity: 1,
+            unitPrice: asNumber(sale.total),
+          },
+        ],
   };
 }
 
@@ -862,7 +1082,7 @@ function checkinToDto(checkin: Entity, fallbackGymId?: string) {
     gymId: cleanString(checkin.gymId) ?? cleanString(fallbackGymId),
     method: methodValue(checkin.type),
     checkedAt: cleanString(checkin.checkedAtIso) ?? new Date().toISOString(),
-    notes: cleanString(checkin.observation)
+    notes: cleanString(checkin.observation),
   };
 }
 
@@ -881,15 +1101,19 @@ function classToDto(lesson: Entity, fallbackGymId?: string) {
     status: classStatusValue(lesson.status),
     allowWaitlist: lesson.allowWaitlist !== false,
     requiresCheckIn: lesson.requiresCheckIn === true,
-    color: cleanString(lesson.color)
+    color: cleanString(lesson.color),
   };
 }
 
 function employeeToDto(employee: Entity, fallbackGymId?: string) {
   return {
     name: asString(employee.name, "Novo funcionario"),
-    userId: isUuidLike(cleanString(employee.userId)) ? cleanString(employee.userId) : undefined,
-    gymId: isUuidLike(cleanString(employee.gymId)) ? cleanString(employee.gymId) : cleanString(fallbackGymId),
+    userId: isUuidLike(cleanString(employee.userId))
+      ? cleanString(employee.userId)
+      : undefined,
+    gymId: isUuidLike(cleanString(employee.gymId))
+      ? cleanString(employee.gymId)
+      : cleanString(fallbackGymId),
     role: asString(employee.role, "Recepcionista"),
     email: cleanEmail(employee.email),
     phone: cleanString(employee.phone),
@@ -897,7 +1121,7 @@ function employeeToDto(employee: Entity, fallbackGymId?: string) {
     department: cleanString(employee.department),
     hireDate: cleanString(employee.hireDate),
     notes: cleanString(employee.notes),
-    status: employee.status === "Inativo" ? "INACTIVE" : "ACTIVE"
+    status: employee.status === "Inativo" ? "INACTIVE" : "ACTIVE",
   };
 }
 
@@ -906,9 +1130,21 @@ function workoutToDto(workout: Entity) {
     name: asString(workout.name, "Novo treino"),
     description: cleanString(workout.notes),
     goal: cleanString(workout.goal),
-    level: workout.level === "Avancado" ? "ADVANCED" : workout.level === "Iniciante" ? "BEGINNER" : "INTERMEDIATE",
-    status: workout.status === "Ativo" ? "ACTIVE" : workout.status === "Rascunho" ? "DRAFT" : workout.status === "Arquivado" ? "ARCHIVED" : "PAUSED",
-    durationMinutes: parseDuration(workout.duration) || 60
+    level:
+      workout.level === "Avancado"
+        ? "ADVANCED"
+        : workout.level === "Iniciante"
+          ? "BEGINNER"
+          : "INTERMEDIATE",
+    status:
+      workout.status === "Ativo"
+        ? "ACTIVE"
+        : workout.status === "Rascunho"
+          ? "DRAFT"
+          : workout.status === "Arquivado"
+            ? "ARCHIVED"
+            : "PAUSED",
+    durationMinutes: parseDuration(workout.duration) || 60,
   };
 }
 
@@ -919,7 +1155,7 @@ function financeCategoryToDto(category: Entity) {
     description: cleanString(category.description),
     color: cleanString(category.color),
     status: cleanString(category.status),
-    displayOrder: asNumber(category.order, 1)
+    displayOrder: asNumber(category.order, 1),
   };
 }
 
@@ -932,19 +1168,42 @@ function financeAccountToDto(account: Entity) {
     balance: asNumber(account.balance),
     status: cleanString(account.status),
     isDefault: account.isDefault === true,
-    color: cleanString(account.color)
+    color: cleanString(account.color),
   };
 }
 
 function financeRecordToPaymentDto(record: Entity) {
+  const notes = [
+    cleanString(record.note),
+    record.grossValue !== undefined
+      ? `Base ${asNumber(record.grossValue)}`
+      : undefined,
+    record.discountValue !== undefined
+      ? `Desconto ${asNumber(record.discountValue)}`
+      : undefined,
+    record.lateFeeValue !== undefined
+      ? `Multa ${asNumber(record.lateFeeValue)}`
+      : undefined,
+    record.outstandingValue !== undefined
+      ? `Saldo ${asNumber(record.outstandingValue)}`
+      : undefined,
+  ]
+    .filter(Boolean)
+    .join(" | ");
+
   return {
     memberId: cleanString(record.memberId),
     amount: asNumber(record.value),
+    grossAmount: optionalNumber(record.grossValue),
+    discountAmount: optionalNumber(record.discountValue),
+    lateFeeAmount: optionalNumber(record.lateFeeValue),
+    outstandingAmount: optionalNumber(record.outstandingValue),
     method: paymentMethodValue(record.method),
     status: record.status === "Pendente" ? "PENDING" : "PAID",
     dueDate: dateToIso(record.date),
-    reference: cleanString(record.note),
-    notes: cleanString(record.note)
+    reference: cleanString(record.receiptNumber) ?? cleanString(record.note),
+    receiptNumber: cleanString(record.receiptNumber),
+    notes,
   };
 }
 
@@ -958,28 +1217,32 @@ function financeRecordToExpenseDto(record: Entity) {
     paidAt: record.status === "Pago" ? dateToIso(record.date) : undefined,
     dueDate: dateToIso(record.date),
     supplier: cleanString(record.supplier),
-    notes: cleanString(record.note)
+    notes: cleanString(record.note),
   };
 }
 
 async function apiRequest<T>(
   options: SQLiteSyncOptions,
   path: string,
-  request: { method?: string; body?: unknown } = {}
+  request: { method?: string; body?: unknown } = {},
 ) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
 
   try {
-    const response = await fetch(`${options.apiUrl.replace(/\/+$/, "")}${path}`, {
-      method: request.method ?? "GET",
-      signal: controller.signal,
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${options.token}`
+    const response = await fetch(
+      `${options.apiUrl.replace(/\/+$/, "")}${path}`,
+      {
+        method: request.method ?? "GET",
+        signal: controller.signal,
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${options.token}`,
+        },
+        body:
+          request.body === undefined ? undefined : JSON.stringify(request.body),
       },
-      body: request.body === undefined ? undefined : JSON.stringify(request.body)
-    });
+    );
 
     let payload: ApiEnvelope<T> | T | null = null;
     try {
@@ -993,7 +1256,8 @@ async function apiRequest<T>(
     }
 
     if (isApiEnvelope(payload)) {
-      if (!payload.success) throw new Error(resolveApiMessage(payload, response.status));
+      if (!payload.success)
+        throw new Error(resolveApiMessage(payload, response.status));
       return payload.data;
     }
 
@@ -1012,7 +1276,10 @@ async function apiRequest<T>(
   }
 }
 
-function apiPath(path: string, query?: Record<string, string | number | boolean | undefined>) {
+function apiPath(
+  path: string,
+  query?: Record<string, string | number | boolean | undefined>,
+) {
   if (!query) return path;
 
   const params = new URLSearchParams();
@@ -1025,7 +1292,10 @@ function apiPath(path: string, query?: Record<string, string | number | boolean 
 }
 
 function remoteIdFor(client: ClientPayload) {
-  return cleanString(client.remoteId) ?? (isUuidLike(client.id) ? client.id : undefined);
+  return (
+    cleanString(client.remoteId) ??
+    (isUuidLike(client.id) ? client.id : undefined)
+  );
 }
 
 function remoteIdForGeneric(payload: Entity) {
@@ -1052,14 +1322,25 @@ function hasRemoteConflict(localPayload: Entity, remotePayload: Entity) {
 }
 
 function conflictBaseUpdatedAt(payload: Entity) {
-  return cleanString(payload.__syncBaseUpdatedAt) ?? cleanString(payload.remoteUpdatedAt) ?? cleanString(payload.updatedAt);
+  return (
+    cleanString(payload.__syncBaseUpdatedAt) ??
+    cleanString(payload.remoteUpdatedAt) ??
+    cleanString(payload.updatedAt)
+  );
 }
 
-function isApiEnvelope<T>(payload: ApiEnvelope<T> | T | null): payload is ApiEnvelope<T> {
-  return Boolean(payload && typeof payload === "object" && "success" in payload);
+function isApiEnvelope<T>(
+  payload: ApiEnvelope<T> | T | null,
+): payload is ApiEnvelope<T> {
+  return Boolean(
+    payload && typeof payload === "object" && "success" in payload,
+  );
 }
 
-function resolveApiMessage<T>(payload: ApiEnvelope<T> | T | null, status: number) {
+function resolveApiMessage<T>(
+  payload: ApiEnvelope<T> | T | null,
+  status: number,
+) {
   if (isApiEnvelope(payload) && !payload.success) {
     const message = payload.error?.message;
     if (Array.isArray(message)) return message.join(" ");
@@ -1070,7 +1351,9 @@ function resolveApiMessage<T>(payload: ApiEnvelope<T> | T | null, status: number
 }
 
 function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : "Falha desconhecida na sincronizacao.";
+  return error instanceof Error
+    ? error.message
+    : "Falha desconhecida na sincronizacao.";
 }
 
 function asString(value: unknown, fallback = ""): string {
@@ -1080,6 +1363,12 @@ function asString(value: unknown, fallback = ""): string {
 function asNumber(value: unknown, fallback = 0) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function optionalNumber(value: unknown) {
+  if (value === undefined || value === null || value === "") return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 function cleanString(value: unknown) {
@@ -1092,7 +1381,9 @@ function cleanEmail(value: unknown) {
 }
 
 function rows(value: unknown) {
-  return Array.isArray(value) ? value.filter((item): item is Entity => Boolean(entity(item))) : [];
+  return Array.isArray(value)
+    ? value.filter((item): item is Entity => Boolean(entity(item)))
+    : [];
 }
 
 function withRemoteFields(source: Entity, payload: Entity) {
@@ -1101,13 +1392,16 @@ function withRemoteFields(source: Entity, payload: Entity) {
     remoteId: asString(source.id, asString(payload.id)),
     updatedAt: asString(source.updatedAt, undefined),
     remoteUpdatedAt: asString(source.updatedAt, undefined),
-    syncStatus: "synced"
+    syncStatus: "synced",
   };
 }
 
 function parseMoney(value: unknown) {
   if (typeof value === "number") return value;
-  const normalized = String(value ?? "0").replace(/[^\d,.-]/g, "").replace(/\./g, "").replace(",", ".");
+  const normalized = String(value ?? "0")
+    .replace(/[^\d,.-]/g, "")
+    .replace(/\./g, "")
+    .replace(",", ".");
   const parsed = Number(normalized);
   return Number.isFinite(parsed) ? parsed : 0;
 }
@@ -1165,12 +1459,23 @@ function methodValue(value: unknown) {
 }
 
 function methodLabel(value: unknown) {
-  const labels: Record<string, string> = { QR_CODE: "QR Code", MANUAL: "Manual", BIOMETRIC: "Biometria", APP: "App", NFC: "NFC" };
+  const labels: Record<string, string> = {
+    QR_CODE: "QR Code",
+    MANUAL: "Manual",
+    BIOMETRIC: "Biometria",
+    APP: "App",
+    NFC: "NFC",
+  };
   return labels[String(value)] ?? "Manual";
 }
 
 function saleTypeLabel(value: unknown) {
-  const labels: Record<string, string> = { NORMAL: "Venda normal", QUOTE: "Orcamento", SUBSCRIPTION: "Plano", SERVICE: "Servico" };
+  const labels: Record<string, string> = {
+    NORMAL: "Venda normal",
+    QUOTE: "Orcamento",
+    SUBSCRIPTION: "Plano",
+    SERVICE: "Servico",
+  };
   return labels[String(value)] ?? "Venda normal";
 }
 
@@ -1182,20 +1487,35 @@ function paymentMethodLabel(value: unknown) {
     MULTICAIXA: "Multicaixa",
     PIX: "PIX",
     DIRECT_DEBIT: "Debito direto",
-    OTHER: "Outro"
+    OTHER: "Outro",
   };
   return labels[String(value)] ?? "Dinheiro";
 }
 
 function financeAccountType(value: unknown) {
   const text = asString(value, "Corrente");
-  const allowed = ["Caixa", "Corrente", "Poupanca", "Carteira movel", "Cartao", "Outro"];
+  const allowed = [
+    "Caixa",
+    "Corrente",
+    "Poupanca",
+    "Carteira movel",
+    "Cartao",
+    "Outro",
+  ];
   return allowed.includes(text) ? text : "Corrente";
 }
 
 function deriveProductCategories(products: unknown) {
   if (!Array.isArray(products)) return [];
-  const colors = ["#B6FF00", "#38BDF8", "#A855F7", "#F59E0B", "#2DD4BF", "#FB7185", "#94A3B8"];
+  const colors = [
+    "#B6FF00",
+    "#38BDF8",
+    "#A855F7",
+    "#F59E0B",
+    "#2DD4BF",
+    "#FB7185",
+    "#94A3B8",
+  ];
   const seen = new Set<string>();
   const categories: Entity[] = [];
 
@@ -1211,7 +1531,7 @@ function deriveProductCategories(products: unknown) {
       icon: "Produto",
       color: colors[categories.length % colors.length],
       status: "Ativo",
-      order: categories.length + 1
+      order: categories.length + 1,
     });
   });
 
@@ -1258,7 +1578,7 @@ function statusLabel(value: unknown, customLabels?: Record<string, string>) {
     INACTIVE: "Inativo",
     OVERDUE: "Em atraso",
     BLOCKED: "Bloqueado",
-    CANCELLED: "Cancelado"
+    CANCELLED: "Cancelado",
   };
   return labels[String(value)] ?? String(value ?? "");
 }
@@ -1270,17 +1590,28 @@ function formatDate(date: Date | null) {
 
 function formatBirthday(date: Date | null) {
   if (!date) return "Sem data";
-  return new Intl.DateTimeFormat("pt-AO", { day: "2-digit", month: "short" }).format(date);
+  return new Intl.DateTimeFormat("pt-AO", {
+    day: "2-digit",
+    month: "short",
+  }).format(date);
 }
 
 function relativeDate(date: Date | null) {
   if (!date) return "Hoje";
   const today = new Date();
   const sameDay = today.toDateString() === date.toDateString();
-  const time = new Intl.DateTimeFormat("pt-AO", { hour: "2-digit", minute: "2-digit" }).format(date);
+  const time = new Intl.DateTimeFormat("pt-AO", {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
   return sameDay ? `Hoje, ${time}` : `${formatDate(date)}, ${time}`;
 }
 
 function isUuidLike(value?: string) {
-  return Boolean(value && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i.test(value));
+  return Boolean(
+    value &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i.test(
+      value,
+    ),
+  );
 }

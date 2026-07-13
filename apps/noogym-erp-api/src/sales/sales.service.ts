@@ -10,6 +10,7 @@ import {
   StockMovementType,
 } from '@prisma/client';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
+import { hasScope, saleGymScope } from '../common/utils/gym-scope';
 import { getPagination, paginated } from '../common/utils/pagination';
 import { assertActiveMember } from '../members/member-status';
 import { PrismaService } from '../prisma/prisma.service';
@@ -21,9 +22,10 @@ export class SalesService {
 
   async findAll(organizationId: string, query: PaginationQueryDto) {
     const { page, limit, skip, take } = getPagination(query.page, query.limit);
+    const scope = saleGymScope(query);
     const where: Prisma.SaleWhereInput = {
       organizationId,
-      ...(query.gymId ? { gymId: query.gymId } : {}),
+      ...(hasScope(scope) ? { AND: [scope] } : {}),
       ...(query.status ? { status: query.status as SaleStatus } : {}),
       ...(query.startDate || query.endDate
         ? {
@@ -149,10 +151,15 @@ export class SalesService {
             memberId: dto.memberId,
             saleId: sale.id,
             amount: total,
+            grossAmount: total,
+            discountAmount: 0,
+            lateFeeAmount: 0,
+            outstandingAmount: 0,
             method: dto.paymentMethod,
             status: PaymentStatus.PAID,
             paidAt: soldAt,
             reference: sale.id,
+            receiptNumber: sale.id,
             notes: dto.notes,
           },
         });
@@ -231,9 +238,7 @@ export class SalesService {
       const product = item.productId
         ? products.find((entry) => entry.id === item.productId)
         : undefined;
-      const unitPrice = product
-        ? Number(product.price)
-        : item.unitPrice ?? 0;
+      const unitPrice = product ? Number(product.price) : (item.unitPrice ?? 0);
       const productName = product?.name ?? item.productName;
       if (!productName) {
         throw new BadRequestException('Sale item productName is required');

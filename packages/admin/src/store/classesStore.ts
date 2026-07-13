@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { classes as mockClasses } from "../data/mock";
 import { classFromApi, classToDto, createResource, listResource, updateResource } from "../lib/domainApi";
+import { scopeByGym } from "../lib/gymScope";
 import { readLocal, readLocalDb, uid, writeLocal } from "../lib/storage";
 import { useAppStore } from "./appStore";
 import { useAuthStore } from "./authStore";
@@ -25,8 +26,10 @@ export const useClassesStore = create<{
 }>((set, get) => ({
   classes: readLocal("noogym:classes", initial),
   loadLocal: async () => {
-    const classes = await readLocalDb("noogym:classes", initial);
-    persist(classes);
+    const classes = scopeByGym(
+      await readLocalDb("noogym:classes", [] as ClassRecord[], { seedMissing: false }),
+      useAppStore.getState().activeGymId,
+    );
     set({ classes });
   },
   loadOnline: async () => {
@@ -35,13 +38,13 @@ export const useClassesStore = create<{
     const activeGymId = useAppStore.getState().activeGymId ?? undefined;
     const apiClasses = await listResource<Record<string, unknown>>("classes", token, { gymId: activeGymId });
     const classes = apiClasses.map(classFromApi);
-    persist(classes, true);
+    persist(classes);
     set({ classes });
   },
   addClass: (lesson) => set((state) => {
     const created: ClassRecord = { name: "Nova aula", gymId: useAppStore.getState().activeGymId ?? undefined, room: "Sala 1", category: "Cardio", instructor: "Joao Silva", time: "Hoje, 10:00", duration: "55 min", seats: 25, participants: 0, status: "Agendada", allowWaitlist: true, requiresCheckIn: false, color: "#B6FF00", ...lesson, id: uid("CLS") };
     const classes = [created, ...state.classes];
-    persist(classes);
+    persist(classes, true);
     useAppStore.getState().addPendingSync();
 
     const token = useAuthStore.getState().accessToken;
@@ -61,7 +64,7 @@ export const useClassesStore = create<{
   updateClass: (id, lesson) => set((state) => {
     const nextLesson = { ...state.classes.find((item) => item.id === id), ...lesson };
     const classes = state.classes.map((item) => item.id === id ? { ...item, ...lesson } : item);
-    persist(classes);
+    persist(classes, true);
     useAppStore.getState().addPendingSync();
 
     const token = useAuthStore.getState().accessToken;

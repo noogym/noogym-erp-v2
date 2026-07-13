@@ -318,7 +318,7 @@ export default function App({ onlineOnly = false }: AdminAppProps) {
   useEffect(() => {
     if (!isAuthenticated || onlineOnly || !user) return;
 
-    const initKey = `${user.id ?? user.email ?? user.name}:${accessToken ? "online" : "local"}`;
+    const initKey = `${user.id ?? user.email ?? user.name}:${activeGymId ?? "all"}:${accessToken ? "online" : "local"}`;
     if (desktopInitKeyRef.current === initKey) {
       void loadDesktopLocalModules().catch(reportBackgroundError);
       return;
@@ -347,6 +347,7 @@ export default function App({ onlineOnly = false }: AdminAppProps) {
     };
   }, [
     accessToken,
+    activeGymId,
     isAuthenticated,
     loadDesktopLocalModules,
     onlineOnly,

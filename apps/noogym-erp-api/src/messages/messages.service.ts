@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
+import { memberGymScope } from '../common/utils/gym-scope';
 import { getPagination, paginated } from '../common/utils/pagination';
 import { assertActiveMember } from '../members/member-status';
 import { PrismaService } from '../prisma/prisma.service';
@@ -17,8 +18,12 @@ export class MessagesService {
 
   async findAll(organizationId: string, query: PaginationQueryDto) {
     const { page, limit, skip, take } = getPagination(query.page, query.limit);
+    const memberScope = memberGymScope(query);
     const where: Prisma.MessageWhereInput = {
       organizationId,
+      ...(Object.keys(memberScope).length
+        ? { recipients: { some: { member: memberScope } } }
+        : {}),
       ...(query.search
         ? {
             OR: [

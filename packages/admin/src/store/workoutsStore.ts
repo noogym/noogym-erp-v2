@@ -55,8 +55,7 @@ export const useWorkoutsStore = create<{
 }>((set, get) => ({
   workouts: readLocal("noogym:workouts", initial).map(normalizeWorkout),
   loadLocal: async () => {
-    const workouts = (await readLocalDb("noogym:workouts", initial)).map(normalizeWorkout);
-    persist(workouts);
+    const workouts = (await readLocalDb("noogym:workouts", [] as WorkoutRecord[], { seedMissing: false })).map(normalizeWorkout);
     set({ workouts });
   },
   loadOnline: async () => {
@@ -64,7 +63,7 @@ export const useWorkoutsStore = create<{
     if (!token) return;
     const apiWorkouts = await listResource<Record<string, unknown>>("workouts", token);
     const workouts = apiWorkouts.map(workoutFromApi).map(normalizeWorkout);
-    persist(workouts, true);
+    persist(workouts);
     set({ workouts });
   },
   addWorkout: (workout) => set((state) => {
@@ -90,7 +89,7 @@ export const useWorkoutsStore = create<{
   updateWorkout: (id, workout) => set((state) => {
     const nextWorkout = normalizeWorkout({ ...state.workouts.find((item) => item.id === id), ...workout } as WorkoutRecord);
     const workouts = state.workouts.map((item) => item.id === id ? nextWorkout : item);
-    persist(workouts);
+    persist(workouts, true);
     useAppStore.getState().addPendingSync();
 
     const token = useAuthStore.getState().accessToken;
