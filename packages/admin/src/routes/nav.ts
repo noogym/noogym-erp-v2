@@ -7,6 +7,7 @@ import {
   Home,
   Package,
   ReceiptText,
+  RefreshCw,
   Settings,
   Shield,
   ShoppingCart,
@@ -27,6 +28,7 @@ export const navItems: Array<{ id: RouteId; label: string; icon: typeof Home }> 
   { id: "funcionarios", label: "Funcionarios", icon: UserRound },
   { id: "relatorios", label: "Relatorios", icon: BarChart3 },
   { id: "financas", label: "Financas", icon: CreditCard },
+  { id: "sincronizacao", label: "Sincronizacao", icon: RefreshCw },
   { id: "super-admin", label: "Super Admin", icon: Shield },
   { id: "configuracoes", label: "Configuracoes", icon: Settings },
 ];

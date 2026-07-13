@@ -20,6 +20,7 @@ export function Sidebar() {
   const logout = useAuthStore((state) => state.logout);
   const employees = useEmployeesStore((state) => state.employees);
   const roles = useEmployeesStore((state) => state.roles);
+  const canOpenSync = canAccessRoute("sincronizacao", user, employees, roles);
   const isConnected = onlineOnly || connectionState !== "offline";
   const StatusIcon = isConnected ? Wifi : WifiOff;
   const statusTitle = onlineOnly
@@ -107,7 +108,7 @@ export function Sidebar() {
             <p className="text-xs leading-6 text-zinc-300">
               {statusDescription}
             </p>
-            <Button className="mt-4 w-full" variant="secondary" onClick={() => void syncNow().catch(() => undefined)}>
+            <Button className="mt-4 w-full" variant="secondary" onClick={() => canOpenSync ? setRoute("sincronizacao") : void syncNow().catch(() => undefined)}>
               {onlineOnly ? "Ver estado online" : "Ver sincronizacao"}
             </Button>
           </>

@@ -96,6 +96,7 @@ const CONFLICT_MESSAGE =
 export async function runSQLiteSync(
   options: SQLiteSyncOptions,
 ): Promise<SQLiteSyncResult> {
+  const syncOptions = { ...options, limit: apiPageLimit(options.limit) };
   const db = getSQLiteLocalDb();
   const errors: string[] = [];
   let pushed = 0;
@@ -103,19 +104,19 @@ export async function runSQLiteSync(
   let binding: DesktopBinding | null | undefined;
   let failed = 0;
 
-  if (options.session?.user) {
+  if (syncOptions.session?.user) {
     binding = db.saveDesktopBinding({
-      apiUrl: options.apiUrl,
-      user: options.session.user,
-      activeGymId: options.gymId,
+      apiUrl: syncOptions.apiUrl,
+      user: syncOptions.session.user,
+      activeGymId: syncOptions.gymId,
     });
   }
 
-  const pendingEvents = db.getPendingSyncEvents(options.limit ?? 50);
+  const pendingEvents = db.getPendingSyncEvents(syncOptions.limit ?? 50);
 
   for (const event of pendingEvents) {
     try {
-      const outcome = await pushEvent(options, event);
+      const outcome = await pushEvent(syncOptions, event);
       if (outcome === "conflict") {
         failed += 1;
         errors.push(CONFLICT_MESSAGE);
@@ -132,15 +133,15 @@ export async function runSQLiteSync(
   }
 
   try {
-    const result = await pullRemoteClients(options);
+    const result = await pullRemoteClients(syncOptions);
     pulled = result.pulled;
     binding = db.saveDesktopBinding({
-      apiUrl: options.apiUrl,
-      user: options.session?.user,
+      apiUrl: syncOptions.apiUrl,
+      user: syncOptions.session?.user,
       organization: result.bootstrap.organization ?? null,
       gyms: result.bootstrap.data?.gyms ?? [],
       users: result.bootstrap.data?.users ?? [],
-      activeGymId: options.gymId,
+      activeGymId: syncOptions.gymId,
       lastBootstrapAt: asString(
         result.bootstrap.generatedAt,
         new Date().toISOString(),
@@ -152,7 +153,7 @@ export async function runSQLiteSync(
   }
 
   try {
-    const result = await pullRemoteCollections(options);
+    const result = await pullRemoteCollections(syncOptions);
     pulled += result.pulled;
     failed += result.errors.length;
     errors.push(...result.errors);
@@ -356,7 +357,8 @@ async function pushSpecialGenericEvent(
 }
 
 async function pullRemoteClients(options: SQLiteSyncOptions) {
-  const params = new URLSearchParams({ limit: String(options.limit ?? 500) });
+  const params = new URLSearchParams({ limit: String(apiPageLimit(options.limit)) });
+  if (options.gymId) params.set("gymId", options.gymId);
   const bootstrap = await apiRequest<DesktopBootstrap>(
     options,
     `/entrypoints/desktop/sync/bootstrap?${params.toString()}`,

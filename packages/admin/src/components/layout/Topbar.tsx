@@ -160,7 +160,7 @@ export function Topbar() {
         description: "Algumas atualizacoes ficam guardadas localmente.",
         category: "system",
         tone: "warning",
-        route: "configuracoes",
+        route: "sincronizacao",
         actionLabel: "Ver estado"
       });
     } else if (connectionState === "online_without_session" && pendingSync > 0) {
@@ -182,7 +182,7 @@ export function Topbar() {
         description: `${conflictSync} conflito(s) precisam de decisao manual.`,
         category: "system",
         tone: "danger",
-        route: "configuracoes",
+        route: "sincronizacao",
         actionLabel: "Resolver"
       });
     }

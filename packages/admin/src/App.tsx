@@ -27,6 +27,7 @@ import Treinos from "./pages/Treinos";
 import Funcionarios from "./pages/Funcionarios";
 import Relatorios from "./pages/Relatorios";
 import Financas from "./pages/Financas";
+import Sincronizacao from "./pages/Sincronizacao";
 import SuperAdmin from "./pages/SuperAdmin";
 import Configuracoes from "./pages/Configuracoes";
 import ForgotPassword from "./pages/auth/ForgotPassword";
@@ -51,6 +52,7 @@ const pages = {
   funcionarios: Funcionarios,
   relatorios: Relatorios,
   financas: Financas,
+  sincronizacao: Sincronizacao,
   "super-admin": SuperAdmin,
   configuracoes: Configuracoes,
 };
@@ -67,6 +69,7 @@ const pageLabels: Record<RouteId, string> = {
   funcionarios: "Funcionarios",
   relatorios: "Relatorios",
   financas: "Financas",
+  sincronizacao: "Sincronizacao",
   "super-admin": "Super Admin",
   configuracoes: "Configuracoes",
 };

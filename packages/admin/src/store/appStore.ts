@@ -22,6 +22,7 @@ export type RouteId =
   | "funcionarios"
   | "relatorios"
   | "financas"
+  | "sincronizacao"
   | "super-admin"
   | "configuracoes";
 

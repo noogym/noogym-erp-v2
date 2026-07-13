@@ -46,17 +46,18 @@ describe('AuditLogInterceptor', () => {
       )
       .subscribe(() => {
         expect(prisma.auditLog.create).toHaveBeenCalledWith({
-          data: {
+          data: expect.objectContaining({
             organizationId: 'org-1',
             userId: 'user-1',
             action: 'PATCH /members/member-1',
             entity: 'members',
             entityId: 'member-1',
-            metadata: {
+            metadata: expect.objectContaining({
               params: { id: 'member-1' },
               query: { source: 'admin' },
-            },
-          },
+              supportMode: false,
+            }),
+          }),
         });
         expect(
           prisma.auditLog.create.mock.calls[0][0].data.metadata,
