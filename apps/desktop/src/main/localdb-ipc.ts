@@ -95,6 +95,30 @@ export function registerLocalDbIpc(ipcMain: IpcMain) {
     };
   });
 
+  ipcMain.handle("localdb:sync-events:list", (_event, status = "pending", limit = 50) => {
+    const normalizedStatus =
+      status === "failed" || status === "conflict" || status === "synced"
+        ? status
+        : "pending";
+    const normalizedLimit = Number.isFinite(Number(limit)) ? Number(limit) : 50;
+
+    return {
+      success: true,
+      events: getSQLiteLocalDb().listSyncQueueEvents(normalizedStatus, normalizedLimit)
+    };
+  });
+
+  ipcMain.handle("localdb:sync-events:retry", (_event, id) => {
+    if (typeof id !== "string" || !id.trim()) {
+      return { success: false, message: "Evento de sincronizacao invalido." };
+    }
+
+    return {
+      success: true,
+      event: getSQLiteLocalDb().retrySyncQueueEvent(id)
+    };
+  });
+
   ipcMain.handle("localdb:clients:list", () => {
     return getSQLiteLocalDb().listClients();
   });

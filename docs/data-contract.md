@@ -38,6 +38,8 @@ Este contrato define a fonte da verdade para os dados operacionais do Noogym. El
 - A sincronizacao deve enviar pendencias antes de puxar dados remotos, salvo quando houver conflito aberto.
 - Conflitos ficam abertos ate o operador escolher `Manter local` ou `Usar servidor`.
 - `Manter local` reenfileira a alteracao; `Usar servidor` aplica a versao remota no SQLite.
+- Eventos `failed` e `conflict` devem ficar visiveis no Centro de Sincronizacao para suporte operacional.
+- Reenviar um evento falhado deve voltar o evento para `pending`, zerar tentativas e limpar o erro anterior.
 
 ## Fluxos que exigem backend
 

@@ -7,10 +7,13 @@ import {
   getDesktopLocalDbStatus,
   isDesktopLocalDbAvailable,
   listDesktopSyncConflicts,
+  listDesktopSyncEvents,
+  retryDesktopSyncEvent,
   resolveDesktopSyncConflict,
   type DesktopBinding,
   type DesktopLocalDbStatus,
   type DesktopSyncConflict,
+  type DesktopSyncEvent,
 } from "../lib/desktopLocalDb";
 import { useAppStore } from "../store/appStore";
 import { useAuthStore } from "../store/authStore";
@@ -19,8 +22,11 @@ import { toastInfo, toastSuccess } from "../store/toastStore";
 export default function Sincronizacao() {
   const [status, setStatus] = useState<DesktopLocalDbStatus | null>(null);
   const [conflicts, setConflicts] = useState<DesktopSyncConflict[]>([]);
+  const [queueStatus, setQueueStatus] = useState<"pending" | "failed" | "conflict">("failed");
+  const [syncEvents, setSyncEvents] = useState<DesktopSyncEvent[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [resolvingId, setResolvingId] = useState<string | null>(null);
+  const [retryingId, setRetryingId] = useState<string | null>(null);
   const syncNow = useAppStore((state) => state.syncNow);
   const refreshSyncStatus = useAppStore((state) => state.refreshSyncStatus);
   const syncState = useAppStore((state) => state.syncState);
@@ -43,11 +49,13 @@ export default function Sincronizacao() {
     Promise.all([
       isDesktop ? getDesktopLocalDbStatus() : Promise.resolve(null),
       isDesktop ? listDesktopSyncConflicts("open") : Promise.resolve([]),
+      isDesktop ? listDesktopSyncEvents(queueStatus, 25) : Promise.resolve([]),
       refreshSyncStatus().catch(() => undefined),
     ])
-      .then(([nextStatus, nextConflicts]) => {
+      .then(([nextStatus, nextConflicts, nextEvents]) => {
         setStatus(nextStatus);
         setConflicts(nextConflicts);
+        setSyncEvents(nextEvents);
       })
       .catch((error) => {
         toastInfo("Sincronizacao", error instanceof Error ? error.message : "Nao foi possivel carregar o estado.");
@@ -57,7 +65,7 @@ export default function Sincronizacao() {
 
   useEffect(() => {
     load();
-  }, [isDesktop]);
+  }, [isDesktop, queueStatus]);
 
   const runSync = () => {
     setIsLoading(true);
@@ -88,6 +96,19 @@ export default function Sincronizacao() {
         toastInfo("Conflito nao resolvido", error instanceof Error ? error.message : "Tente novamente.");
       })
       .finally(() => setResolvingId(null));
+  };
+
+  const retryEvent = (event: DesktopSyncEvent) => {
+    setRetryingId(event.id);
+    retryDesktopSyncEvent(event.id)
+      .then(() => {
+        toastSuccess("Evento reenfileirado", `${entityLabel(event.entity)} voltara a sincronizar.`);
+        load();
+      })
+      .catch((error) => {
+        toastInfo("Nao foi possivel reenviar", error instanceof Error ? error.message : "Tente novamente.");
+      })
+      .finally(() => setRetryingId(null));
   };
 
   return (
@@ -122,6 +143,68 @@ export default function Sincronizacao() {
       </section>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="min-w-0 space-y-4">
+        <Card className="min-w-0 p-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="font-semibold">Fila de sincronizacao</h2>
+              <p className="mt-1 text-sm text-zinc-400">Veja eventos locais pendentes, falhados ou bloqueados por conflito.</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {(["failed", "conflict", "pending"] as const).map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  className={`rounded-md border px-3 py-2 text-xs transition ${queueStatus === item ? "border-noogym-lime bg-noogym-lime/10 text-noogym-lime" : "border-white/10 text-zinc-300 hover:bg-white/10"}`}
+                  onClick={() => setQueueStatus(item)}
+                >
+                  {queueStatusLabel(item)}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {!isDesktop ? (
+            <EmptyState
+              icon={<Server className="h-5 w-5" />}
+              title="Fila local indisponivel na web"
+              description="A fila SQLite existe apenas na versao desktop."
+            />
+          ) : syncEvents.length === 0 ? (
+            <EmptyState
+              icon={<CheckCircle2 className="h-5 w-5" />}
+              title={`Sem eventos ${queueStatusLabel(queueStatus).toLowerCase()}`}
+              description="Quando houver eventos neste estado, eles aparecem aqui com entidade, tentativas e erro."
+            />
+          ) : (
+            <div className="mt-4 space-y-3">
+              {syncEvents.map((event) => (
+                <div key={event.id} className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge>{entityLabel(event.entity)}</Badge>
+                        <Badge>{operationLabel(event.operation)}</Badge>
+                        <Badge>{queueStatusLabel(event.status ?? queueStatus)}</Badge>
+                      </div>
+                      <p className="mt-2 truncate text-base font-semibold">{eventTitle(event)}</p>
+                      <p className="mt-1 text-xs text-zinc-400">
+                        Tentativas: {event.attempts} · Atualizado em {formatDate(event.updatedAt ?? event.createdAt)}
+                      </p>
+                      {event.error ? <p className="mt-2 text-xs text-red-200">{event.error}</p> : null}
+                    </div>
+                    {event.status === "failed" || event.status === "conflict" ? (
+                      <Button disabled={retryingId === event.id} icon={<RefreshCw className={`h-4 w-4 ${retryingId === event.id ? "animate-spin" : ""}`} />} onClick={() => retryEvent(event)}>
+                        Reenviar
+                      </Button>
+                    ) : null}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+
         <Card className="min-w-0 p-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
@@ -171,6 +254,7 @@ export default function Sincronizacao() {
             </div>
           )}
         </Card>
+        </div>
 
         <div className="space-y-4">
           <Card className="p-5">
@@ -215,6 +299,21 @@ function conflictTitle(conflict: DesktopSyncConflict) {
   const localName = displayValue(conflict.localPayload.name ?? conflict.localPayload.title ?? conflict.localPayload.customer);
   const remoteName = displayValue(conflict.remotePayload?.name ?? conflict.remotePayload?.title ?? conflict.remotePayload?.customerName);
   return localName ?? remoteName ?? conflict.remoteId ?? conflict.entityId;
+}
+
+function eventTitle(event: DesktopSyncEvent) {
+  return displayValue(event.payload.name ?? event.payload.title ?? event.payload.customer ?? event.payload.customerName) ?? event.entityId;
+}
+
+function queueStatusLabel(status: "pending" | "failed" | "conflict" | "synced") {
+  const labels: Record<"pending" | "failed" | "conflict" | "synced", string> = {
+    pending: "Pendentes",
+    failed: "Falhados",
+    conflict: "Conflitos",
+    synced: "Sincronizados",
+  };
+
+  return labels[status];
 }
 
 function entityLabel(entity: string) {

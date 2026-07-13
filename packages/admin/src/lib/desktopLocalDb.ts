@@ -76,6 +76,19 @@ export type DesktopSyncConflict = {
   resolvedAt?: string;
 };
 
+export type DesktopSyncEvent = {
+  id: string;
+  entity: string;
+  entityId: string;
+  operation: "create" | "update" | "delete";
+  payload: Record<string, unknown>;
+  status?: "pending" | "failed" | "conflict" | "synced";
+  attempts: number;
+  error?: string;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
 export type DesktopLocalDbStatus = {
   success: boolean;
   path: string;
@@ -183,6 +196,25 @@ export const resolveDesktopSyncConflict = async (id: string, resolution: "keep_l
 
   const response = await bridge.conflicts.resolve(id, resolution);
   return response.success ? response.conflict ?? null : null;
+};
+
+export const listDesktopSyncEvents = async (
+  status: "pending" | "failed" | "conflict" | "synced" = "pending",
+  limit = 50,
+) => {
+  const bridge = desktopLocalDb();
+  if (!bridge?.syncEvents) return [];
+
+  const response = await bridge.syncEvents.list(status, limit);
+  return response.success ? response.events ?? [] : [];
+};
+
+export const retryDesktopSyncEvent = async (id: string) => {
+  const bridge = desktopLocalDb();
+  if (!bridge?.syncEvents) return null;
+
+  const response = await bridge.syncEvents.retry(id);
+  return response.success ? response.event ?? null : null;
 };
 
 export const listDesktopClients = async () => {
