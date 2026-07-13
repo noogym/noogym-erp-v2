@@ -127,12 +127,14 @@ export default function Aulas() {
         ) : null}
 
         {tab === "Agenda" ? (
-          <div className="mt-5 overflow-hidden rounded-lg border border-white/10">
-            <div className="grid grid-cols-8 bg-white/[0.03] text-sm">{["Horarios", ...agendaDays].map((label) => <div key={label} className="border-r border-white/10 p-3 text-center last:border-r-0">{label}</div>)}</div>
-            {agendaHours.map((hour) => <div key={hour} className="grid grid-cols-8 border-t border-white/10 text-sm"><div className="p-3 text-center">{hour}</div>{agendaDays.map((day, dayIndex) => {
-              const slotLessons = classes.filter((item) => dayIndexFromClass(item) === dayIndex && hourFromClass(item) === hour && item.status !== "Cancelada");
-              return <div key={`${day}-${hour}`} className="min-h-16 border-l border-white/10 p-1">{slotLessons.map((item) => <button key={item.id} onClick={() => setSelected(item)} className="mb-1 block w-full rounded p-2 text-xs text-white" style={{ backgroundColor: item.color ?? "#4D7C0F" }}>{item.name}<br />{item.instructor}</button>)}</div>;
-            })}</div>)}
+          <div className="mt-5 overflow-x-auto rounded-lg border border-white/10">
+            <div className="min-w-[760px]">
+              <div className="grid grid-cols-8 bg-white/[0.03] text-sm">{["Horarios", ...agendaDays].map((label) => <div key={label} className="border-r border-white/10 p-3 text-center last:border-r-0">{label}</div>)}</div>
+              {agendaHours.map((hour) => <div key={hour} className="grid grid-cols-8 border-t border-white/10 text-sm"><div className="p-3 text-center">{hour}</div>{agendaDays.map((day, dayIndex) => {
+                const slotLessons = classes.filter((item) => dayIndexFromClass(item) === dayIndex && hourFromClass(item) === hour && item.status !== "Cancelada");
+                return <div key={`${day}-${hour}`} className="min-h-16 border-l border-white/10 p-1">{slotLessons.map((item) => <button key={item.id} onClick={() => setSelected(item)} className="mb-1 block w-full rounded p-2 text-xs text-white" style={{ backgroundColor: item.color ?? "#4D7C0F" }}>{item.name}<br />{item.instructor}</button>)}</div>;
+              })}</div>)}
+            </div>
           </div>
         ) : null}
 

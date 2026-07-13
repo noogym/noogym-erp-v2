@@ -20,6 +20,11 @@ export interface AuthUser {
   gym: string;
   email?: string;
   organizationId?: string;
+  organizationName?: string;
+  supportMode?: boolean;
+  supportSessionId?: string;
+  supportReason?: string;
+  supportActorEmail?: string;
 }
 
 interface AuthSession {
@@ -27,6 +32,7 @@ interface AuthSession {
   accessToken?: string;
   refreshToken?: string;
   authenticatedAt: string;
+  supportOriginalSession?: Omit<AuthSession, "supportOriginalSession">;
 }
 
 interface AuthState {
@@ -35,6 +41,7 @@ interface AuthState {
   refreshToken: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  supportOriginalSession: Omit<AuthSession, "supportOriginalSession"> | null;
   login: (email: string, password: string) => Promise<void>;
   refreshSession: () => Promise<void>;
   loginMock: () => void;
@@ -46,6 +53,8 @@ interface AuthState {
     organizationName: string;
   }) => Promise<void>;
   registerMock: (name?: string) => void;
+  startSupportSession: (session: { accessToken: string; user: ApiAuthUser }) => void;
+  exitSupportSession: () => void;
   logout: () => void;
 }
 
@@ -73,6 +82,7 @@ const getStoredSession = (): AuthSession | null => {
       accessToken: isHttpOnlyAuthEnabled() ? undefined : session.accessToken,
       refreshToken: isHttpOnlyAuthEnabled() ? undefined : session.refreshToken,
       authenticatedAt: session.authenticatedAt ?? new Date().toISOString(),
+      supportOriginalSession: session.supportOriginalSession,
     };
   } catch {
     localStorage.removeItem(AUTH_STORAGE_KEY);
@@ -84,12 +94,14 @@ const saveSession = (
   user: AuthUser,
   accessToken?: string,
   refreshToken?: string,
+  supportOriginalSession?: Omit<AuthSession, "supportOriginalSession">,
 ) => {
   const session: AuthSession = {
     user,
     accessToken: isHttpOnlyAuthEnabled() ? undefined : accessToken,
     refreshToken: isHttpOnlyAuthEnabled() ? undefined : refreshToken,
     authenticatedAt: new Date().toISOString(),
+    supportOriginalSession,
   };
 
   localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
@@ -121,6 +133,11 @@ const fromApiUser = (user: ApiAuthUser): AuthUser => ({
   gym: user.gyms?.[0]?.name ?? user.organizationName ?? "Noogym Fitness Center",
   email: user.email,
   organizationId: user.organizationId,
+  organizationName: user.organizationName,
+  supportMode: user.supportMode,
+  supportSessionId: user.supportSessionId,
+  supportReason: user.supportReason,
+  supportActorEmail: user.supportActorEmail,
 });
 
 const slugify = (value: string) => {
@@ -157,6 +174,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   refreshToken: initialSession?.refreshToken ?? null,
   isAuthenticated: Boolean(initialSession),
   isLoading: false,
+  supportOriginalSession: initialSession?.supportOriginalSession ?? null,
   login: async (email, password) => {
     set({ isLoading: true });
     try {
@@ -169,6 +187,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         refreshToken: session.refreshToken,
         isAuthenticated: true,
         isLoading: false,
+        supportOriginalSession: null,
       });
     } catch (error) {
       set({ isLoading: false });
@@ -184,6 +203,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         accessToken: null,
         refreshToken: null,
         isAuthenticated: false,
+        supportOriginalSession: null,
       });
       return;
     }
@@ -197,6 +217,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         accessToken: session.accessToken,
         refreshToken: session.refreshToken,
         isAuthenticated: true,
+        supportOriginalSession: null,
       });
     } catch (error) {
       localStorage.removeItem(AUTH_STORAGE_KEY);
@@ -205,6 +226,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         accessToken: null,
         refreshToken: null,
         isAuthenticated: false,
+        supportOriginalSession: null,
       });
       throw error;
     }
@@ -216,6 +238,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       accessToken: null,
       refreshToken: null,
       isAuthenticated: true,
+      supportOriginalSession: null,
     });
   },
   register: async (data) => {
@@ -243,6 +266,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         refreshToken: session.refreshToken,
         isAuthenticated: true,
         isLoading: false,
+        supportOriginalSession: null,
       });
     } catch (error) {
       set({ isLoading: false });
@@ -253,6 +277,39 @@ export const useAuthStore = create<AuthState>((set) => ({
     const user = { ...defaultUser, name: name?.trim() || defaultUser.name };
     saveSession(user);
     set({ user, accessToken: null, refreshToken: null, isAuthenticated: true });
+  },
+  startSupportSession: (session) => {
+    const current = useAuthStore.getState();
+    if (!current.user || !current.accessToken) return;
+
+    const originalSession: Omit<AuthSession, "supportOriginalSession"> =
+      current.supportOriginalSession ?? {
+        user: current.user,
+        accessToken: current.accessToken,
+        refreshToken: current.refreshToken ?? undefined,
+        authenticatedAt: new Date().toISOString(),
+      };
+    const user = fromApiUser(session.user);
+    saveSession(user, session.accessToken, undefined, originalSession);
+    set({
+      user,
+      accessToken: session.accessToken,
+      refreshToken: null,
+      isAuthenticated: true,
+      supportOriginalSession: originalSession,
+    });
+  },
+  exitSupportSession: () => {
+    const original = useAuthStore.getState().supportOriginalSession;
+    if (!original) return;
+    saveSession(original.user, original.accessToken, original.refreshToken);
+    set({
+      user: original.user,
+      accessToken: original.accessToken ?? null,
+      refreshToken: original.refreshToken ?? null,
+      isAuthenticated: true,
+      supportOriginalSession: null,
+    });
   },
   logout: () => {
     const refreshToken = useAuthStore.getState().refreshToken;
@@ -265,6 +322,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       accessToken: null,
       refreshToken: null,
       isAuthenticated: false,
+      supportOriginalSession: null,
     });
   },
 }));

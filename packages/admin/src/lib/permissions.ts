@@ -15,18 +15,21 @@ export const routeModules: Record<RouteId, string> = {
   funcionarios: "Funcionarios",
   relatorios: "Relatorios",
   financas: "Financas",
+  "super-admin": "Super Admin",
   configuracoes: "Configuracoes"
 };
 
 const allModules = Object.values(routeModules);
+const tenantModules = allModules.filter((module) => module !== "Super Admin");
 
 const rolePermissionMatrix: Record<string, string[]> = {
   "super administrador": allModules,
-  proprietario: allModules,
-  owner: allModules,
-  admin: allModules,
-  administrador: allModules,
-  gerente: allModules.filter((module) => module !== "Configuracoes"),
+  super_admin: allModules,
+  proprietario: tenantModules,
+  owner: tenantModules,
+  admin: tenantModules,
+  administrador: tenantModules,
+  gerente: tenantModules.filter((module) => module !== "Configuracoes"),
   recepcionista: ["Dashboard", "Check-in", "Clientes", "Vendas", "Produtos"],
   "personal trainer": ["Dashboard", "Clientes", "Aulas", "Treinos"],
   trainer: ["Dashboard", "Clientes", "Aulas", "Treinos"],
@@ -65,14 +68,21 @@ export const permissionsForUser = (user: AuthUser | null, employees: EmployeeRec
 
   const employee = findEmployeeForUser(user, employees);
   if (employee?.status === "Inativo" || employee?.accessStatus === "Bloqueado") return [];
+  if (user.supportMode) return tenantModules;
+
+  const roleName = employee?.role ?? user.employeeRole ?? user.role;
+  const normalizedRoleName = normalize(roleName);
+  if (normalizedRoleName === "super administrador" || normalizedRoleName === "super_admin") {
+    return allModules;
+  }
+
   if (employee?.permissions?.length) return employee.permissions;
   if (user.permissions?.length) return user.permissions;
 
-  const roleName = employee?.role ?? user.employeeRole ?? user.role;
   const role = roles.find((item) => normalize(item.name) === normalize(roleName));
   if (role?.status === "Ativo") return role.modules;
 
-  return rolePermissionMatrix[normalize(roleName)] ?? ["Dashboard"];
+  return rolePermissionMatrix[normalizedRoleName] ?? ["Dashboard"];
 };
 
 export const canAccessRoute = (route: RouteId, user: AuthUser | null, employees: EmployeeRecord[], roles: EmployeeRoleRecord[] = []) =>

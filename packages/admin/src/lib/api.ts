@@ -25,6 +25,10 @@ export interface ApiAuthUser {
   gyms?: Array<{ id: string; name: string }>;
   organizationId: string;
   organizationName?: string;
+  supportMode?: boolean;
+  supportSessionId?: string;
+  supportReason?: string;
+  supportActorEmail?: string;
 }
 
 export interface ApiAuthResponse {

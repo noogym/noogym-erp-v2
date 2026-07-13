@@ -12,6 +12,7 @@ import { useNotificationsStore } from "../../store/notificationsStore";
 import type { NotificationCategory, NotificationInput, NotificationRecord } from "../../store/notificationsStore";
 import { useProductsStore } from "../../store/productsStore";
 import { useSettingsStore } from "../../store/settingsStore";
+import { endSuperAdminSupportSession } from "../../lib/superAdminApi";
 
 const iconByCategory: Record<NotificationCategory, LucideIcon> = {
   system: ShieldCheck,
@@ -73,6 +74,8 @@ export function Topbar() {
   const toggleTheme = useAppStore((state) => state.toggleTheme);
   const zoomFactor = useAppStore((state) => state.zoomFactor);
   const user = useAuthStore((state) => state.user);
+  const accessToken = useAuthStore((state) => state.accessToken);
+  const exitSupportSession = useAuthStore((state) => state.exitSupportSession);
   const classes = useClassesStore((state) => state.classes);
   const clients = useClientsStore((state) => state.clients);
   const employees = useEmployeesStore((state) => state.employees);
@@ -118,6 +121,7 @@ export function Topbar() {
   const activeGym = allowedGyms.find((gym) => gym.id === activeGymId) ?? allowedGyms[0];
   const activeGymValue = activeGym?.id ?? "";
   const canChangeGym = allowedGyms.length > 1;
+  const supportMode = Boolean(user?.supportMode);
   const automaticNotifications = useMemo<NotificationInput[]>(() => {
     const generated: NotificationInput[] = [];
     const activeClients = clients.filter((client) => client.status === "Ativo");
@@ -297,7 +301,26 @@ export function Topbar() {
   };
 
   return (
-    <header className="drag-region relative z-40 flex min-h-16 shrink-0 flex-wrap items-center justify-between gap-3 border-b border-white/10 bg-black/20 px-3 py-3 lg:h-[72px] lg:flex-nowrap lg:px-5 lg:py-0">
+    <header className={`drag-region relative z-40 flex min-h-16 shrink-0 flex-wrap items-center justify-between gap-3 border-b border-white/10 bg-black/20 px-3 py-3 lg:px-5 ${supportMode ? "lg:min-h-[112px] lg:items-end lg:py-3" : "lg:h-[72px] lg:flex-nowrap lg:py-0"}`}>
+      {supportMode ? (
+        <div className="no-drag order-first flex basis-full flex-wrap items-center justify-between gap-2 rounded-md border border-orange-400/30 bg-orange-400/10 px-3 py-2 text-sm text-orange-100">
+          <span className="min-w-0 truncate">
+            Modo suporte: {user?.organizationName ?? user?.gym} · {user?.supportReason}
+          </span>
+          <button
+            type="button"
+            className="flex h-8 shrink-0 items-center gap-2 rounded-md border border-orange-300/30 px-3 text-xs font-medium transition hover:bg-orange-300/10"
+            onClick={() => {
+              if (accessToken) void endSuperAdminSupportSession(accessToken).catch(() => undefined);
+              exitSupportSession();
+              setRoute("super-admin");
+            }}
+          >
+            <X className="h-4 w-4" />
+            Sair do suporte
+          </button>
+        </div>
+      ) : null}
       <div className="hidden w-[260px] lg:block" />
       <div className="no-drag relative order-3 flex h-11 min-w-0 basis-full items-center rounded-lg border border-white/10 bg-white/[0.035] text-sm lg:order-none lg:min-w-[320px] lg:basis-auto xl:min-w-[380px]">
         {allowedGyms.length ? (

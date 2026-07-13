@@ -124,12 +124,12 @@ export default function Dashboard() {
   ].sort((a, b) => timeMinutes(b.time) - timeMinutes(a.time)).slice(0, 5), [canUseCheckin, canUseSales, checkins, sales]);
   const dashboardDate = new Intl.DateTimeFormat("pt-AO", { day: "2-digit", month: "long", year: "numeric" }).format(new Date());
   const quickSaleItems = tab === "Produtos"
-    ? products.slice(0, 5).map((product) => ({ name: product.name, price: money(product.price), detail: `${product.stock} un` }))
+    ? products.slice(0, 5).map((product) => ({ id: product.id, name: product.name, price: money(product.price), detail: `${product.stock} un` }))
     : tab === "Serviços"
-      ? quickServices
+      ? quickServices.map((service) => ({ id: service.name, ...service }))
       : tab === "Aulas"
-        ? classes.slice(0, 5).map((lesson) => ({ name: lesson.name, price: "3.000 Kz", detail: lesson.time }))
-        : plans.slice(0, 5).map((plan) => ({ name: plan.name, price: plan.price, detail: plan.duration }));
+        ? classes.slice(0, 5).map((lesson) => ({ id: lesson.id, name: lesson.name, price: "3.000 Kz", detail: lesson.time }))
+        : plans.slice(0, 5).map((plan) => ({ id: plan.id, name: plan.name, price: plan.price, detail: plan.duration }));
 
   const handleQuickCheckin = () => {
     if (checkinTab === "QR Code") {
@@ -240,7 +240,7 @@ export default function Dashboard() {
           <Tabs tabs={["Planos", "Produtos", "Serviços", "Aulas"]} active={tab} onChange={setTab} />
           <div className="mt-3 space-y-2">
             {quickSaleItems.map((item) => (
-              <div key={`${tab}-${item.name}`} className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 border-b border-white/[0.07] py-2 text-sm">
+              <div key={`${tab}-${item.id}`} className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 border-b border-white/[0.07] py-2 text-sm">
                 <span className="min-w-0 truncate">{item.name}</span>
                 <span className="text-right">{item.price}</span>
                 <button className="rounded border border-noogym-lime/50 p-1 text-noogym-lime" onClick={() => toastSuccess("Item adicionado", `${item.name} foi adicionado à venda rápida.`)}>
