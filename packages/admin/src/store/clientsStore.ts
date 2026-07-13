@@ -14,10 +14,12 @@ import {
   resolveAdminDataSource,
 } from "../lib/dataSource";
 import {
+  isDesktopLocalDbAvailable,
   listDesktopClients,
   replaceDesktopClients,
   upsertDesktopClient,
 } from "../lib/desktopLocalDb";
+import { scopeByGym } from "../lib/gymScope";
 import { uid } from "../lib/storage";
 import { useAppStore } from "./appStore";
 import { useAuthStore } from "./authStore";
@@ -93,23 +95,21 @@ const currentClientsDataSource = () =>
   });
 
 export const useClientsStore = create<ClientsState>((set, get) => ({
-  clients: localClients.read(),
+  clients: isDesktopLocalDbAvailable() ? [] : localClients.read(),
   loadLocal: async () => {
+    const activeGymId = useAppStore.getState().activeGymId;
     const desktopClients = await listDesktopClients();
     if (!desktopClients) {
-      set({ clients: localClients.read() });
+      set({ clients: scopeByGym(localClients.read(), activeGymId) });
       return;
     }
 
     if (desktopClients.length) {
-      persist(desktopClients);
-      set({ clients: desktopClients });
+      set({ clients: scopeByGym(desktopClients, activeGymId) });
       return;
     }
 
-    const seededClients = localClients.read();
-    await replaceDesktopClients(seededClients);
-    set({ clients: seededClients });
+    set({ clients: [] });
   },
   loadOnline: async () => {
     const source = currentClientsDataSource();

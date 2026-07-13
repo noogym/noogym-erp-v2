@@ -22,6 +22,6 @@ export default defineConfig({
   },
   build: {
     outDir: "dist/renderer",
-    emptyOutDir: false
+    emptyOutDir: true
   }
 });

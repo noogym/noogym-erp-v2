@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { employees as mockEmployees } from "../data/mock";
 import { createResource, employeeFromApi, employeeToDto, listResource, updateResource } from "../lib/domainApi";
+import { scopeByGym } from "../lib/gymScope";
 import { listUserSettings, type UserSettings } from "../lib/settingsApi";
 import { readLocal, readLocalDb, uid, writeLocal } from "../lib/storage";
 import { useAppStore } from "./appStore";
@@ -195,15 +196,15 @@ export const useEmployeesStore = create<{
   activities: readLocal("noogym:employee-activities", []),
   loadLocal: async () => {
     const [rawEmployees, rawRoles, activities] = await Promise.all([
-      readLocalDb("noogym:employees", initial),
+      readLocalDb("noogym:employees", [] as EmployeeRecord[], { seedMissing: false }),
       readLocalDb("noogym:employee-roles", defaultRoles),
       readLocalDb("noogym:employee-activities", [] as EmployeeActivityRecord[])
     ]);
-    const employees = rawEmployees.map(normalizeEmployee);
+    const employees = scopeByGym(
+      rawEmployees.map(normalizeEmployee),
+      useAppStore.getState().activeGymId,
+    );
     const roles = withEmployeeCount(mergeDefaultRoles(rawRoles), employees);
-    persist(employees);
-    persistRoles(roles);
-    persistActivities(activities);
     set({ employees, roles, activities });
   },
   loadOnline: async () => {
@@ -221,7 +222,7 @@ export const useEmployeesStore = create<{
     });
     const employees = mergeUsersWithoutEmployeeProfiles(syncedEmployees, apiUsers, activeGymId);
     const roles = withEmployeeCount(mergeDefaultRoles(get().roles), employees);
-    persist(employees, true);
+    persist(employees);
     persistRoles(roles);
     set({ employees, roles });
   },
@@ -264,7 +265,7 @@ export const useEmployeesStore = create<{
     const nextEmployee = normalizeEmployee({ ...current, ...employee } as EmployeeRecord);
     const employees = state.employees.map((item) => item.id === id ? nextEmployee : item);
     const roles = withEmployeeCount(state.roles, employees);
-    persist(employees);
+    persist(employees, true);
     persistRoles(roles);
     useAppStore.getState().addPendingSync();
 
@@ -341,7 +342,7 @@ export const useEmployeesStore = create<{
     const role = roles.find((item) => item.id === roleId);
     const employees = role ? state.employees.map((employee) => employee.role === role.name ? { ...employee, permissions: role.modules } : employee) : state.employees;
     persistRoles(roles);
-    persist(employees);
+    persist(employees, true);
     return { roles: withEmployeeCount(roles, employees), employees };
   })
 }));

@@ -390,7 +390,7 @@ async function pullRemoteCollections(options: SQLiteSyncOptions) {
   ) => {
     try {
       const items = await apiList<Entity>(options, path, query);
-      pulled += db.mergeRemoteCollection(entityName, items.map(mapper));
+      pulled += db.mergeRemoteCollection(entityName, items.map(mapper), query?.gymId ? String(query.gymId) : undefined);
     } catch (error) {
       errors.push(`${label}: ${errorMessage(error)}`);
     }
@@ -420,7 +420,7 @@ async function pullRemoteCollections(options: SQLiteSyncOptions) {
 
   try {
     const records = await listFinanceRecords(options, scopedQuery);
-    pulled += db.mergeRemoteCollection("finance-records", records);
+    pulled += db.mergeRemoteCollection("finance-records", records, options.gymId);
   } catch (error) {
     errors.push(`Financeiro: ${errorMessage(error)}`);
   }

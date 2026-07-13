@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { products as mockProducts } from "../data/mock";
 import { createResource, listResource, productFromApi, productToDto, updateResource } from "../lib/domainApi";
+import { scopeByGym } from "../lib/gymScope";
 import { readLocal, readLocalDb, uid, writeLocal } from "../lib/storage";
 import { useAppStore } from "./appStore";
 import { useAuthStore } from "./authStore";
@@ -97,14 +98,12 @@ export const useProductsStore = create<{
   categories: readCategories(),
   movements: readLocal("noogym:product-stock-movements", []),
   loadLocal: async () => {
-    const [products, categories, movements] = await Promise.all([
-      readLocalDb("noogym:products", initialProducts),
-      readLocalDb("noogym:product-categories", readCategories()),
-      readLocalDb("noogym:product-stock-movements", [] as ProductStockMovementRecord[])
+    const [localProducts, categories, movements] = await Promise.all([
+      readLocalDb("noogym:products", [] as ProductRecord[], { seedMissing: false }),
+      readLocalDb("noogym:product-categories", [] as ProductCategory[], { seedMissing: false }),
+      readLocalDb("noogym:product-stock-movements", [] as ProductStockMovementRecord[], { seedMissing: false })
     ]);
-    persist(products);
-    persistCategories(uniqueCategories(categories));
-    persistMovements(movements);
+    const products = scopeByGym(localProducts, useAppStore.getState().activeGymId);
     set({ products, categories: uniqueCategories(categories), movements });
   },
   loadOnline: async () => {
@@ -114,7 +113,7 @@ export const useProductsStore = create<{
     const apiProducts = await listResource<Record<string, unknown>>("products", token, { gymId: activeGymId });
     const products = apiProducts.map(productFromApi);
     const categories = uniqueCategories([...get().categories, ...products.map((product, index) => categoryFromName(product.category, index))]);
-    persist(products, true);
+    persist(products);
     persistCategories(categories);
     set({ products, categories });
   },
@@ -180,7 +179,7 @@ export const useProductsStore = create<{
       return nextProduct;
     });
     const movements = movement ? [movement, ...state.movements] : state.movements;
-    persist(products);
+    persist(products, true);
     persistMovements(movements);
     useAppStore.getState().addPendingSync();
     if (updatedProduct) notifyStockIfNeeded(updatedProduct);

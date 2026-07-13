@@ -268,10 +268,25 @@ const readPublicEnv = (key: string) => {
   const metaEnv = (
     import.meta as unknown as { env?: Record<string, string | undefined> }
   ).env;
-  const processEnv =
-    typeof process !== "undefined"
-      ? (process.env as Record<string, string | undefined>)[key]
-      : undefined;
+  const processEnv = readNextPublicEnv(key);
 
   return processEnv ?? metaEnv?.[key];
+};
+
+const readNextPublicEnv = (key: string) => {
+  if (typeof process === "undefined") return undefined;
+
+  if (key === "NEXT_PUBLIC_NOOGYM_API_URL") {
+    return process.env.NEXT_PUBLIC_NOOGYM_API_URL;
+  }
+
+  if (key === "NEXT_PUBLIC_NOOGYM_WEB_URL") {
+    return process.env.NEXT_PUBLIC_NOOGYM_WEB_URL;
+  }
+
+  if (key === "NEXT_PUBLIC_NOOGYM_HTTP_ONLY_AUTH") {
+    return process.env.NEXT_PUBLIC_NOOGYM_HTTP_ONLY_AUTH;
+  }
+
+  return (process.env as Record<string, string | undefined>)[key];
 };

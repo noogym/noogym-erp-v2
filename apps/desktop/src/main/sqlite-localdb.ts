@@ -321,7 +321,7 @@ export class SQLiteLocalDb {
     this.setLocalCollection(key, nextCollection);
   }
 
-  mergeRemoteCollection(entity: string, remoteItems: Array<Record<string, unknown>>) {
+  mergeRemoteCollection(entity: string, remoteItems: Array<Record<string, unknown>>, gymId?: string) {
     const key = COLLECTION_KEY_BY_ENTITY[entity];
     if (!key) return 0;
 
@@ -359,6 +359,7 @@ export class SQLiteLocalDb {
     });
 
     existingRows.forEach((item) => {
+      if (gymId && !recordBelongsToGym(item, gymId)) return;
       const remoteId = normalizeText(item.remoteId) ?? (isUuidLike(String(item.id)) ? String(item.id) : null);
       if (!remoteId || remoteKeys.has(remoteId) || this.hasPendingSyncEvent(entity, String(item.id))) return;
       mergedById.delete(String(item.id));
@@ -1127,6 +1128,16 @@ function withRemoteSyncMetadata<T extends Record<string, unknown>>(item: T): T &
     ...(updatedAt ? { remoteUpdatedAt: updatedAt } : {}),
     syncStatus: "synced"
   };
+}
+
+function recordBelongsToGym(record: Record<string, unknown>, gymId: string) {
+  const recordGymId = normalizeText(record.gymId);
+  if (recordGymId) return recordGymId === gymId;
+
+  const gymIds = Array.isArray(record.gymIds)
+    ? record.gymIds.map(normalizeText).filter(Boolean)
+    : [];
+  return gymIds.length ? gymIds.includes(gymId) : false;
 }
 
 function isUuidLike(value?: string) {

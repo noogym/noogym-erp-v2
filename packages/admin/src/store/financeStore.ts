@@ -15,6 +15,7 @@ import {
   updateFinanceCategory
 } from "../lib/financeApi";
 import type { CashSessionRecord, CloseCashSessionPayload, FinanceSummaryFilters, OpenCashSessionPayload } from "../lib/financeApi";
+import { scopeByGym } from "../lib/gymScope";
 import type { FinanceLocalData } from "../lib/localFinance";
 import { readLocal, readLocalDb, uid, writeLocal } from "../lib/storage";
 import { useAppStore } from "./appStore";
@@ -102,14 +103,12 @@ export const useFinanceStore = create<{
   currentCashSession: null,
   cashSessions: [],
   loadLocal: async () => {
-    const [records, categories, accounts] = await Promise.all([
-      readLocalDb("noogym:finance", initial),
+    const [localRecords, categories, accounts] = await Promise.all([
+      readLocalDb("noogym:finance", [] as FinanceRecord[], { seedMissing: false }),
       readLocalDb("noogym:finance-categories", initialCategories),
       readLocalDb("noogym:finance-accounts", initialAccounts)
     ]);
-    persist(records);
-    persistCategories(categories);
-    persistAccounts(accounts);
+    const records = scopeByGym(localRecords, useAppStore.getState().activeGymId);
     set({ records, categories, accounts, remoteDashboard: null, currentCashSession: null, cashSessions: [] });
   },
   loadOnline: async (filters = {}) => {
@@ -128,7 +127,7 @@ export const useFinanceStore = create<{
       getCurrentCashSession(token, scopedFilters.gymId),
       listCashSessions(token)
     ]);
-    persist(records, true);
+    persist(records);
     persistAccounts(accounts);
     persistCategories(categories);
     set({ records, accounts, categories, remoteDashboard, currentCashSession, cashSessions, activeFilters: scopedFilters });
@@ -190,7 +189,7 @@ export const useFinanceStore = create<{
     const created: FinanceRecord = { id: uid("FIN"), gymId: useAppStore.getState().activeGymId ?? undefined, kind: "Despesa", category: "Operacional", value: 0, date: "Hoje", status: "Pendente", ...target, method: "Transferencia", ...record };
     const records = [created, ...state.records];
     const accounts = applyRecordToAccounts(state.accounts, created);
-    persist(records);
+    persist(records, true);
     persistAccounts(accounts);
     useAppStore.getState().addPendingSync();
     useNotificationsStore.getState().addNotification({

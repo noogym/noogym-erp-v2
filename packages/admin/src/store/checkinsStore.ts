@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { checkinFromApi, checkinToDto, createResource, createSubscription, listResource } from "../lib/domainApi";
+import { scopeByGym } from "../lib/gymScope";
 import { readLocal, readLocalDb, uid, writeLocal } from "../lib/storage";
 import { useAppStore } from "./appStore";
 import { useAuthStore } from "./authStore";
@@ -96,8 +97,10 @@ export const useCheckinsStore = create<{
   checkins: readLocal("noogym:checkins", initial),
   todayCount: readLocal("noogym:checkins", initial).length + 139,
   loadLocal: async () => {
-    const checkins = await readLocalDb("noogym:checkins", initial);
-    persist(checkins);
+    const checkins = scopeByGym(
+      await readLocalDb("noogym:checkins", [] as CheckinRecord[], { seedMissing: false }),
+      useAppStore.getState().activeGymId,
+    );
     syncClientLastCheckins(checkins);
     set({ checkins, todayCount: checkins.filter((checkin) => checkin.dateTime.startsWith("Hoje")).length });
   },
