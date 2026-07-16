@@ -170,6 +170,7 @@ export default function App({ onlineOnly = false }: AdminAppProps) {
   const user = useAuthStore((state) => state.user);
   const accessToken = useAuthStore((state) => state.accessToken);
   const refreshSession = useAuthStore((state) => state.refreshSession);
+  const logout = useAuthStore((state) => state.logout);
   const loadLocalClients = useClientsStore((state) => state.loadLocal);
   const loadClients = useClientsStore((state) => state.loadOnline);
   const loadLocalPlans = usePlansStore((state) => state.loadLocal);
@@ -294,6 +295,18 @@ export default function App({ onlineOnly = false }: AdminAppProps) {
     if (!isAuthenticated || accessToken || !isHttpOnlyAuthEnabled()) return;
     void refreshSession().catch(reportBackgroundError);
   }, [accessToken, isAuthenticated, refreshSession]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return undefined;
+    const handleUnauthorized = () => {
+      logout();
+      setAuthRoute("login");
+      updateAuthUrl("login", "replaceState");
+    };
+
+    window.addEventListener("noogym:api-unauthorized", handleUnauthorized);
+    return () => window.removeEventListener("noogym:api-unauthorized", handleUnauthorized);
+  }, [isAuthenticated, logout]);
 
   useEffect(() => {
     if (!isAuthenticated) return undefined;

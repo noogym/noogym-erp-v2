@@ -1,15 +1,19 @@
 import {
+  Copy,
   Download,
   Gift,
   Mail,
   MessageCircle,
   Plus,
   Printer,
+  QrCode,
   Receipt,
+  RefreshCw,
   Upload,
   UsersRound,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { toDataURL } from "qrcode";
 import type {
   ClientRecord,
   FinanceAccountRecord,
@@ -77,6 +81,7 @@ type ClientModal =
   | "edit"
   | "payment"
   | "history"
+  | "qr"
   | "deactivate"
   | null;
 
@@ -415,6 +420,7 @@ export default function Clientes() {
   const clients = useClientsStore((state) => state.clients);
   const addClient = useClientsStore((state) => state.addClient);
   const deactivateClient = useClientsStore((state) => state.deactivateClient);
+  const regenerateClientQr = useClientsStore((state) => state.regenerateClientQr);
   const updateClient = useClientsStore((state) => state.updateClient);
   const addRevenue = useFinanceStore((state) => state.addRevenue);
   const financeRecords = useFinanceStore((state) => state.records);
@@ -990,6 +996,18 @@ export default function Clientes() {
         open={modal === "view"}
         client={selectedClient}
         financeRecords={selectedClientFinanceRecords}
+        onOpenQr={() => setModal("qr")}
+        onClose={closeModal}
+      />
+      <ClientQrModal
+        open={modal === "qr"}
+        client={selectedClient}
+        onRegenerate={async () => {
+          if (!selectedClient) return;
+          const updated = await regenerateClientQr(selectedClient.id);
+          if (updated) setSelectedClient(updated);
+          toastSuccess("QR Code atualizado", "O QR antigo deixa de ser valido.");
+        }}
         onClose={closeModal}
       />
       <NewClientModal
@@ -1577,11 +1595,13 @@ function ClientDetailsModal({
   open,
   client,
   financeRecords,
+  onOpenQr,
   onClose,
 }: {
   open: boolean;
   client: ClientRecord | null;
   financeRecords: FinanceRecord[];
+  onOpenQr: () => void;
   onClose: () => void;
 }) {
   if (!client) return null;
@@ -1614,6 +1634,9 @@ function ClientDetailsModal({
             <h3 className="text-lg font-semibold">{client.name}</h3>
             <p className="text-sm text-zinc-400">{client.phone}</p>
           </div>
+          <Button icon={<QrCode className="h-4 w-4" />} onClick={onOpenQr}>
+            QR Code
+          </Button>
           <Badge tone={badgeTone(client.planTone)}>{client.plan}</Badge>
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
@@ -1660,6 +1683,117 @@ function ClientDetailsModal({
               </p>
             )}
           </div>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function ClientQrModal({
+  open,
+  client,
+  onRegenerate,
+  onClose,
+}: {
+  open: boolean;
+  client: ClientRecord | null;
+  onRegenerate: () => Promise<void>;
+  onClose: () => void;
+}) {
+  const latestClient = useClientsStore((state) =>
+    client ? state.clients.find((item) => item.id === client.id) : null,
+  );
+  const current = latestClient ?? client;
+  const payload = current?.qrPayload;
+  const [qrImage, setQrImage] = useState("");
+  const [isRegenerating, setIsRegenerating] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    if (!open || !payload) {
+      setQrImage("");
+      return;
+    }
+
+    void toDataURL(payload, {
+      width: 260,
+      margin: 1,
+      color: { dark: "#070A0A", light: "#FFFFFF" },
+    }).then((image) => {
+      if (active) setQrImage(image);
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [open, payload]);
+
+  if (!current) return null;
+
+  const copyPayload = async () => {
+    if (!payload) {
+      toastInfo("QR Code indisponivel", "Gere um QR Code para este cliente primeiro.");
+      return;
+    }
+    await navigator.clipboard?.writeText(payload);
+    toastSuccess("Codigo copiado", "Payload do QR Code copiado.");
+  };
+
+  const regenerate = async () => {
+    setIsRegenerating(true);
+    try {
+      await onRegenerate();
+    } catch (error) {
+      toastInfo(
+        "QR Code nao atualizado",
+        error instanceof Error ? error.message : "Tente novamente em instantes.",
+      );
+    } finally {
+      setIsRegenerating(false);
+    }
+  };
+
+  return (
+    <Modal
+      open={open}
+      title="QR Code do cliente"
+      description={current.name}
+      size="md"
+      onClose={onClose}
+      footer={
+        <>
+          <Button onClick={onClose}>Fechar</Button>
+          <Button icon={<Copy className="h-4 w-4" />} onClick={copyPayload}>
+            Copiar codigo
+          </Button>
+          <Button
+            variant="primary"
+            icon={<RefreshCw className="h-4 w-4" />}
+            disabled={isRegenerating}
+            onClick={regenerate}
+          >
+            {payload ? "Regenerar" : "Gerar QR"}
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <div className="flex items-center gap-4 rounded-md border border-white/10 bg-white/[0.03] p-4">
+          <Avatar label={current.avatar ?? "CL"} className="h-14 w-14" />
+          <div className="min-w-0">
+            <p className="truncate font-semibold">{current.name}</p>
+            <p className="truncate text-sm text-zinc-400">{current.plan}</p>
+          </div>
+        </div>
+        <div className="flex min-h-[292px] items-center justify-center rounded-md border border-white/10 bg-white p-4">
+          {qrImage ? <img src={qrImage} alt={`QR Code de ${current.name}`} className="h-64 w-64" /> : <div className="text-center text-sm text-zinc-700">
+            <QrCode className="mx-auto mb-3 h-12 w-12" />
+            Gere um QR Code para este cliente.
+          </div>}
+        </div>
+        <div className="rounded-md border border-white/10 bg-black/20 p-3 text-xs text-zinc-400">
+          <p className="mb-1 text-zinc-300">Payload</p>
+          <p className="break-all">{payload ?? "Sem QR Code gerado"}</p>
         </div>
       </div>
     </Modal>

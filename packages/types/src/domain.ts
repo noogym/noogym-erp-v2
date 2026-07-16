@@ -1,5 +1,6 @@
 export interface ClientRecord {
   id: string;
+  remoteId?: string;
   gymId?: string;
   name: string;
   phone: string;
@@ -13,6 +14,8 @@ export interface ClientRecord {
   birthday?: string;
   birthDate?: string;
   avatar?: string;
+  qrToken?: string;
+  qrPayload?: string;
   document?: string;
   createdAt?: string;
   gender?: string;
@@ -109,6 +112,8 @@ export interface CheckinRecord {
 export interface SaleRecord {
   id: string;
   gymId?: string;
+  cashSessionId?: string;
+  receiptNumber?: string;
   total: number;
   customer?: string;
   memberId?: string;
@@ -120,9 +125,14 @@ export interface SaleRecord {
   soldAtIso?: string;
   subtotal?: number;
   discountAmount?: number;
+  discountReason?: string;
   taxAmount?: number;
+  amountReceived?: number;
+  changeAmount?: number;
+  paymentReference?: string;
   notes?: string;
   items?: SaleItemRecord[];
+  payments?: SalePaymentRecord[];
 }
 
 export interface SaleItemRecord {
@@ -133,6 +143,15 @@ export interface SaleItemRecord {
   unitPrice: number;
   kind?: string;
   productId?: string;
+  planId?: string;
+  classId?: string;
+}
+
+export interface SalePaymentRecord {
+  id: string;
+  method: string;
+  amount: number;
+  reference?: string;
 }
 
 export interface ClassRecord {

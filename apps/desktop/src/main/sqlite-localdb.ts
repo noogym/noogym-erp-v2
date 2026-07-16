@@ -13,6 +13,8 @@ type ClientPayload = Record<string, unknown> & {
   phone?: string;
   document?: string;
   status?: string;
+  qrToken?: string;
+  qrPayload?: string;
   createdAt?: string;
   updatedAt?: string;
 };

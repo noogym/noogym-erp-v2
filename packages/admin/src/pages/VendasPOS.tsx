@@ -1,5 +1,5 @@
-import { Barcode, Copy, Download, Eye, Plus, ReceiptText, RefreshCcw, ShoppingCart, Trash2, WalletCards, X, XCircle } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { Barcode, Copy, Download, Eye, Pencil, Plus, ReceiptText, RefreshCcw, ShoppingCart, Trash2, WalletCards, X, XCircle } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ConfirmModal } from "../components/modals/ConfirmModal";
 import { BarcodeModal, FinalizeSaleModal } from "../components/modals/OperationalModals";
 import { ProductVisual } from "../components/ui/ProductVisual";
@@ -13,6 +13,8 @@ import { Table } from "@noogym/ui";
 import { Tabs } from "@noogym/ui";
 import { formatKz as money } from "@noogym/core";
 import { useClassesStore } from "../store/classesStore";
+import { useAppStore } from "../store/appStore";
+import { useFinanceStore } from "../store/financeStore";
 import { usePlansStore } from "../store/plansStore";
 import { useProductsStore } from "../store/productsStore";
 import { useSalesStore } from "../store/salesStore";
@@ -35,6 +37,16 @@ type CatalogItem = {
 };
 
 type CartItem = CatalogItem & { qty: number };
+type CashSession = {
+  id: string;
+  status: "open" | "closed";
+  openedAt: string;
+  closedAt?: string;
+  openingAmount: number;
+  countedAmount?: number;
+  operator: string;
+  note?: string;
+};
 
 const mainTabs: MainTab[] = ["Nova venda", "Vendas", "Orcamentos", "Caixa do dia"];
 const catalogTabs = ["Produtos", "Planos", "Aulas", "Servicos"];
@@ -44,6 +56,24 @@ const serviceItems: CatalogItem[] = [
   { id: "SVC-003", name: "Plano alimentar", category: "Servicos", price: 10000, detail: "Consulta nutricional", emoji: "NUT", kind: "service" },
   { id: "SVC-004", name: "Massagem desportiva", category: "Servicos", price: 15000, detail: "Recuperacao muscular", emoji: "MAS", kind: "service" }
 ];
+const cashSessionKey = "noogym:pos-cash-session";
+const pendingQuickSaleKey = "noogym:pos-pending-item";
+
+const readCashSession = (): CashSession | null => {
+  if (typeof window === "undefined") return null;
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(cashSessionKey) ?? "null") as CashSession | null;
+    return parsed?.status === "open" ? parsed : null;
+  } catch {
+    return null;
+  }
+};
+
+const writeCashSession = (session: CashSession | null) => {
+  if (typeof window === "undefined") return;
+  if (session) window.localStorage.setItem(cashSessionKey, JSON.stringify(session));
+  else window.localStorage.removeItem(cashSessionKey);
+};
 
 const priceFromPlan = (price: string) => {
   const numeric = Number(price.split(" ")[0]?.replace(/\./g, "").replace(",", "."));
@@ -61,6 +91,23 @@ const productToCatalogItem = (product: ProductRecord): CatalogItem => ({
   stock: product.stock,
   sku: product.sku
 });
+const saleItemToCartId = (sale: SaleRecord, item: SaleItemRecord, index: number) =>
+  item.productId ?? item.planId ?? item.classId ?? item.id ?? `${item.kind ?? "service"}-${sale.id}-${index}`;
+const cartItemKey = (item: CartItem, index: number) =>
+  `${item.kind}-${item.id || `${item.name}-${item.price}`}-${index}`;
+const errorMessage = (error: unknown, fallback: string) =>
+  error instanceof Error && error.message ? error.message : fallback;
+const saleToCartItems = (sale: SaleRecord): CartItem[] => sale.items?.map((item, index) => ({
+  id: saleItemToCartId(sale, item, index),
+  name: item.name,
+  category: item.kind ?? "POS",
+  price: item.unitPrice,
+  detail: sale.dateTime,
+  emoji: item.kind === "product" ? "PRD" : item.kind === "plan" ? "PLN" : item.kind === "class" ? "AUL" : "SVC",
+  kind: (item.kind as CatalogKind | undefined) ?? "service",
+  sku: item.sku,
+  qty: item.quantity
+})) ?? [];
 
 const saleStatusTone = (status?: string) => status === "Cancelada" ? "red" : status === "Orcamento" ? "orange" : "lime";
 const isTodaySale = (sale: SaleRecord) => {
@@ -74,11 +121,16 @@ const saleItemsLabel = (sale: SaleRecord) => sale.items?.length
 
 function receiptText(sale: SaleRecord) {
   const rows = sale.items?.map((item) => `${item.quantity}x ${item.name} - ${money(item.unitPrice * item.quantity)}`).join("\n") ?? sale.type;
+  const payments = sale.payments?.length
+    ? sale.payments.map((payment) => `${payment.method}: ${money(payment.amount)}${payment.reference ? ` (${payment.reference})` : ""}`).join("\n")
+    : sale.paymentMethod;
   return [
     "Noogym Fitness Center",
     "Recibo POS",
     "",
+    `Recibo: ${sale.receiptNumber ?? sale.id}`,
     `Codigo: ${sale.id}`,
+    `Caixa: ${sale.cashSessionId ?? "Sem sessao"}`,
     `Data: ${sale.dateTime}`,
     `Cliente: ${sale.customer ?? "Consumidor final"}`,
     `Vendedor: ${sale.seller}`,
@@ -88,10 +140,17 @@ function receiptText(sale: SaleRecord) {
     "",
     `Subtotal: ${money(sale.subtotal ?? sale.total)}`,
     `Desconto: ${money(sale.discountAmount ?? 0)}`,
+    sale.discountReason ? `Motivo desconto: ${sale.discountReason}` : "",
     `Taxa: ${money(sale.taxAmount ?? 0)}`,
     `Total: ${money(sale.total)}`,
+    `Recebido: ${money(sale.amountReceived ?? sale.total)}`,
+    `Troco: ${money(sale.changeAmount ?? 0)}`,
+    sale.paymentReference ? `Referencia: ${sale.paymentReference}` : "",
+    "",
+    "Pagamentos:",
+    payments,
     `Status: ${sale.status ?? "Concluida"}`
-  ].join("\n");
+  ].filter((line) => line !== "").join("\n");
 }
 
 function downloadReceipt(sale: SaleRecord) {
@@ -119,6 +178,11 @@ export default function VendasPOS() {
   const [quotesPageSize, setQuotesPageSize] = useState(25);
   const [modal, setModal] = useState<"finalize" | "quote" | "clear" | "barcode" | "cancelSale" | null>(null);
   const [selectedSale, setSelectedSale] = useState<SaleRecord | null>(null);
+  const [editingQuote, setEditingQuote] = useState<SaleRecord | null>(null);
+  const [cashSession, setCashSession] = useState<CashSession | null>(readCashSession);
+  const [openingAmount, setOpeningAmount] = useState("0");
+  const [countedAmount, setCountedAmount] = useState("");
+  const [cashNote, setCashNote] = useState("");
   const products = useProductsStore((state) => state.products);
   const reduceStock = useProductsStore((state) => state.reduceStock);
   const plans = usePlansStore((state) => state.plans);
@@ -174,9 +238,24 @@ export default function VendasPOS() {
     };
   }, [todaySales]);
   const total = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
-  const saleItems: SaleItemRecord[] = useMemo(() => cart.map((item) => ({
-    id: `${item.kind}-${item.id}`,
-    productId: item.kind === "product" ? item.id : undefined,
+  const activeGymId = useAppStore((state) => state.activeGymId);
+  const onlineOnly = useAppStore((state) => state.onlineOnly);
+  const remoteCashSession = useFinanceStore((state) => state.currentCashSession);
+  const loadRemoteCashSessions = useFinanceStore((state) => state.loadCashSessions);
+  const openRemoteCashSession = useFinanceStore((state) => state.openCashSession);
+  const closeRemoteCashSession = useFinanceStore((state) => state.closeCashSession);
+  const requiresCustomer = cart.some((item) => item.kind === "plan" || item.kind === "class");
+  const isCashOpen = onlineOnly ? remoteCashSession?.status === "OPEN" : cashSession?.status === "open";
+  const activeCashSessionId = onlineOnly ? remoteCashSession?.id : cashSession?.id;
+  const activeCashOpenedAt = onlineOnly ? remoteCashSession?.openedAt : cashSession?.openedAt;
+  const activeCashOpeningAmount = onlineOnly ? remoteCashSession?.openingAmount ?? 0 : cashSession?.openingAmount ?? 0;
+  const activeCashExpectedAmount = onlineOnly ? remoteCashSession?.expected.total ?? activeCashOpeningAmount : activeCashOpeningAmount + cashSummary.net;
+  const activeCashOperator = onlineOnly ? remoteCashSession?.openedBy?.name ?? "Admin" : cashSession?.operator ?? "Admin";
+  const saleItems: SaleItemRecord[] = useMemo(() => cart.map((item, index) => ({
+    id: cartItemKey(item, index),
+    productId: item.kind === "product" ? item.id || undefined : undefined,
+    planId: item.kind === "plan" ? item.id || undefined : undefined,
+    classId: item.kind === "class" ? item.id || undefined : undefined,
     name: item.name,
     sku: item.sku,
     quantity: item.qty,
@@ -184,31 +263,114 @@ export default function VendasPOS() {
     kind: item.kind
   })), [cart]);
 
-  const addToCart = (item: CatalogItem) => setCart((items) => {
+  useEffect(() => {
+    if (!onlineOnly) return;
+    void loadRemoteCashSessions().catch(() => {
+      toastInfo("Caixa remoto indisponivel", "Nao foi possivel carregar a sessao de caixa da API.");
+    });
+  }, [activeGymId, loadRemoteCashSessions, onlineOnly]);
+
+  const addToCart = useCallback((item: CatalogItem) => setCart((items) => {
     const existing = items.find((entry) => entry.id === item.id && entry.kind === item.kind);
     return existing ? items.map((entry) => entry.id === item.id && entry.kind === item.kind ? { ...entry, qty: entry.qty + 1 } : entry) : [...items, { ...item, qty: 1 }];
-  });
+  }), []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const raw = window.sessionStorage.getItem(pendingQuickSaleKey);
+    if (!raw) return;
+    window.sessionStorage.removeItem(pendingQuickSaleKey);
+    try {
+      const item = JSON.parse(raw) as CatalogItem;
+      if (!item.id || !item.name || !item.kind) return;
+      addToCart(item);
+      setMainTab("Nova venda");
+      toastSuccess("Item adicionado ao PDV", item.name);
+    } catch {
+      toastInfo("Atalho POS ignorado", "Nao foi possivel carregar o item rapido.");
+    }
+  }, [addToCart]);
   const fillCartFromSale = (sale: SaleRecord) => {
-    const items = sale.items?.map((item) => ({
-      id: item.productId ?? item.id,
-      name: item.name,
-      category: item.kind ?? "POS",
-      price: item.unitPrice,
-      detail: sale.dateTime,
-      emoji: item.kind === "product" ? "PRD" : item.kind === "plan" ? "PLN" : item.kind === "class" ? "AUL" : "SVC",
-      kind: (item.kind as CatalogKind | undefined) ?? "service",
-      sku: item.sku,
-      qty: item.quantity
-    })) ?? [];
-    setCart(items);
+    setCart(saleToCartItems(sale));
+    setEditingQuote(null);
     setMainTab("Nova venda");
     toastSuccess("Carrinho preenchido", "Os itens da venda foram adicionados para uma nova operacao.");
+  };
+  const editQuote = (sale: SaleRecord) => {
+    setCart(saleToCartItems(sale));
+    setEditingQuote(sale);
+    setMainTab("Nova venda");
+    toastSuccess("Orcamento em edicao", sale.customer ?? sale.id);
   };
   const finishCart = (saleType: string) => {
     if (saleType !== "Orcamento") {
       reduceStock(cart.filter((item) => item.kind === "product").map((item) => ({ id: item.id, qty: item.qty })), { sync: false });
     }
     setCart([]);
+    setEditingQuote(null);
+  };
+  const openCashSession = async () => {
+    const amount = Number(openingAmount);
+    const openingValue = Number.isFinite(amount) ? Math.max(0, amount) : 0;
+    if (onlineOnly) {
+      try {
+        const session = await openRemoteCashSession({
+          gymId: activeGymId ?? undefined,
+          openingAmount: openingValue,
+          notes: cashNote.trim() || undefined
+        });
+        setCashNote("");
+        toastSuccess("Caixa aberto", money(session?.openingAmount ?? openingValue));
+      } catch (error) {
+        toastInfo("Caixa nao abriu", errorMessage(error, "A API nao confirmou a abertura do caixa."));
+      }
+      return;
+    }
+    const nextSession: CashSession = {
+      id: `CASH-${Date.now()}`,
+      status: "open",
+      openedAt: new Date().toISOString(),
+      openingAmount: openingValue,
+      operator: "Admin",
+      note: cashNote.trim() || undefined
+    };
+    writeCashSession(nextSession);
+    setCashSession(nextSession);
+    setCashNote("");
+    toastSuccess("Caixa aberto", money(nextSession.openingAmount));
+  };
+  const closeCashSession = async () => {
+    const hasCountedAmount = countedAmount.trim() !== "";
+    const counted = Number(countedAmount);
+    const countedValue = hasCountedAmount && Number.isFinite(counted) ? Math.max(0, counted) : activeCashExpectedAmount;
+    if (onlineOnly) {
+      if (!remoteCashSession) return;
+      try {
+        const session = await closeRemoteCashSession(remoteCashSession.id, {
+          actualCash: hasCountedAmount ? countedValue : undefined,
+          notes: cashNote.trim() || undefined
+        });
+        setCountedAmount("");
+        setCashNote("");
+        toastSuccess("Caixa fechado", `Diferenca: ${money(session?.difference ?? 0)}`);
+      } catch (error) {
+        toastInfo("Caixa nao fechou", errorMessage(error, "A API nao confirmou o fechamento do caixa."));
+      }
+      return;
+    }
+    if (!cashSession) return;
+    const closedSession = {
+      ...cashSession,
+      status: "closed" as const,
+      closedAt: new Date().toISOString(),
+      countedAmount: countedValue,
+      note: cashNote.trim() || cashSession.note
+    };
+    writeCashSession(null);
+    setCashSession(null);
+    setCountedAmount("");
+    setCashNote("");
+    toastSuccess("Caixa fechado", `Diferenca: ${money((closedSession.countedAmount ?? 0) - (cashSession.openingAmount + cashSummary.net))}`);
   };
   const handleCancel = () => {
     if (!selectedSale) return;
@@ -239,6 +401,11 @@ export default function VendasPOS() {
 
         {mainTab === "Nova venda" ? (
           <>
+            {!isCashOpen ? (
+              <div className="mt-4 rounded-md border border-orange-400/30 bg-orange-400/10 p-3 text-sm text-orange-100">
+                Caixa fechado. Abra o caixa em "Caixa do dia" para finalizar vendas. Orcamentos podem ser salvos sem caixa aberto.
+              </div>
+            ) : null}
             <Tabs tabs={catalogTabs} active={catalogTab} onChange={(tab) => { setCatalogTab(tab); setCategoryFilter("Todas as categorias"); }} />
             <div className="mt-5 grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px_180px]">
               <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Buscar em ${catalogTab.toLowerCase()}...`} />
@@ -294,7 +461,7 @@ export default function VendasPOS() {
             <div className="mt-4">
               <ListToolbar query={quoteQuery} onQueryChange={setQuoteQuery} queryPlaceholder="Buscar por cliente, item, vendedor ou codigo..." pageSize={quotesPageSize} onPageSizeChange={setQuotesPageSize} onClear={() => setQuoteQuery("")} />
             </div>
-            <SalesTable sales={quotesPageData.pageRows} onView={setSelectedSale} onReceipt={downloadReceipt} onDuplicate={fillCartFromSale} onConvert={fillCartFromSale} />
+            <SalesTable sales={quotesPageData.pageRows} onView={setSelectedSale} onReceipt={downloadReceipt} onDuplicate={fillCartFromSale} onEdit={editQuote} onConvert={fillCartFromSale} />
             <ListPagination page={quotesPageData.page} totalPages={quotesPageData.totalPages} totalItems={filteredQuotes.length} start={quotesPageData.start} end={quotesPageData.end} label="orcamentos" onPageChange={setQuotesPage} />
             {selectedSale ? <SaleDetails sale={selectedSale} onClose={() => setSelectedSale(null)} /> : null}
           </>
@@ -302,6 +469,38 @@ export default function VendasPOS() {
 
         {mainTab === "Caixa do dia" ? (
           <div className="mt-5 grid gap-4 xl:grid-cols-[1fr_1fr]">
+            <Card className="p-5 xl:col-span-2">
+              <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+                <div>
+                  <h2 className="font-semibold">{isCashOpen ? "Caixa aberto" : "Caixa fechado"}</h2>
+                  <p className="mt-1 text-sm text-zinc-400">
+                    {isCashOpen && activeCashOpenedAt ? `Aberto em ${new Intl.DateTimeFormat("pt-AO", { dateStyle: "short", timeStyle: "short" }).format(new Date(activeCashOpenedAt))}` : "Abra o caixa para iniciar vendas do turno."}
+                  </p>
+                  {isCashOpen ? (
+                    <div className="mt-4 grid gap-3 text-sm sm:grid-cols-3">
+                      <p className="rounded-md border border-white/10 bg-white/[0.03] p-3"><span className="block text-zinc-400">Inicial</span>{money(activeCashOpeningAmount)}</p>
+                      <p className="rounded-md border border-white/10 bg-white/[0.03] p-3"><span className="block text-zinc-400">Esperado</span>{money(activeCashExpectedAmount)}</p>
+                      <p className="rounded-md border border-white/10 bg-white/[0.03] p-3"><span className="block text-zinc-400">Operador</span>{activeCashOperator}</p>
+                    </div>
+                  ) : null}
+                </div>
+                <div className="space-y-3">
+                  {isCashOpen ? (
+                    <>
+                      <Input type="number" min="0" value={countedAmount} onChange={(event) => setCountedAmount(event.target.value)} placeholder="Valor contado no fecho" />
+                      <Input value={cashNote} onChange={(event) => setCashNote(event.target.value)} placeholder="Observacao do fecho" />
+                      <Button className="w-full" variant="primary" icon={<WalletCards className="h-4 w-4" />} onClick={closeCashSession}>Fechar caixa</Button>
+                    </>
+                  ) : (
+                    <>
+                      <Input type="number" min="0" value={openingAmount} onChange={(event) => setOpeningAmount(event.target.value)} placeholder="Valor inicial" />
+                      <Input value={cashNote} onChange={(event) => setCashNote(event.target.value)} placeholder="Observacao de abertura" />
+                      <Button className="w-full" variant="primary" icon={<WalletCards className="h-4 w-4" />} onClick={openCashSession}>Abrir caixa</Button>
+                    </>
+                  )}
+                </div>
+              </div>
+            </Card>
             <Card className="p-5">
               <h2 className="font-semibold">Resumo financeiro</h2>
               <div className="mt-4 space-y-3 text-sm">
@@ -329,25 +528,51 @@ export default function VendasPOS() {
 
       {mainTab === "Nova venda" ? (
         <aside className="panel p-4">
-          <div className="mb-4 flex items-center justify-between"><h2 className="font-semibold">Carrinho</h2><span className="text-xs text-zinc-400">{cart.length} itens</span><button onClick={() => setModal("clear")}><Trash2 className="h-4 w-4" /></button></div>
+          <div className="mb-4 flex items-center justify-between"><h2 className="font-semibold">{editingQuote ? "Editar orcamento" : "Carrinho"}</h2><span className="text-xs text-zinc-400">{cart.length} itens</span><button onClick={() => setModal("clear")}><Trash2 className="h-4 w-4" /></button></div>
+          {editingQuote ? (
+            <div className="mb-3 rounded-md border border-noogym-lime/30 bg-noogym-lime/10 p-3 text-xs text-noogym-lime">
+              Orcamento {editingQuote.receiptNumber ?? editingQuote.id} em edicao.
+            </div>
+          ) : null}
           <div className="max-h-[430px] space-y-2 overflow-auto pr-1">
-            {cart.length ? cart.map((item) => <div key={`${item.kind}-${item.id}`} className="soft-card flex gap-3 p-3"><ProductVisual label={item.emoji} className="h-14 w-14" /><div className="flex-1"><div className="flex justify-between gap-2"><p className="text-sm">{item.name}</p><button onClick={() => setCart((items) => items.filter((entry) => !(entry.id === item.id && entry.kind === item.kind)))}><X className="h-4 w-4 text-zinc-500" /></button></div><p className="text-xs text-zinc-400">{money(item.price)}</p><div className="mt-2 flex items-center gap-2 text-xs"><button className="rounded border border-white/10 px-2" onClick={() => setCart((items) => items.map((entry) => entry.id === item.id && entry.kind === item.kind ? { ...entry, qty: Math.max(1, entry.qty - 1) } : entry))}>-</button><span>{item.qty}</span><button className="rounded border border-white/10 px-2" onClick={() => setCart((items) => items.map((entry) => entry.id === item.id && entry.kind === item.kind ? { ...entry, qty: entry.qty + 1 } : entry))}>+</button></div></div><p className="self-center text-sm font-semibold">{money(item.price * item.qty)}</p></div>) : <p className="rounded-lg border border-white/10 p-4 text-center text-sm text-zinc-400">Carrinho vazio.</p>}
+            {cart.length ? cart.map((item, index) => (
+              <div key={cartItemKey(item, index)} className="soft-card flex gap-3 p-3">
+                <ProductVisual label={item.emoji} className="h-14 w-14" />
+                <div className="flex-1">
+                  <div className="flex justify-between gap-2">
+                    <p className="text-sm">{item.name}</p>
+                    <button onClick={() => setCart((items) => items.filter((_, itemIndex) => itemIndex !== index))}><X className="h-4 w-4 text-zinc-500" /></button>
+                  </div>
+                  <p className="text-xs text-zinc-400">{money(item.price)}</p>
+                  <div className="mt-2 flex items-center gap-2 text-xs">
+                    <button className="rounded border border-white/10 px-2" onClick={() => setCart((items) => items.map((entry, itemIndex) => itemIndex === index ? { ...entry, qty: Math.max(1, entry.qty - 1) } : entry))}>-</button>
+                    <span>{item.qty}</span>
+                    <button className="rounded border border-white/10 px-2" onClick={() => setCart((items) => items.map((entry, itemIndex) => itemIndex === index ? { ...entry, qty: entry.qty + 1 } : entry))}>+</button>
+                  </div>
+                </div>
+                <p className="self-center text-sm font-semibold">{money(item.price * item.qty)}</p>
+              </div>
+            )) : <p className="rounded-lg border border-white/10 p-4 text-center text-sm text-zinc-400">Carrinho vazio.</p>}
           </div>
           <Card className="mt-3 p-4 shadow-none"><p className="flex justify-between text-sm text-zinc-300">Subtotal <span>{money(total)}</span></p><p className="mt-3 flex justify-between text-sm text-zinc-300">Desconto <button className="text-noogym-lime" disabled={!cart.length} onClick={() => setModal("finalize")}>Adicionar desconto</button></p><p className="mt-5 flex justify-between border-t border-white/10 pt-5 text-xl font-semibold">Total <span className="text-noogym-lime">{money(total)}</span></p></Card>
-          <Button className="mt-4 w-full" variant="primary" icon={<ShoppingCart className="h-5 w-5" />} disabled={!cart.length} onClick={() => setModal("finalize")}>Finalizar venda</Button>
-          <div className="mt-3 grid grid-cols-2 gap-2"><Button disabled={!cart.length} onClick={() => setModal("quote")}>Salvar orcamento</Button><Button onClick={() => setModal("clear")}>Limpar carrinho</Button></div>
+          <Button className="mt-4 w-full" variant="primary" icon={<ShoppingCart className="h-5 w-5" />} disabled={!cart.length || !isCashOpen} onClick={() => setModal("finalize")}>Finalizar venda</Button>
+          <div className="mt-3 grid grid-cols-2 gap-2"><Button disabled={!cart.length} onClick={() => setModal("quote")}>{editingQuote ? "Atualizar orcamento" : "Salvar orcamento"}</Button><Button onClick={() => setModal("clear")}>{editingQuote ? "Cancelar edicao" : "Limpar carrinho"}</Button></div>
         </aside>
       ) : null}
 
-      <FinalizeSaleModal open={modal === "finalize" || modal === "quote"} total={total} items={saleItems} initialSaleType={modal === "quote" ? "Orcamento" : "Venda normal"} onClose={() => setModal(null)} onConfirmed={finishCart} />
-      <BarcodeModal open={modal === "barcode"} onClose={() => setModal(null)} />
-      <ConfirmModal open={modal === "clear"} title="Limpar carrinho" message="Tem certeza que deseja remover todos os itens do carrinho?" confirmLabel="Limpar carrinho" danger onClose={() => setModal(null)} onConfirm={() => { setCart([]); toastSuccess("Carrinho limpo com sucesso"); setModal(null); }} />
+      <FinalizeSaleModal open={modal === "finalize" || modal === "quote"} total={total} items={saleItems} initialSaleType={modal === "quote" ? "Orcamento" : "Venda normal"} editingSale={modal === "quote" ? editingQuote : null} requireCustomer={requiresCustomer} cashSessionId={activeCashSessionId} onClose={() => setModal(null)} onConfirmed={finishCart} />
+      <BarcodeModal
+        open={modal === "barcode"}
+        onClose={() => setModal(null)}
+        onFound={(product) => addToCart(productToCatalogItem(product))}
+      />
+      <ConfirmModal open={modal === "clear"} title={editingQuote ? "Cancelar edicao" : "Limpar carrinho"} message={editingQuote ? "Deseja sair da edicao deste orcamento e limpar o carrinho?" : "Tem certeza que deseja remover todos os itens do carrinho?"} confirmLabel={editingQuote ? "Cancelar edicao" : "Limpar carrinho"} danger onClose={() => setModal(null)} onConfirm={() => { setCart([]); setEditingQuote(null); toastSuccess(editingQuote ? "Edicao cancelada" : "Carrinho limpo com sucesso"); setModal(null); }} />
       <ConfirmModal open={modal === "cancelSale"} title="Cancelar venda" message="A venda sera marcada como cancelada e deixara de contar no caixa." confirmLabel="Cancelar venda" danger onClose={() => { setSelectedSale(null); setModal(null); }} onConfirm={handleCancel} />
     </div>
   );
 }
 
-function SalesTable({ sales, compact, onView, onReceipt, onDuplicate, onCancel, onConvert }: { sales: SaleRecord[]; compact?: boolean; onView: (sale: SaleRecord) => void; onReceipt: (sale: SaleRecord) => void; onDuplicate: (sale: SaleRecord) => void; onCancel?: (sale: SaleRecord) => void; onConvert?: (sale: SaleRecord) => void }) {
+function SalesTable({ sales, compact, onView, onReceipt, onDuplicate, onEdit, onCancel, onConvert }: { sales: SaleRecord[]; compact?: boolean; onView: (sale: SaleRecord) => void; onReceipt: (sale: SaleRecord) => void; onDuplicate: (sale: SaleRecord) => void; onEdit?: (sale: SaleRecord) => void; onCancel?: (sale: SaleRecord) => void; onConvert?: (sale: SaleRecord) => void }) {
   return (
     <div className="mt-4">
       <Table columns={compact ? ["Data", "Cliente", "Pagamento", "Total", "Status", "Acoes"] : ["Data", "Cliente", "Itens", "Pagamento", "Total", "Status", "Acoes"]} containerClassName="max-h-[430px]">
@@ -363,6 +588,7 @@ function SalesTable({ sales, compact, onView, onReceipt, onDuplicate, onCancel, 
               <div className="flex items-center gap-3">
                 <button title="Ver detalhes" onClick={() => onView(sale)}><Eye className="h-4 w-4" /></button>
                 <button title="Baixar recibo" onClick={() => onReceipt(sale)}><Download className="h-4 w-4" /></button>
+                {onEdit ? <button className="text-zinc-200" title="Editar orcamento" onClick={() => onEdit(sale)}><Pencil className="h-4 w-4" /></button> : null}
                 <button title="Duplicar para carrinho" onClick={() => onDuplicate(sale)}><Copy className="h-4 w-4" /></button>
                 {onConvert ? <button className="text-noogym-lime" title="Converter em venda" onClick={() => onConvert(sale)}><RefreshCcw className="h-4 w-4" /></button> : null}
                 {onCancel && sale.status !== "Cancelada" ? <button className="text-red-300" title="Cancelar venda" onClick={() => onCancel(sale)}><XCircle className="h-4 w-4" /></button> : null}
@@ -390,6 +616,10 @@ function SaleDetails({ sale, onClose }: { sale: SaleRecord; onClose: () => void 
         <p><span className="block text-zinc-400">Vendedor</span>{sale.seller}</p>
         <p><span className="block text-zinc-400">Pagamento</span>{sale.paymentMethod}</p>
         <p><span className="block text-zinc-400">Status</span>{sale.status ?? "Concluida"}</p>
+        <p><span className="block text-zinc-400">Recibo</span>{sale.receiptNumber ?? "-"}</p>
+        <p><span className="block text-zinc-400">Caixa</span>{sale.cashSessionId ?? "-"}</p>
+        <p><span className="block text-zinc-400">Referencia</span>{sale.paymentReference ?? "-"}</p>
+        <p><span className="block text-zinc-400">Troco</span>{money(sale.changeAmount ?? 0)}</p>
       </div>
       <div className="mt-4 space-y-2">
         {(sale.items ?? []).map((item) => <p key={item.id} className="flex justify-between rounded border border-white/10 px-3 py-2 text-sm"><span>{item.quantity}x {item.name}</span><span>{money(item.quantity * item.unitPrice)}</span></p>)}
@@ -400,6 +630,8 @@ function SaleDetails({ sale, onClose }: { sale: SaleRecord; onClose: () => void 
         <p className="flex justify-between md:block"><span className="text-zinc-400">Taxa</span> <span>{money(sale.taxAmount ?? 0)}</span></p>
         <p className="flex justify-between text-lg font-semibold text-noogym-lime md:block"><span>Total</span> <span>{money(sale.total)}</span></p>
       </div>
+      {sale.payments?.length ? <div className="mt-4 space-y-2 border-t border-white/10 pt-4">{sale.payments.map((payment) => <p key={payment.id} className="flex justify-between rounded border border-white/10 px-3 py-2 text-sm"><span>{payment.method}{payment.reference ? ` - ${payment.reference}` : ""}</span><span>{money(payment.amount)}</span></p>)}</div> : null}
+      {sale.discountReason ? <p className="mt-3 rounded border border-white/10 p-3 text-sm text-zinc-300">Motivo do desconto: {sale.discountReason}</p> : null}
     </Card>
   );
 }

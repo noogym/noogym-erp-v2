@@ -11,6 +11,7 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { CheckinsService } from './checkins.service';
 import { CreateCheckinDto } from './dto/create-checkin.dto';
+import { QrCheckinDto } from './dto/qr-checkin.dto';
 
 @ApiTags('Check-ins')
 @ApiBearerAuth()
@@ -40,5 +41,18 @@ export class CheckinsController {
   )
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateCheckinDto) {
     return this.checkinsService.create(user.organizationId, dto);
+  }
+
+  @Post('qr/validate')
+  @Roles(
+    UserRole.OWNER,
+    UserRole.ADMIN,
+    UserRole.MANAGER,
+    UserRole.RECEPTIONIST,
+    UserRole.TRAINER,
+    UserRole.SUPER_ADMIN,
+  )
+  createFromQr(@CurrentUser() user: AuthUser, @Body() dto: QrCheckinDto) {
+    return this.checkinsService.createFromQr(user.organizationId, dto);
   }
 }

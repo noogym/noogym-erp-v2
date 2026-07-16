@@ -6,6 +6,8 @@ import {
   createResource,
   createSubscription,
   listResource,
+  clientQrPayload,
+  regenerateMemberQr,
   updateResource,
 } from "../lib/domainApi";
 import {
@@ -58,6 +60,7 @@ interface ClientsState {
   loadOnline: () => Promise<void>;
   addClient: (client: Partial<ClientRecord>) => ClientRecord | null;
   updateClient: (id: string, data: Partial<ClientRecord>) => boolean;
+  regenerateClientQr: (id: string) => Promise<ClientRecord | null>;
   updateLastCheckin: (id: string, lastCheckin: string) => void;
   deactivateClient: (id: string) => void;
   importClients: () => void;
@@ -152,6 +155,7 @@ export const useClientsStore = create<ClientsState>((set, get) => ({
           .map((part) => part[0])
           .join("")
           .slice(0, 2),
+      qrToken: client.qrToken ?? uid("QR"),
       document: client.document,
       createdAt: client.createdAt ?? new Date().toISOString(),
       gender: client.gender,
@@ -166,6 +170,7 @@ export const useClientsStore = create<ClientsState>((set, get) => ({
       goal: client.goal,
       observations: client.observations,
     };
+    created.qrPayload = client.qrPayload ?? clientQrPayload(created.id, created.qrToken);
     const clients = [created, ...get().clients];
     persist(clients);
     void upsertDesktopClient(created, "create").catch(console.error);
@@ -309,6 +314,35 @@ export const useClientsStore = create<ClientsState>((set, get) => ({
       }
       return { clients };
     }),
+  regenerateClientQr: async (id) => {
+    const client = get().clients.find((item) => item.id === id);
+    if (!client) return null;
+
+    const source = currentClientsDataSource();
+    let updated: ClientRecord;
+
+    if (isApiDataSource(source)) {
+      const remoteId = client.remoteId ?? id;
+      const member = await regenerateMemberQr(source.token, remoteId);
+      const synced = clientFromApi(member);
+      updated = client.remoteId ? { ...synced, id: client.id, remoteId } : synced;
+    } else {
+      const qrToken = uid("QR");
+      updated = {
+        ...client,
+        qrToken,
+        qrPayload: clientQrPayload(client.id, qrToken),
+      };
+    }
+
+    const clients = get().clients.map((item) =>
+      item.id === id ? { ...item, ...updated } : item,
+    );
+    persist(clients);
+    void upsertDesktopClient({ ...client, ...updated }, "update").catch(console.error);
+    set({ clients });
+    return clients.find((item) => item.id === id) ?? null;
+  },
   deactivateClient: (id) => get().updateClient(id, { status: "Inativo" }),
   importClients: () => {
     const imported = [

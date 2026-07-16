@@ -67,6 +67,11 @@ export class CreatePaymentDto {
   dueDate?: Date;
 
   @IsOptional()
+  @Type(() => Date)
+  @IsDate()
+  paidAt?: Date;
+
+  @IsOptional()
   @IsString()
   reference?: string;
 

@@ -43,6 +43,12 @@ export function Sidebar() {
           : "A API esta acessivel e a sessao online esta pronta para sincronizar.";
   const visibleNavItems = navItems.filter((item) => canAccessRoute(item.id, user, employees, roles));
   const roleLabel = effectiveRole(user, employees);
+  const userInitials = (user?.name ?? "Admin")
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("") || "N";
 
   return (
     <aside className="admin-sidebar flex min-h-0 shrink-0 flex-col border-b border-white/10 bg-black/25 p-2 lg:h-full lg:w-[248px] lg:border-b-0 lg:border-r lg:p-3">
@@ -51,21 +57,26 @@ export function Sidebar() {
         <Badge>Admin</Badge>
       </div>
 
-      <div className="panel mb-3 hidden shrink-0 items-center gap-3 p-4 shadow-none sm:flex lg:mb-4">
-        <div className="flex h-10 w-10 items-center justify-center rounded-full border border-noogym-lime text-noogym-lime">N</div>
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium">{user?.name ?? "Admin"}</p>
-          <p className="truncate text-xs text-zinc-400">{roleLabel}</p>
+      <div className="panel mb-3 hidden shrink-0 p-3 shadow-none sm:block lg:mb-4">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-noogym-lime text-sm font-semibold text-noogym-lime">{userInitials}</div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium">{user?.name ?? "Admin"}</p>
+            <p className="truncate text-xs text-zinc-400">{user?.email ?? roleLabel}</p>
+            <p className="hidden truncate text-xs text-zinc-500 lg:block">{roleLabel}</p>
+          </div>
         </div>
-        <button
+        <Button
+          variant="secondary"
+          className="mt-3 h-8 w-full justify-center text-red-200 hover:text-red-100"
           type="button"
-          className="no-drag flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-zinc-300 transition hover:bg-red-500/10 hover:text-red-300"
           onClick={logout}
           aria-label="Sair"
           title="Sair"
         >
           <LogOut className="h-4 w-4" />
-        </button>
+          Sair
+        </Button>
       </div>
 
       <nav className="flex min-h-0 gap-1 overflow-x-auto pb-1 lg:block lg:flex-1 lg:space-y-1 lg:overflow-y-auto lg:pb-0 lg:pr-1">
