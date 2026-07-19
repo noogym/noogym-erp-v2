@@ -162,7 +162,6 @@ export default function Dashboard() {
       }));
     }
     setRoute("vendas");
-    toastSuccess("Item enviado ao PDV", item.name);
   };
 
   return (

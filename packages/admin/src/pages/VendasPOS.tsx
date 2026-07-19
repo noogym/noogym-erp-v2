@@ -17,6 +17,7 @@ import { useAppStore } from "../store/appStore";
 import { useFinanceStore } from "../store/financeStore";
 import { usePlansStore } from "../store/plansStore";
 import { useProductsStore } from "../store/productsStore";
+import { selectPosCartItemsCount, usePosCartStore, type PosCartItem } from "../store/posCartStore";
 import { useSalesStore } from "../store/salesStore";
 import { toastInfo, toastSuccess } from "../store/toastStore";
 import type { ProductRecord, SaleItemRecord, SaleRecord } from "@noogym/types";
@@ -36,7 +37,7 @@ type CatalogItem = {
   sku?: string;
 };
 
-type CartItem = CatalogItem & { qty: number };
+type CartItem = PosCartItem;
 type CashSession = {
   id: string;
   status: "open" | "closed";
@@ -189,7 +190,13 @@ export default function VendasPOS() {
   const classes = useClassesStore((state) => state.classes);
   const sales = useSalesStore((state) => state.sales);
   const cancelSale = useSalesStore((state) => state.cancelSale);
-  const [cart, setCart] = useState<CartItem[]>([]);
+  const cart = usePosCartStore((state) => state.items);
+  const addCartItem = usePosCartStore((state) => state.addItem);
+  const clearCart = usePosCartStore((state) => state.clear);
+  const removeCartItemAt = usePosCartStore((state) => state.removeAt);
+  const setCart = usePosCartStore((state) => state.setItems);
+  const setCartItemQtyAt = usePosCartStore((state) => state.setItemQtyAt);
+  const cartItemsCount = usePosCartStore(selectPosCartItemsCount);
 
   const catalogItems = useMemo(() => {
     const normalizedQuery = query.toLowerCase();
@@ -270,10 +277,10 @@ export default function VendasPOS() {
     });
   }, [activeGymId, loadRemoteCashSessions, onlineOnly]);
 
-  const addToCart = useCallback((item: CatalogItem) => setCart((items) => {
-    const existing = items.find((entry) => entry.id === item.id && entry.kind === item.kind);
-    return existing ? items.map((entry) => entry.id === item.id && entry.kind === item.kind ? { ...entry, qty: entry.qty + 1 } : entry) : [...items, { ...item, qty: 1 }];
-  }), []);
+  const addToCart = useCallback((item: CatalogItem) => {
+    addCartItem(item);
+    toastSuccess(item.kind === "product" ? "Produto adicionado ao carrinho." : "Item adicionado ao carrinho.", item.name);
+  }, [addCartItem]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -285,7 +292,6 @@ export default function VendasPOS() {
       if (!item.id || !item.name || !item.kind) return;
       addToCart(item);
       setMainTab("Nova venda");
-      toastSuccess("Item adicionado ao PDV", item.name);
     } catch {
       toastInfo("Atalho POS ignorado", "Nao foi possivel carregar o item rapido.");
     }
@@ -306,7 +312,7 @@ export default function VendasPOS() {
     if (saleType !== "Orcamento") {
       reduceStock(cart.filter((item) => item.kind === "product").map((item) => ({ id: item.id, qty: item.qty })), { sync: false });
     }
-    setCart([]);
+    clearCart();
     setEditingQuote(null);
   };
   const openCashSession = async () => {
@@ -528,7 +534,7 @@ export default function VendasPOS() {
 
       {mainTab === "Nova venda" ? (
         <aside className="panel p-4">
-          <div className="mb-4 flex items-center justify-between"><h2 className="font-semibold">{editingQuote ? "Editar orcamento" : "Carrinho"}</h2><span className="text-xs text-zinc-400">{cart.length} itens</span><button onClick={() => setModal("clear")}><Trash2 className="h-4 w-4" /></button></div>
+          <div className="mb-4 flex items-center justify-between"><h2 className="font-semibold">{editingQuote ? "Editar orcamento" : "Carrinho"}</h2><span className="text-xs text-zinc-400">{cartItemsCount} itens</span><button onClick={() => setModal("clear")}><Trash2 className="h-4 w-4" /></button></div>
           {editingQuote ? (
             <div className="mb-3 rounded-md border border-noogym-lime/30 bg-noogym-lime/10 p-3 text-xs text-noogym-lime">
               Orcamento {editingQuote.receiptNumber ?? editingQuote.id} em edicao.
@@ -541,13 +547,13 @@ export default function VendasPOS() {
                 <div className="flex-1">
                   <div className="flex justify-between gap-2">
                     <p className="text-sm">{item.name}</p>
-                    <button onClick={() => setCart((items) => items.filter((_, itemIndex) => itemIndex !== index))}><X className="h-4 w-4 text-zinc-500" /></button>
+                    <button onClick={() => removeCartItemAt(index)}><X className="h-4 w-4 text-zinc-500" /></button>
                   </div>
                   <p className="text-xs text-zinc-400">{money(item.price)}</p>
                   <div className="mt-2 flex items-center gap-2 text-xs">
-                    <button className="rounded border border-white/10 px-2" onClick={() => setCart((items) => items.map((entry, itemIndex) => itemIndex === index ? { ...entry, qty: Math.max(1, entry.qty - 1) } : entry))}>-</button>
+                    <button className="rounded border border-white/10 px-2" onClick={() => setCartItemQtyAt(index, item.qty - 1)}>-</button>
                     <span>{item.qty}</span>
-                    <button className="rounded border border-white/10 px-2" onClick={() => setCart((items) => items.map((entry, itemIndex) => itemIndex === index ? { ...entry, qty: entry.qty + 1 } : entry))}>+</button>
+                    <button className="rounded border border-white/10 px-2" onClick={() => setCartItemQtyAt(index, item.qty + 1)}>+</button>
                   </div>
                 </div>
                 <p className="self-center text-sm font-semibold">{money(item.price * item.qty)}</p>
@@ -566,7 +572,7 @@ export default function VendasPOS() {
         onClose={() => setModal(null)}
         onFound={(product) => addToCart(productToCatalogItem(product))}
       />
-      <ConfirmModal open={modal === "clear"} title={editingQuote ? "Cancelar edicao" : "Limpar carrinho"} message={editingQuote ? "Deseja sair da edicao deste orcamento e limpar o carrinho?" : "Tem certeza que deseja remover todos os itens do carrinho?"} confirmLabel={editingQuote ? "Cancelar edicao" : "Limpar carrinho"} danger onClose={() => setModal(null)} onConfirm={() => { setCart([]); setEditingQuote(null); toastSuccess(editingQuote ? "Edicao cancelada" : "Carrinho limpo com sucesso"); setModal(null); }} />
+      <ConfirmModal open={modal === "clear"} title={editingQuote ? "Cancelar edicao" : "Limpar carrinho"} message={editingQuote ? "Deseja sair da edicao deste orcamento e limpar o carrinho?" : "Tem certeza que deseja remover todos os itens do carrinho?"} confirmLabel={editingQuote ? "Cancelar edicao" : "Limpar carrinho"} danger onClose={() => setModal(null)} onConfirm={() => { clearCart(); setEditingQuote(null); toastSuccess(editingQuote ? "Edicao cancelada" : "Carrinho limpo com sucesso"); setModal(null); }} />
       <ConfirmModal open={modal === "cancelSale"} title="Cancelar venda" message="A venda sera marcada como cancelada e deixara de contar no caixa." confirmLabel="Cancelar venda" danger onClose={() => { setSelectedSale(null); setModal(null); }} onConfirm={handleCancel} />
     </div>
   );

@@ -10,6 +10,7 @@ import { useEmployeesStore } from "../../store/employeesStore";
 import { useFinanceStore } from "../../store/financeStore";
 import { useNotificationsStore } from "../../store/notificationsStore";
 import type { NotificationCategory, NotificationInput, NotificationRecord } from "../../store/notificationsStore";
+import { selectPosCartItemsCount, usePosCartStore } from "../../store/posCartStore";
 import { useProductsStore } from "../../store/productsStore";
 import { useSettingsStore } from "../../store/settingsStore";
 import { endSuperAdminSupportSession } from "../../lib/superAdminApi";
@@ -65,6 +66,7 @@ export function Topbar() {
   const onlineOnly = useAppStore((state) => state.onlineOnly);
   const pendingSync = useAppStore((state) => state.pendingSync);
   const conflictSync = useAppStore((state) => state.conflictSync);
+  const posCartCount = usePosCartStore(selectPosCartItemsCount);
   const resetZoom = useAppStore((state) => state.resetZoom);
   const setRoute = useAppStore((state) => state.setRoute);
   const setActiveGymId = useAppStore((state) => state.setActiveGymId);
@@ -122,6 +124,7 @@ export function Topbar() {
   const activeGymValue = activeGym?.id ?? "";
   const canChangeGym = allowedGyms.length > 1;
   const supportMode = Boolean(user?.supportMode);
+  const canOpenSales = canAccessRoute("vendas", user, employees, roles);
   const automaticNotifications = useMemo<NotificationInput[]>(() => {
     const generated: NotificationInput[] = [];
     const activeClients = clients.filter((client) => client.status === "Ativo");
@@ -359,6 +362,22 @@ export function Topbar() {
           <span className="min-w-0 truncate">{syncLabel}</span>
         </div>
         <div ref={notificationsRef} className="relative shrink-0">
+          {canOpenSales ? (
+            <button
+              type="button"
+              className="relative mr-2 inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/[0.035] text-zinc-200 transition hover:bg-white/[0.07]"
+              onClick={() => setRoute("vendas")}
+              aria-label="Abrir carrinho"
+              title="Carrinho"
+            >
+              <ShoppingCart className="h-5 w-5" />
+              {posCartCount > 0 ? (
+                <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full border border-black bg-noogym-lime px-1 text-[11px] font-semibold text-black">
+                  {posCartCount}
+                </span>
+              ) : null}
+            </button>
+          ) : null}
           <button
             type="button"
             className="relative flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/[0.035] text-zinc-200 transition hover:bg-white/[0.07]"
