@@ -1,12 +1,12 @@
 # Noogym MVP Deploy
 
-Este deploy sobe apenas a versao web do admin, a API e o MySQL.
+Este deploy sobe apenas a versao web do admin, a API e o PostgreSQL.
 
 ## Arquitetura atual
 
 - `web-admin`: Next.js em `http://localhost:3000`.
 - `api`: NestJS em `http://localhost:3333`.
-- `mysql`: banco MySQL usado pelo Prisma.
+- `postgres`: banco PostgreSQL usado pelo Prisma.
 - `AUTH_PROVIDER=local`: login e JWT continuam na API para o MVP.
 
 ## Subir localmente com Docker Compose
@@ -39,8 +39,7 @@ Use `deploy.env.example` como base para o ambiente publicado.
 
 Campos que devem mudar em producao:
 
-- `MYSQL_PASSWORD`
-- `MYSQL_ROOT_PASSWORD`
+- `POSTGRES_PASSWORD`
 - `JWT_SECRET`
 - `CORS_ORIGINS`
 - `NOOGYM_API_URL`

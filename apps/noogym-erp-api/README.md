@@ -9,7 +9,7 @@ Este app representa a camada backend/API do monorepo para o `web-admin` e para i
 - NestJS
 - TypeScript
 - Prisma ORM
-- MySQL
+- PostgreSQL
 - JWT Auth
 - Bcrypt
 - Class Validator / Class Transformer
@@ -62,14 +62,14 @@ As principais decisoes arquiteturais estao documentadas em [docs/adr](./docs/adr
 
 - Node.js 18+
 - pnpm
-- MySQL
+- PostgreSQL
 
 ## Configuracao
 
 Crie um ficheiro `.env` com base em `.env.example`:
 
 ```env
-DATABASE_URL="mysql://noogym:noogym_password@localhost:3306/noogymsoftware"
+DATABASE_URL="postgresql://noogym:noogym_password@localhost:5432/noogymsoftware?schema=public"
 JWT_SECRET="change-me"
 JWT_EXPIRES_IN="1d"
 JWT_REFRESH_SECRET="change-me-too"
@@ -91,7 +91,7 @@ Gerar Prisma Client:
 pnpm prisma:generate
 ```
 
-Aplicar migrations no MySQL:
+Aplicar migrations no PostgreSQL:
 
 ```bash
 pnpm prisma:migrate
