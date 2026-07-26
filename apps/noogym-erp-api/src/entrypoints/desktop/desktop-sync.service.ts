@@ -10,6 +10,10 @@ export class DesktopSyncService {
   async bootstrap(organizationId: string, query: DesktopSyncQueryDto) {
     const updatedAtFilter = this.updatedAtFilter(query.since);
     const createdAtFilter = this.createdAtFilter(query.since);
+    const gymFilter = this.gymFilter(query.gymId);
+    const planFilter = this.planFilter(query.gymId);
+    const subscriptionFilter = this.subscriptionFilter(query.gymId);
+    const paymentFilter = this.paymentFilter(query.gymId);
     const take = query.limit;
 
     const [
@@ -55,51 +59,51 @@ export class DesktopSyncService {
         },
       }),
       this.prisma.member.findMany({
-        where: { organizationId, ...updatedAtFilter },
+        where: { organizationId, ...gymFilter, ...updatedAtFilter },
         take,
         orderBy: { updatedAt: 'desc' },
         include: { gym: true },
       }),
       this.prisma.plan.findMany({
-        where: { organizationId, ...updatedAtFilter },
+        where: { organizationId, ...planFilter, ...updatedAtFilter },
         take,
         orderBy: { updatedAt: 'desc' },
       }),
       this.prisma.subscription.findMany({
-        where: { organizationId, ...updatedAtFilter },
+        where: { organizationId, ...subscriptionFilter, ...updatedAtFilter },
         take,
         orderBy: { updatedAt: 'desc' },
         include: { member: true, plan: true },
       }),
       this.prisma.payment.findMany({
-        where: { organizationId, ...updatedAtFilter },
+        where: { organizationId, ...paymentFilter, ...updatedAtFilter },
         take,
         orderBy: { updatedAt: 'desc' },
       }),
       this.prisma.product.findMany({
-        where: { organizationId, ...updatedAtFilter },
+        where: { organizationId, ...gymFilter, ...updatedAtFilter },
         take,
         orderBy: { updatedAt: 'desc' },
       }),
       this.prisma.sale.findMany({
-        where: { organizationId, ...updatedAtFilter },
+        where: { organizationId, ...gymFilter, ...updatedAtFilter },
         take,
         orderBy: { updatedAt: 'desc' },
         include: { items: true, payments: true },
       }),
       this.prisma.employee.findMany({
-        where: { organizationId, ...updatedAtFilter },
+        where: { organizationId, ...gymFilter, ...updatedAtFilter },
         take,
         orderBy: { updatedAt: 'desc' },
       }),
       this.prisma.gymClass.findMany({
-        where: { organizationId, ...updatedAtFilter },
+        where: { organizationId, ...gymFilter, ...updatedAtFilter },
         take,
         orderBy: { updatedAt: 'desc' },
         include: { enrollments: true },
       }),
       this.prisma.checkIn.findMany({
-        where: { organizationId, ...createdAtFilter },
+        where: { organizationId, ...gymFilter, ...createdAtFilter },
         take,
         orderBy: { checkedAt: 'desc' },
       }),
@@ -140,5 +144,27 @@ export class DesktopSyncService {
 
   private createdAtFilter(since?: string): object {
     return since ? { checkedAt: { gte: new Date(since) } } : {};
+  }
+
+  private gymFilter(gymId?: string): object {
+    return gymId ? { gymId } : {};
+  }
+
+  private planFilter(gymId?: string): object {
+    if (!gymId) return {};
+    return {
+      OR: [{ gyms: { some: { gymId } } }, { gyms: { none: {} } }],
+    };
+  }
+
+  private subscriptionFilter(gymId?: string): object {
+    return gymId ? { member: { gymId } } : {};
+  }
+
+  private paymentFilter(gymId?: string): object {
+    if (!gymId) return {};
+    return {
+      OR: [{ member: { gymId } }, { sale: { gymId } }],
+    };
   }
 }

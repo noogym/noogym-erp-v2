@@ -40,6 +40,11 @@ export class AuditLogInterceptor implements NestInterceptor {
             metadata: {
               params: request.params,
               query: request.query,
+              supportMode: Boolean(user.supportMode),
+              supportSessionId: user.supportSessionId,
+              supportReason: user.supportReason,
+              supportActorId: user.supportActorId,
+              supportActorEmail: user.supportActorEmail,
             },
           },
         });

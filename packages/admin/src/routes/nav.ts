@@ -7,10 +7,12 @@ import {
   Home,
   Package,
   ReceiptText,
+  RefreshCw,
   Settings,
+  Shield,
   ShoppingCart,
   UserRound,
-  UsersRound
+  UsersRound,
 } from "lucide-react";
 import type { RouteId } from "../store/appStore";
 
@@ -23,8 +25,10 @@ export const navItems: Array<{ id: RouteId; label: string; icon: typeof Home }> 
   { id: "produtos", label: "Produtos", icon: Package },
   { id: "aulas", label: "Aulas", icon: CalendarDays },
   { id: "treinos", label: "Treinos", icon: Dumbbell },
-  { id: "funcionarios", label: "Funcionários", icon: UserRound },
-  { id: "relatorios", label: "Relatórios", icon: BarChart3 },
-  { id: "financas", label: "Finanças", icon: CreditCard },
-  { id: "configuracoes", label: "Configurações", icon: Settings }
+  { id: "funcionarios", label: "Funcionarios", icon: UserRound },
+  { id: "relatorios", label: "Relatorios", icon: BarChart3 },
+  { id: "financas", label: "Financas", icon: CreditCard },
+  { id: "sincronizacao", label: "Sincronizacao", icon: RefreshCw },
+  { id: "super-admin", label: "Super Admin", icon: Shield },
+  { id: "configuracoes", label: "Configuracoes", icon: Settings },
 ];

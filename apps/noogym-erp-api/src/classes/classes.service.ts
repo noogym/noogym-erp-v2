@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { ClassEnrollmentStatus, GymClassStatus, Prisma } from '@prisma/client';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
+import { directGymScope } from '../common/utils/gym-scope';
 import { getPagination, paginated } from '../common/utils/pagination';
 import { assertActiveMember } from '../members/member-status';
 import { PrismaService } from '../prisma/prisma.service';
@@ -23,7 +24,7 @@ export class ClassesService {
     const { page, limit, skip, take } = getPagination(query.page, query.limit);
     const where: Prisma.GymClassWhereInput = {
       organizationId,
-      ...(query.gymId ? { gymId: query.gymId } : {}),
+      ...directGymScope(query),
       ...(query.status ? { status: query.status as GymClassStatus } : {}),
       ...(query.startDate || query.endDate
         ? {

@@ -28,6 +28,30 @@ export class CreatePaymentDto {
   @Min(0)
   amount: number;
 
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  grossAmount?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  discountAmount?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  lateFeeAmount?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  outstandingAmount?: number;
+
   @ApiPropertyOptional({ enum: PaymentMethod })
   @IsEnum(PaymentMethod)
   method: PaymentMethod;
@@ -43,8 +67,17 @@ export class CreatePaymentDto {
   dueDate?: Date;
 
   @IsOptional()
+  @Type(() => Date)
+  @IsDate()
+  paidAt?: Date;
+
+  @IsOptional()
   @IsString()
   reference?: string;
+
+  @IsOptional()
+  @IsString()
+  receiptNumber?: string;
 
   @IsOptional()
   @IsString()

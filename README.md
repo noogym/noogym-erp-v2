@@ -7,7 +7,7 @@ Monorepo Turborepo para o Noogym, com wrappers desktop e web, packages compartil
 - Turborepo + pnpm workspaces
 - Desktop: Electron + React + TypeScript + Vite + Tailwind CSS
 - Web Admin: Next.js App Router + React + TypeScript + Tailwind CSS
-- Backend ERP API: NestJS + TypeScript + Prisma ORM + MySQL + JWT + Swagger/OpenAPI
+- Backend ERP API: NestJS + TypeScript + Prisma ORM + PostgreSQL + JWT + Swagger/OpenAPI
 - Packages compartilhados: admin, UI, core, types, config e data-access
 
 ## Estrutura
@@ -67,10 +67,10 @@ Rotas iniciais:
 
 O backend vive em `apps/noogym-erp-api` e e a API REST para gestao de ginasios, academias, membros, planos, assinaturas, pagamentos, despesas, check-ins, treinos, agenda, mensagens, relatorios, integracoes e auditoria.
 
-Configure `apps/noogym-erp-api/.env` com MySQL e JWT:
+Configure `apps/noogym-erp-api/.env` com PostgreSQL e JWT:
 
 ```env
-DATABASE_URL="mysql://noogym:noogym_password@localhost:3306/noogymsoftware"
+DATABASE_URL="postgresql://noogym:noogym_password@localhost:5432/noogymsoftware?schema=public"
 JWT_SECRET="change-me"
 JWT_EXPIRES_IN="1d"
 JWT_REFRESH_SECRET="change-me-too"
@@ -210,4 +210,4 @@ Nos stores de `packages/admin`, a fronteira entre API e simulacao local-first de
 
 O `noogym-erp-api` e o backend NestJS do Noogym ERP. Ele organiza a regra de negocio server-side em modulos de Auth, Organizations, Gyms, Users, Members, Plans, Subscriptions, Payments, Products, Sales, Employees, Classes, Expenses, Check-ins, Exercises, Workouts, Appointments, Messages, Reports, Integrations e Audit Logs.
 
-A API usa Prisma com MySQL, autenticacao JWT com access token e refresh token, RBAC por `UserRole`, multi-tenancy por `organizationId`, validacao global de DTOs, respostas HTTP padronizadas, documentacao Swagger/Scalar e seed demo. O objetivo e servir o `web-admin` como backend SaaS e oferecer uma superficie de sincronizacao/integracao para o desktop quando os fluxos locais deixarem de ser apenas simulados.
+A API usa Prisma com PostgreSQL, autenticacao JWT com access token e refresh token, RBAC por `UserRole`, multi-tenancy por `organizationId`, validacao global de DTOs, respostas HTTP padronizadas, documentacao Swagger/Scalar e seed demo. O objetivo e servir o `web-admin` como backend SaaS e oferecer uma superficie de sincronizacao/integracao para o desktop quando os fluxos locais deixarem de ser apenas simulados.

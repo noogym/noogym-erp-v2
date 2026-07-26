@@ -5,11 +5,13 @@ import {
 } from '@nestjs/common';
 import { CheckInMethod, Prisma, SubscriptionStatus } from '@prisma/client';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
+import { directGymScope } from '../common/utils/gym-scope';
 import { getPagination, paginated } from '../common/utils/pagination';
 import { assertActiveMember } from '../members/member-status';
 import { PrismaService } from '../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
 import { CreateCheckinDto } from './dto/create-checkin.dto';
+import { QrCheckinDto } from './dto/qr-checkin.dto';
 
 @Injectable()
 export class CheckinsService {
@@ -22,7 +24,7 @@ export class CheckinsService {
     const { page, limit, skip, take } = getPagination(query.page, query.limit);
     const where: Prisma.CheckInWhereInput = {
       organizationId,
-      ...(query.gymId ? { gymId: query.gymId } : {}),
+      ...directGymScope(query),
       ...(query.startDate || query.endDate
         ? {
             checkedAt: {
@@ -31,9 +33,7 @@ export class CheckinsService {
             },
           }
         : {}),
-      ...(query.search
-        ? { member: { name: { contains: query.search } } }
-        : {}),
+      ...(query.search ? { member: { name: { contains: query.search } } } : {}),
     };
     const [items, total] = await this.prisma.$transaction([
       this.prisma.checkIn.findMany({
@@ -49,14 +49,18 @@ export class CheckinsService {
     return paginated(items, total, page, limit);
   }
 
-  async today(organizationId: string) {
+  async today(organizationId: string, query: PaginationQueryDto) {
     const start = new Date();
     start.setHours(0, 0, 0, 0);
     const end = new Date(start);
     end.setDate(end.getDate() + 1);
 
     return this.prisma.checkIn.findMany({
-      where: { organizationId, checkedAt: { gte: start, lt: end } },
+      where: {
+        organizationId,
+        ...directGymScope(query),
+        checkedAt: { gte: start, lt: end },
+      },
       orderBy: { checkedAt: 'desc' },
       include: { member: true, gym: true },
     });
@@ -140,6 +144,34 @@ export class CheckinsService {
     });
   }
 
+  async createFromQr(organizationId: string, dto: QrCheckinDto) {
+    const parsed = this.parseQrPayload(dto.payload);
+    if (!parsed.qrToken) {
+      throw new BadRequestException('Invalid QR Code payload');
+    }
+
+    const member = await this.prisma.member.findFirst({
+      where: {
+        organizationId,
+        qrToken: parsed.qrToken,
+        ...(parsed.memberId ? { id: parsed.memberId } : {}),
+      },
+      select: { id: true },
+    });
+
+    if (!member) {
+      throw new NotFoundException('QR Code not found or revoked');
+    }
+
+    return this.create(organizationId, {
+      memberId: member.id,
+      gymId: dto.gymId,
+      method: CheckInMethod.QR_CODE,
+      checkedAt: dto.checkedAt,
+      notes: dto.notes ?? 'QR Code',
+    });
+  }
+
   private assertCheckinMethodEnabled(
     method: CheckInMethod,
     settings: Record<string, unknown>,
@@ -183,5 +215,49 @@ export class CheckinsService {
     const [hours, minutes] = value.split(':').map(Number);
     if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return fallback;
     return hours * 60 + minutes;
+  }
+
+  private parseQrPayload(payload: string) {
+    const raw = payload.trim();
+
+    try {
+      const parsed = JSON.parse(raw) as {
+        memberId?: unknown;
+        qrToken?: unknown;
+        token?: unknown;
+      };
+      return {
+        memberId:
+          typeof parsed.memberId === 'string' ? parsed.memberId : undefined,
+        qrToken:
+          typeof parsed.qrToken === 'string'
+            ? parsed.qrToken
+            : typeof parsed.token === 'string'
+              ? parsed.token
+              : undefined,
+      };
+    } catch {
+      // Continue with URL/raw token parsing.
+    }
+
+    try {
+      const url = new URL(raw);
+      const parts = url.pathname.split('/').filter(Boolean);
+      if (url.protocol === 'noogym:' && url.hostname === 'checkin') {
+        return { memberId: parts[0], qrToken: parts[1] };
+      }
+
+      const checkinIndex = parts.findIndex((part) => part === 'checkin');
+      if (checkinIndex >= 0) {
+        return {
+          memberId: parts[checkinIndex + 1],
+          qrToken: parts[checkinIndex + 2],
+        };
+      }
+    } catch {
+      // Raw token fallback below.
+    }
+
+    return { qrToken: raw };
   }
 }

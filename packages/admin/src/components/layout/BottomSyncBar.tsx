@@ -18,6 +18,7 @@ export function BottomSyncBar() {
   const employees = useEmployeesStore((state) => state.employees);
   const roles = useEmployeesStore((state) => state.roles);
   const canOpenSettings = canAccessRoute("configuracoes", user, employees, roles);
+  const canOpenSync = canAccessRoute("sincronizacao", user, employees, roles);
   const syncModeLabel = onlineOnly
     ? "Online"
     : connectionState === "offline"
@@ -75,14 +76,19 @@ export function BottomSyncBar() {
       >
         {syncState === "syncing" ? "Sincronizando..." : "Sincronizar agora"}
       </Button>
-      {!onlineOnly && conflictSync > 0 && canOpenSettings ? (
+      {!onlineOnly && conflictSync > 0 && canOpenSync ? (
         <Button
           className="h-12 min-w-[180px] text-sm"
           icon={<AlertTriangle className="h-5 w-5" />}
-          onClick={() => setRoute("configuracoes")}
+          onClick={() => setRoute("sincronizacao")}
         >
           Resolver conflitos
         </Button>
+      ) : null}
+      {canOpenSync ? (
+        <button className="no-drag icon-tile h-12 w-12" onClick={() => setRoute("sincronizacao")} aria-label="Abrir sincronizacao" title="Abrir sincronizacao">
+          <RefreshCw className="h-5 w-5" />
+        </button>
       ) : null}
       {canOpenSettings ? (
         <button className="no-drag icon-tile h-12 w-12" onClick={() => setRoute("configuracoes")} aria-label="Abrir configuracoes" title="Abrir configuracoes">

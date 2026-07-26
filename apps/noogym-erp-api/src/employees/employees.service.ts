@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { EmployeeStatus, Prisma } from '@prisma/client';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
+import { directGymScope } from '../common/utils/gym-scope';
 import { getPagination, paginated } from '../common/utils/pagination';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
@@ -18,7 +19,7 @@ export class EmployeesService {
     const { page, limit, skip, take } = getPagination(query.page, query.limit);
     const where: Prisma.EmployeeWhereInput = {
       organizationId,
-      ...(query.gymId ? { gymId: query.gymId } : {}),
+      ...directGymScope(query),
       ...(query.status ? { status: query.status as EmployeeStatus } : {}),
       ...(query.search
         ? {

@@ -19,6 +19,7 @@ import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { CreateSaleDto } from './dto/create-sale.dto';
+import { UpdateSaleDto } from './dto/update-sale.dto';
 import { SalesService } from './sales.service';
 
 @ApiTags('Sales')
@@ -49,6 +50,23 @@ export class SalesController {
   )
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateSaleDto) {
     return this.salesService.create(user.organizationId, user.sub, dto);
+  }
+
+  @Patch(':id')
+  @Roles(
+    UserRole.OWNER,
+    UserRole.ADMIN,
+    UserRole.MANAGER,
+    UserRole.RECEPTIONIST,
+    UserRole.FINANCE,
+    UserRole.SUPER_ADMIN,
+  )
+  update(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body() dto: UpdateSaleDto,
+  ) {
+    return this.salesService.update(user.organizationId, user.sub, id, dto);
   }
 
   @Patch(':id/cancel')

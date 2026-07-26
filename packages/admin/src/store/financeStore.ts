@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { ApiError } from "../lib/api";
 import { createExpense, createRevenue, listFinanceRecords } from "../lib/domainApi";
 import {
   closeCashSession as closeCashSessionApi,
@@ -15,6 +16,7 @@ import {
   updateFinanceCategory
 } from "../lib/financeApi";
 import type { CashSessionRecord, CloseCashSessionPayload, FinanceSummaryFilters, OpenCashSessionPayload } from "../lib/financeApi";
+import { scopeByGym } from "../lib/gymScope";
 import type { FinanceLocalData } from "../lib/localFinance";
 import { readLocal, readLocalDb, uid, writeLocal } from "../lib/storage";
 import { useAppStore } from "./appStore";
@@ -71,6 +73,28 @@ const accountSnapshot = (accounts: FinanceAccountRecord[], accountId?: string) =
   const account = accounts.find((item) => item.id === accountId) ?? accounts.find((item) => item.isDefault) ?? accounts[0];
   return { accountId: account?.id, accountName: account?.name };
 };
+const syncWithAuthRetry = async (operation: (token: string) => Promise<unknown>) => {
+  const auth = useAuthStore.getState();
+  const token = auth.accessToken;
+  if (!token) return;
+
+  try {
+    await operation(token);
+  } catch (error) {
+    if (!(error instanceof ApiError) || error.status !== 401) {
+      console.error(error);
+      return;
+    }
+
+    try {
+      await auth.refreshSession();
+      const refreshedToken = useAuthStore.getState().accessToken;
+      if (refreshedToken) await operation(refreshedToken);
+    } catch {
+      useAuthStore.getState().logout();
+    }
+  }
+};
 
 export const useFinanceStore = create<{
   records: FinanceRecord[];
@@ -102,14 +126,12 @@ export const useFinanceStore = create<{
   currentCashSession: null,
   cashSessions: [],
   loadLocal: async () => {
-    const [records, categories, accounts] = await Promise.all([
-      readLocalDb("noogym:finance", initial),
+    const [localRecords, categories, accounts] = await Promise.all([
+      readLocalDb("noogym:finance", [] as FinanceRecord[], { seedMissing: false }),
       readLocalDb("noogym:finance-categories", initialCategories),
       readLocalDb("noogym:finance-accounts", initialAccounts)
     ]);
-    persist(records);
-    persistCategories(categories);
-    persistAccounts(accounts);
+    const records = scopeByGym(localRecords, useAppStore.getState().activeGymId);
     set({ records, categories, accounts, remoteDashboard: null, currentCashSession: null, cashSessions: [] });
   },
   loadOnline: async (filters = {}) => {
@@ -128,7 +150,7 @@ export const useFinanceStore = create<{
       getCurrentCashSession(token, scopedFilters.gymId),
       listCashSessions(token)
     ]);
-    persist(records, true);
+    persist(records);
     persistAccounts(accounts);
     persistCategories(categories);
     set({ records, accounts, categories, remoteDashboard, currentCashSession, cashSessions, activeFilters: scopedFilters });
@@ -154,9 +176,10 @@ export const useFinanceStore = create<{
   closeCashSession: async (id, payload) => {
     const token = useAuthStore.getState().accessToken;
     if (!token) throw new Error("AUTH_REQUIRED");
+    const activeGymId = useAppStore.getState().activeGymId ?? undefined;
     const session = await closeCashSessionApi(token, id, payload);
     const [currentCashSession, cashSessions] = await Promise.all([
-      getCurrentCashSession(token),
+      getCurrentCashSession(token, activeGymId),
       listCashSessions(token)
     ]);
     set({ currentCashSession, cashSessions });
@@ -180,8 +203,9 @@ export const useFinanceStore = create<{
       actionLabel: "Ver financas"
     });
 
-    const token = useAuthStore.getState().accessToken;
-    if (useAppStore.getState().onlineOnly && token) createRevenue(token, created).catch(console.error);
+    if (useAppStore.getState().onlineOnly) {
+      void syncWithAuthRetry((token) => createRevenue(token, created));
+    }
 
     return { records, accounts };
   }),
@@ -190,7 +214,7 @@ export const useFinanceStore = create<{
     const created: FinanceRecord = { id: uid("FIN"), gymId: useAppStore.getState().activeGymId ?? undefined, kind: "Despesa", category: "Operacional", value: 0, date: "Hoje", status: "Pendente", ...target, method: "Transferencia", ...record };
     const records = [created, ...state.records];
     const accounts = applyRecordToAccounts(state.accounts, created);
-    persist(records);
+    persist(records, true);
     persistAccounts(accounts);
     useAppStore.getState().addPendingSync();
     useNotificationsStore.getState().addNotification({
@@ -203,8 +227,9 @@ export const useFinanceStore = create<{
       actionLabel: "Ver financas"
     });
 
-    const token = useAuthStore.getState().accessToken;
-    if (useAppStore.getState().onlineOnly && token) createExpense(token, created).catch(console.error);
+    if (useAppStore.getState().onlineOnly) {
+      void syncWithAuthRetry((token) => createExpense(token, created));
+    }
 
     return { records, accounts };
   }),

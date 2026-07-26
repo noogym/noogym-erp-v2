@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { Prisma, ProductStatus, StockMovementType } from '@prisma/client';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
+import { directGymScope } from '../common/utils/gym-scope';
 import { getPagination, paginated } from '../common/utils/pagination';
 import { PrismaService } from '../prisma/prisma.service';
 import { AdjustStockDto } from './dto/adjust-stock.dto';
@@ -19,7 +20,7 @@ export class ProductsService {
     const { page, limit, skip, take } = getPagination(query.page, query.limit);
     const where: Prisma.ProductWhereInput = {
       organizationId,
-      ...(query.gymId ? { gymId: query.gymId } : {}),
+      ...directGymScope(query),
       ...(query.status ? { status: query.status as ProductStatus } : {}),
       ...(query.search
         ? {

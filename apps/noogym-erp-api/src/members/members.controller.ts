@@ -68,6 +68,18 @@ export class MembersController {
     return this.membersService.update(user.organizationId, id, dto);
   }
 
+  @Post(':id/qr-token/regenerate')
+  @Roles(
+    UserRole.OWNER,
+    UserRole.ADMIN,
+    UserRole.MANAGER,
+    UserRole.RECEPTIONIST,
+    UserRole.SUPER_ADMIN,
+  )
+  regenerateQrToken(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.membersService.regenerateQrToken(user.organizationId, id);
+  }
+
   @Delete(':id')
   @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.SUPER_ADMIN)
   remove(@CurrentUser() user: AuthUser, @Param('id') id: string) {

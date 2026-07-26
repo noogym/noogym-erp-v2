@@ -21,6 +21,18 @@ export class CreateSaleItemDto {
 
   @IsOptional()
   @IsString()
+  planId?: string;
+
+  @IsOptional()
+  @IsString()
+  classId?: string;
+
+  @IsOptional()
+  @IsString()
+  kind?: string;
+
+  @IsOptional()
+  @IsString()
   productName?: string;
 
   @IsOptional()
@@ -39,6 +51,21 @@ export class CreateSaleItemDto {
   unitPrice?: number;
 }
 
+export class CreateSalePaymentDto {
+  @ApiPropertyOptional({ enum: PaymentMethod })
+  @IsEnum(PaymentMethod)
+  method: PaymentMethod;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0.01)
+  amount: number;
+
+  @IsOptional()
+  @IsString()
+  reference?: string;
+}
+
 export class CreateSaleDto {
   @IsOptional()
   @IsString()
@@ -51,6 +78,10 @@ export class CreateSaleDto {
   @IsOptional()
   @IsString()
   sellerId?: string;
+
+  @IsOptional()
+  @IsString()
+  cashSessionId?: string;
 
   @IsOptional()
   @IsString()
@@ -81,6 +112,10 @@ export class CreateSaleDto {
   discountAmount?: number;
 
   @IsOptional()
+  @IsString()
+  discountReason?: string;
+
+  @IsOptional()
   @Type(() => Number)
   @IsNumber()
   @Min(0)
@@ -95,9 +130,32 @@ export class CreateSaleDto {
   @IsString()
   notes?: string;
 
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  amountReceived?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  changeAmount?: number;
+
+  @IsOptional()
+  @IsString()
+  paymentReference?: string;
+
   @IsArray()
   @ArrayMinSize(1)
   @ValidateNested({ each: true })
   @Type(() => CreateSaleItemDto)
   items: CreateSaleItemDto[];
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => CreateSalePaymentDto)
+  payments?: CreateSalePaymentDto[];
 }

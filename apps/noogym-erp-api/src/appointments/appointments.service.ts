@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { AppointmentStatus, Prisma } from '@prisma/client';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
+import { directGymScope } from '../common/utils/gym-scope';
 import { getPagination, paginated } from '../common/utils/pagination';
 import { assertActiveMember } from '../members/member-status';
 import { PrismaService } from '../prisma/prisma.service';
@@ -20,7 +21,7 @@ export class AppointmentsService {
     const where: Prisma.AppointmentWhereInput = {
       organizationId,
       ...(query.status ? { status: query.status as AppointmentStatus } : {}),
-      ...(query.gymId ? { gymId: query.gymId } : {}),
+      ...directGymScope(query),
       ...(query.startDate || query.endDate
         ? {
             startAt: {

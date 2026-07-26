@@ -50,7 +50,7 @@ export default function Financas() {
   );
 
   const tabView = useMemo(() => {
-    const tabProps = { openAction: setAction, records, data: financeData };
+    const tabProps = { openAction: setAction, onAddAccount: () => setAccountOpen(true), records, data: financeData };
     const normalizedTab = normalizeTab(activeTab);
     if (activeTab === "Receitas") return RevenuesTab(tabProps);
     if (activeTab === "Despesas") return ExpensesTab(tabProps);

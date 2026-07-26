@@ -46,6 +46,10 @@ interface Window {
         list: (status?: "open" | "resolved") => Promise<{ success: boolean; message?: string; conflicts?: DesktopSyncConflict[] }>;
         resolve: (id: string, resolution: "keep_local" | "use_remote") => Promise<{ success: boolean; message?: string; conflict?: DesktopSyncConflict | null }>;
       };
+      syncEvents: {
+        list: (status?: "pending" | "failed" | "conflict" | "synced", limit?: number) => Promise<{ success: boolean; message?: string; events?: DesktopSyncEvent[] }>;
+        retry: (id: string) => Promise<{ success: boolean; message?: string; event?: DesktopSyncEvent | null }>;
+      };
       clients: {
         list: () => Promise<unknown[]>;
         replace: (clients: unknown[]) => Promise<{ success: boolean; message?: string; clients?: unknown[] }>;
@@ -110,6 +114,19 @@ interface DesktopBindingInput {
   activeGymId?: string;
   linkedAt?: string;
   lastBootstrapAt?: string;
+}
+
+interface DesktopSyncEvent {
+  id: string;
+  entity: string;
+  entityId: string;
+  operation: "create" | "update" | "delete";
+  payload: Record<string, unknown>;
+  status?: "pending" | "failed" | "conflict" | "synced";
+  attempts: number;
+  error?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 interface DesktopSyncConflict {

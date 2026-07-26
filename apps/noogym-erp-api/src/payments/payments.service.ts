@@ -3,8 +3,15 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { PaymentMethod, PaymentStatus, Prisma } from '@prisma/client';
+import {
+  MemberStatus,
+  PaymentMethod,
+  PaymentStatus,
+  Prisma,
+  SubscriptionStatus,
+} from '@prisma/client';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
+import { hasScope, paymentGymScope } from '../common/utils/gym-scope';
 import { getPagination, paginated } from '../common/utils/pagination';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
@@ -15,8 +22,10 @@ export class PaymentsService {
 
   async findAll(organizationId: string, query: PaginationQueryDto) {
     const { page, limit, skip, take } = getPagination(query.page, query.limit);
+    const scope = paymentGymScope(query);
     const where: Prisma.PaymentWhereInput = {
       organizationId,
+      ...(hasScope(scope) ? { AND: [scope] } : {}),
       ...(query.status ? { status: query.status as PaymentStatus } : {}),
       ...(query.method ? { method: query.method as PaymentMethod } : {}),
       ...(query.startDate || query.endDate
@@ -60,20 +69,69 @@ export class PaymentsService {
 
   async create(organizationId: string, dto: CreatePaymentDto) {
     const relationData = await this.resolveRelationData(organizationId, dto);
-    const amount = relationData.amount ?? dto.amount;
+    const amount = dto.amount;
+    const grossAmount = dto.grossAmount ?? relationData.grossAmount ?? amount;
+    const discountAmount = dto.discountAmount ?? 0;
+    const lateFeeAmount = dto.lateFeeAmount ?? 0;
+    const expectedOutstanding = Math.max(
+      0,
+      grossAmount - discountAmount + lateFeeAmount - amount,
+    );
+    const outstandingAmount = dto.outstandingAmount ?? expectedOutstanding;
 
     if (amount <= 0) {
       throw new BadRequestException('Payment amount must be positive');
     }
+    if (discountAmount > grossAmount) {
+      throw new BadRequestException(
+        'Payment discount cannot exceed gross amount',
+      );
+    }
 
-    return this.prisma.payment.create({
-      data: {
-        ...dto,
-        ...relationData,
-        amount,
-        organizationId,
-        paidAt: dto.status === 'PAID' ? new Date() : undefined,
-      },
+    const paidAt = dto.status === PaymentStatus.PAID ? (dto.paidAt ?? new Date()) : undefined;
+    const { subscriptionPlanDurationDays, ...paymentRelationData } =
+      relationData;
+
+    return this.prisma.$transaction(async (tx) => {
+      const payment = await tx.payment.create({
+        data: {
+          ...dto,
+          ...paymentRelationData,
+          amount,
+          grossAmount,
+          discountAmount,
+          lateFeeAmount,
+          outstandingAmount,
+          receiptNumber: dto.receiptNumber ?? dto.reference,
+          organizationId,
+          paidAt,
+        },
+      });
+
+      if (
+        paidAt &&
+        outstandingAmount <= 0 &&
+        relationData.subscriptionId &&
+        relationData.memberId &&
+        subscriptionPlanDurationDays
+      ) {
+        await this.renewSubscriptionAfterPayment(tx, {
+          organizationId,
+          memberId: relationData.memberId,
+          subscriptionId: relationData.subscriptionId,
+          durationDays: subscriptionPlanDurationDays,
+          paidAt,
+        });
+      }
+
+      return tx.payment.findUnique({
+        where: { id: payment.id },
+        include: {
+          member: true,
+          subscription: { include: { plan: true } },
+          sale: { include: { items: true } },
+        },
+      });
     });
   }
 
@@ -98,7 +156,9 @@ export class PaymentsService {
     dto: CreatePaymentDto,
   ) {
     let memberId = dto.memberId;
-    let amount: number | undefined;
+    let grossAmount: number | undefined;
+    let subscriptionId = dto.subscriptionId;
+    let subscriptionPlanDurationDays: number | undefined;
 
     if (dto.memberId) {
       const member = await this.prisma.member.findFirst({
@@ -114,7 +174,7 @@ export class PaymentsService {
         select: {
           id: true,
           memberId: true,
-          plan: { select: { price: true } },
+          plan: { select: { price: true, durationDays: true } },
         },
       });
       if (!subscription) throw new NotFoundException('Subscription not found');
@@ -125,7 +185,9 @@ export class PaymentsService {
       }
 
       memberId = subscription.memberId;
-      amount = Number(subscription.plan.price);
+      subscriptionId = subscription.id;
+      grossAmount = Number(subscription.plan.price);
+      subscriptionPlanDurationDays = subscription.plan.durationDays;
     }
 
     if (dto.saleId) {
@@ -151,12 +213,77 @@ export class PaymentsService {
       }
 
       memberId = memberId ?? sale.memberId ?? undefined;
-      amount = Number(sale.total);
+      grossAmount = Number(sale.total);
+    }
+
+    if (memberId && !subscriptionId && !dto.saleId) {
+      const subscription = await this.prisma.subscription.findFirst({
+        where: { memberId, organizationId },
+        orderBy: [{ endDate: 'desc' }, { createdAt: 'desc' }],
+        select: {
+          id: true,
+          memberId: true,
+          plan: { select: { price: true, durationDays: true } },
+        },
+      });
+
+      if (subscription) {
+        subscriptionId = subscription.id;
+        grossAmount = grossAmount ?? Number(subscription.plan.price);
+        subscriptionPlanDurationDays = subscription.plan.durationDays;
+      }
     }
 
     return {
       memberId,
-      amount,
+      subscriptionId,
+      grossAmount,
+      subscriptionPlanDurationDays,
     };
+  }
+
+  private async renewSubscriptionAfterPayment(
+    tx: Prisma.TransactionClient,
+    input: {
+      organizationId: string;
+      memberId: string;
+      subscriptionId: string;
+      durationDays: number;
+      paidAt: Date;
+    },
+  ) {
+    const subscription = await tx.subscription.findFirst({
+      where: { id: input.subscriptionId, organizationId: input.organizationId },
+      select: { id: true, endDate: true },
+    });
+
+    if (!subscription) return;
+
+    const paidDay = new Date(input.paidAt);
+    paidDay.setHours(0, 0, 0, 0);
+    const currentEnd = new Date(subscription.endDate);
+    currentEnd.setHours(0, 0, 0, 0);
+    const base = currentEnd > paidDay ? currentEnd : paidDay;
+    const nextEndDate = new Date(base);
+    nextEndDate.setDate(nextEndDate.getDate() + input.durationDays);
+
+    await tx.subscription.update({
+      where: { id: input.subscriptionId },
+      data: {
+        status: SubscriptionStatus.ACTIVE,
+        startDate: base,
+        endDate: nextEndDate,
+        nextBillingDate: nextEndDate,
+      },
+    });
+
+    await tx.member.updateMany({
+      where: {
+        id: input.memberId,
+        organizationId: input.organizationId,
+        status: { in: [MemberStatus.OVERDUE, MemberStatus.INACTIVE] },
+      },
+      data: { status: MemberStatus.ACTIVE },
+    });
   }
 }

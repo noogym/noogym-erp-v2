@@ -1,6 +1,7 @@
-import { Barcode, Check, CheckCircle2, Clock, CreditCard, Dumbbell, Info, QrCode, Search, ShieldCheck, Tag, UploadCloud, UsersRound } from "lucide-react";
+import { Barcode, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock, CreditCard, Dumbbell, Info, QrCode, Search, ShieldCheck, Tag, UploadCloud, UsersRound } from "lucide-react";
+import { createKeyboardScanner } from "@noogym/scanner";
 import type { ReactNode } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Avatar } from "../ui/Avatar";
 import { Badge } from "@noogym/ui";
 import { Button } from "@noogym/ui";
@@ -26,7 +27,7 @@ import { useAppStore } from "../../store/appStore";
 import { useWorkoutsStore } from "../../store/workoutsStore";
 import { useAuthStore } from "../../store/authStore";
 import { toastInfo, toastSuccess } from "../../store/toastStore";
-import type { ClassRecord, ClientRecord, EmployeeRecord, PlanRecord, ProductRecord, SaleItemRecord, WorkoutExerciseRecord, WorkoutRecord } from "@noogym/types";
+import type { CheckinRecord, ClassRecord, ClientRecord, EmployeeRecord, PlanRecord, ProductRecord, SaleItemRecord, SaleRecord, WorkoutExerciseRecord, WorkoutRecord } from "@noogym/types";
 import type { PlanCategory, PlanCategoryInput } from "../../store/plansStore";
 
 const today = "Hoje, 10:30";
@@ -34,6 +35,11 @@ const planWeekDays = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sab", "Dom"];
 const defaultPlanWeekDays = ["Seg", "Ter", "Qua", "Qui", "Sex"];
 type PlanAvailabilityMode = "all" | "current" | "selected";
 const planAvailableForGym = (plan: PlanRecord, gymId?: string | null) => !gymId || !plan.gymIds?.length || plan.gymIds.includes(gymId);
+type BarcodeDetectorConstructor = new (options?: { formats?: string[] }) => {
+  detect: (source: HTMLVideoElement) => Promise<Array<{ rawValue?: string }>>;
+};
+const barcodeDetector = () =>
+  typeof window === "undefined" ? undefined : (window as unknown as { BarcodeDetector?: BarcodeDetectorConstructor }).BarcodeDetector;
 
 const dateTimeInputValue = () => {
   const now = new Date();
@@ -50,6 +56,11 @@ const formatDateTimeLabel = (value: string) => {
   if (date.toDateString() === now.toDateString()) return `Hoje, ${time}`;
   return new Intl.DateTimeFormat("pt-AO", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(date);
 };
+const parseAmountInput = (value: string) => {
+  const normalized = value.replace(/\s/g, "").replace(/\./g, "").replace(",", ".");
+  const amount = Number(normalized);
+  return Number.isFinite(amount) && amount > 0 ? amount : 0;
+};
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -63,6 +74,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 export function ManualCheckinModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const clients = useClientsStore((state) => state.clients);
   const addCheckin = useCheckinsStore((state) => state.addCheckin);
+  const validateCheckin = useCheckinsStore((state) => state.validateCheckin);
   const [query, setQuery] = useState("");
   const [accessType, setAccessType] = useState("Entrada");
   const selected = clients.find((client) => `${client.name} ${client.id} ${client.email} ${client.phone}`.toLowerCase().includes(query.toLowerCase())) ?? clients[0];
@@ -72,8 +84,14 @@ export function ManualCheckinModal({ open, onClose }: { open: boolean; onClose: 
       toastInfo("Sem clientes", "Cadastre um cliente antes de realizar check-in.");
       return;
     }
-    if (!addCheckin({ clientName: selected.name, clientId: selected.id, type: "Manual", accessType, dateTime: today })) {
-      toastInfo("Check-in bloqueado", "Este cliente nao esta ativo.");
+    const payload = { clientName: selected.name, clientId: selected.id, type: "Manual", accessType, dateTime: today };
+    const validation = validateCheckin(payload);
+    if (!validation.allowed) {
+      toastInfo(validation.title, validation.message);
+      return;
+    }
+    if (!addCheckin(payload)) {
+      toastInfo("Check-in bloqueado", "Nao foi possivel registrar o check-in agora.");
       return;
     }
     toastSuccess("Check-in realizado", `${selected.name} registado com sucesso.`);
@@ -134,35 +152,148 @@ export function ManualCheckinModal({ open, onClose }: { open: boolean; onClose: 
 }
 
 export function QrScannerModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const clients = useClientsStore((state) => state.clients);
-  const addCheckin = useCheckinsStore((state) => state.addCheckin);
-  const [scanned, setScanned] = useState(false);
-  const client = clients[0];
-  const confirm = () => {
-    if (!client) {
-      toastInfo("Sem clientes", "Cadastre um cliente antes de realizar check-in.");
+  const addQrCheckin = useCheckinsStore((state) => state.addQrCheckin);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const scanningRef = useRef(false);
+  const [manualPayload, setManualPayload] = useState("");
+  const [status, setStatus] = useState("Scanner USB ativo. A camera sera usada se estiver disponivel.");
+  const [result, setResult] = useState<CheckinRecord | null>(null);
+  const stopCamera = useCallback(() => {
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+  }, []);
+
+  const processPayload = useCallback(async (payload: string) => {
+    const normalized = payload.trim();
+    if (!normalized || scanningRef.current) return;
+
+    scanningRef.current = true;
+    setStatus("A validar QR Code...");
+    try {
+      const checkin = await addQrCheckin(normalized);
+      if (!checkin) {
+        setStatus("QR Code nao encontrado ou ja revogado.");
+        toastInfo("QR Code invalido", "Nao encontrei este QR em clientes ativos desta unidade.");
+        return;
+      }
+      setResult(checkin);
+      setStatus("Check-in confirmado.");
+      toastSuccess("Check-in realizado", `${checkin.clientName} registado por QR Code.`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Nao foi possivel validar este QR Code.";
+      setStatus(message);
+      toastInfo("Check-in bloqueado", message);
+    } finally {
+      window.setTimeout(() => {
+        scanningRef.current = false;
+      }, 1200);
+    }
+  }, [addQrCheckin]);
+
+  useEffect(() => {
+    if (!open) {
+      stopCamera();
+      setManualPayload("");
+      setResult(null);
       return;
     }
-    if (!addCheckin({ clientName: client.name, clientId: client.id, type: "QR Code", accessType: "Entrada", dateTime: today })) {
-      toastInfo("Check-in bloqueado", "Este cliente nao esta ativo.");
-      return;
-    }
-    toastSuccess("Check-in realizado", "QR Code confirmado com sucesso.");
-    setScanned(false);
-    onClose();
-  };
+
+    let active = true;
+    let timer: number | undefined;
+
+    const start = async () => {
+      const Detector = barcodeDetector();
+      if (!Detector) {
+        setStatus("Leitura por camera indisponivel neste navegador. Use o scanner USB ou cole o codigo abaixo.");
+        return;
+      }
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setStatus("Camera indisponivel neste dispositivo. Use o scanner USB ou cole o codigo abaixo.");
+        return;
+      }
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+        if (!active) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
+        streamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          await videoRef.current.play();
+        }
+        setStatus("Aponte a camera para o QR Code do cliente.");
+        const detector = new Detector({ formats: ["qr_code"] });
+        const scan = async () => {
+          if (!active || !videoRef.current) return;
+          try {
+            const codes = await detector.detect(videoRef.current);
+            const rawValue = codes.find((code) => code.rawValue)?.rawValue;
+            if (rawValue) await processPayload(rawValue);
+          } catch {
+            setStatus("Nao consegui ler pela camera agora. Use o scanner USB ou cole o codigo abaixo.");
+          }
+          timer = window.setTimeout(scan, 500);
+        };
+        void scan();
+      } catch {
+        setStatus("Permita acesso a camera, use o scanner USB ou cole o codigo abaixo.");
+      }
+    };
+
+    void start();
+
+    return () => {
+      active = false;
+      if (timer) window.clearTimeout(timer);
+      stopCamera();
+    };
+  }, [open, processPayload, stopCamera]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const scanner = createKeyboardScanner({
+      onScan: (scan) => {
+        setManualPayload(scan.value);
+        void processPayload(scan.value);
+      },
+      preventDefaultOnTerminator: true,
+    });
+
+    scanner.start();
+    return () => scanner.stop();
+  }, [open, processPayload]);
   return (
-    <Modal open={open} title="Escanear QR Code" description="Use a leitura simulada para identificar o aluno." size="md" onClose={onClose}>
-      <div className="flex flex-col items-center text-center">
-        <div className="flex h-72 w-full items-center justify-center rounded-lg border border-dashed border-noogym-lime/35 bg-black/30">
-          {scanned && client ? <div><Avatar label={client.avatar ?? "CL"} className="mx-auto h-16 w-16" /><p className="mt-3 font-semibold">{client.name}</p><p className="text-sm text-zinc-400">{client.plan}</p></div> : <QrCode className="h-24 w-24 text-noogym-lime" />}
+    <Modal open={open} title="Escanear QR Code" description="Use o scanner USB como leitura principal. A camera funciona como apoio quando o navegador suportar." size="md" onClose={onClose}>
+      <div className="space-y-4">
+        <div className="rounded-lg border border-noogym-lime/30 bg-noogym-lime/10 p-3 text-sm">
+          <div className="flex items-start gap-3">
+            <Barcode className="mt-0.5 h-5 w-5 text-noogym-lime" />
+            <div>
+              <p className="font-semibold text-noogym-lime">Scanner USB pronto</p>
+              <p className="mt-1 text-zinc-300">Leia o cartao ou QR do cliente. Se preferir, cole o codigo no campo abaixo.</p>
+            </div>
+          </div>
         </div>
-        <div className="mt-5 grid w-full grid-cols-3 gap-3">
-          <Button onClick={() => setScanned(true)}>Simular leitura</Button>
-          <Button onClick={() => setScanned(true)}>Inserir código manualmente</Button>
-          <Button onClick={onClose}>Cancelar</Button>
+        <div className="relative h-72 overflow-hidden rounded-lg border border-white/10 bg-black">
+          <video ref={videoRef} className="h-full w-full object-cover" muted playsInline />
+          <div className="pointer-events-none absolute inset-8 rounded-lg border-2 border-noogym-lime/70 shadow-[0_0_0_999px_rgba(0,0,0,0.28)]" />
+          <div className="absolute bottom-3 left-3 right-3 rounded-md border border-white/10 bg-black/70 px-3 py-2 text-sm text-zinc-200">{status}</div>
         </div>
-        {scanned ? <Button className="mt-3 w-full" variant="primary" onClick={confirm}>Confirmar check-in</Button> : null}
+        {result ? <div className="rounded-lg border border-noogym-lime/40 bg-noogym-lime/10 p-4 text-sm">
+          <p className="font-semibold text-noogym-lime">Check-in confirmado</p>
+          <p className="mt-1">{result.clientName}</p>
+          <p className="text-zinc-300">{result.dateTime}</p>
+        </div> : null}
+        <div className="space-y-2">
+          <FormTextarea label="Scanner USB ou codigo manual" value={manualPayload} onChange={(event) => setManualPayload(event.target.value)} placeholder="Leia com o scanner USB ou cole o payload/token do QR Code..." rows={3} />
+          <div className="grid grid-cols-2 gap-3">
+            <Button onClick={onClose}>Cancelar</Button>
+            <Button variant="primary" icon={<QrCode className="h-4 w-4" />} onClick={() => processPayload(manualPayload)}>Validar QR Code</Button>
+        </div>
+        </div>
       </div>
     </Modal>
   );
@@ -171,21 +302,48 @@ export function QrScannerModal({ open, onClose }: { open: boolean; onClose: () =
 export function NewCheckinModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const clients = useClientsStore((state) => state.clients);
   const addCheckin = useCheckinsStore((state) => state.addCheckin);
+  const validateCheckin = useCheckinsStore((state) => state.validateCheckin);
+  const addRevenue = useFinanceStore((state) => state.addRevenue);
   const [tab, setTab] = useState("Buscar cliente");
   const [query, setQuery] = useState("");
   const [selectedClientId, setSelectedClientId] = useState("");
   const [dateTime, setDateTime] = useState(dateTimeInputValue);
   const [checkinType, setCheckinType] = useState("Presencial");
+  const [guestAmount, setGuestAmount] = useState("");
+  const [guestPaymentMethod, setGuestPaymentMethod] = useState("Dinheiro");
   const [observation, setObservation] = useState("");
+  const [clientPage, setClientPage] = useState(1);
+  const clientPageSize = 8;
   const filteredClients = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
-    if (!normalizedQuery) return clients.slice(0, 6);
+    const visibleClients = clients
+      .slice()
+      .sort((a, b) => Number(b.status === "Ativo") - Number(a.status === "Ativo") || a.name.localeCompare(b.name, "pt-AO"));
+    if (!normalizedQuery) return visibleClients;
 
-    return clients.filter((client) =>
+    return visibleClients.filter((client) =>
       `${client.name} ${client.id} ${client.phone} ${client.email} ${client.document ?? ""}`.toLowerCase().includes(normalizedQuery)
-    ).slice(0, 6);
+    );
   }, [clients, query]);
-  const selectedClient = clients.find((client) => client.id === selectedClientId) ?? filteredClients[0];
+  const totalClientPages = Math.max(1, Math.ceil(filteredClients.length / clientPageSize));
+  const clientPageRows = useMemo(() => {
+    const start = (clientPage - 1) * clientPageSize;
+    return filteredClients.slice(start, start + clientPageSize);
+  }, [clientPage, filteredClients]);
+  const clientRangeStart = filteredClients.length ? (clientPage - 1) * clientPageSize + 1 : 0;
+  const clientRangeEnd = Math.min(clientPage * clientPageSize, filteredClients.length);
+  const selectedClient = clients.find((client) => client.id === selectedClientId) ?? clientPageRows[0] ?? filteredClients[0];
+  const selectedValidation = useMemo(() => {
+    if (!selectedClient) return null;
+    const parsedDate = new Date(dateTime);
+    return validateCheckin({
+      clientName: selectedClient.name,
+      clientId: selectedClient.id,
+      type: tab === "Check-in avulso" ? "Avulso" : checkinType,
+      accessType: "Entrada",
+      checkedAtIso: Number.isNaN(parsedDate.getTime()) ? undefined : parsedDate.toISOString()
+    });
+  }, [checkinType, dateTime, selectedClient, tab, validateCheckin]);
 
   useEffect(() => {
     if (!open) return;
@@ -194,8 +352,15 @@ export function NewCheckinModal({ open, onClose }: { open: boolean; onClose: () 
     setSelectedClientId("");
     setDateTime(dateTimeInputValue());
     setCheckinType("Presencial");
+    setGuestAmount("");
+    setGuestPaymentMethod("Dinheiro");
     setObservation("");
+    setClientPage(1);
   }, [open]);
+
+  useEffect(() => {
+    if (clientPage > totalClientPages) setClientPage(totalClientPages);
+  }, [clientPage, totalClientPages]);
 
   const confirm = () => {
     if (!selectedClient) {
@@ -208,39 +373,108 @@ export function NewCheckinModal({ open, onClose }: { open: boolean; onClose: () 
       return;
     }
 
-    const created = addCheckin({
+    const payload = {
       clientName: selectedClient.name,
       clientId: selectedClient.id,
-      type: tab === "Check-in avulso" ? "Manual" : checkinType,
+      type: tab === "Check-in avulso" ? "Avulso" : checkinType,
       accessType: "Entrada",
       dateTime: formatDateTimeLabel(dateTime),
       checkedAtIso: parsedDate.toISOString(),
       observation: observation.trim() || undefined
-    });
-    if (!created) {
-      toastInfo("Check-in bloqueado", "Este cliente nao esta ativo.");
+    };
+    const validation = validateCheckin(payload);
+    if (!validation.allowed) {
+      toastInfo(validation.title, validation.message);
       return;
+    }
+    if (!addCheckin(payload)) {
+      toastInfo("Check-in bloqueado", "Nao foi possivel registrar o check-in agora.");
+      return;
+    }
+    const guestValue = tab === "Check-in avulso" ? parseAmountInput(guestAmount) : 0;
+    if (guestValue > 0) {
+      addRevenue({
+        category: "Entrada avulsa",
+        value: guestValue,
+        date: formatDateTimeLabel(dateTime),
+        status: "Recebido",
+        note: `${selectedClient.name} - check-in avulso`,
+        memberId: selectedClient.id,
+        method: guestPaymentMethod,
+        paidAt: parsedDate.toISOString()
+      });
     }
     toastSuccess("Check-in realizado", "Resumo do dia atualizado.");
     onClose();
   };
 
   return (
-    <Modal open={open} title="Novo check-in" description="Selecione o cliente e registre o check-in na unidade." size="lg" onClose={onClose} footer={<><Button onClick={onClose}>Cancelar</Button><Button variant="primary" onClick={confirm}>Confirmar check-in</Button></>}>
+    <Modal open={open} title="Novo check-in" description="Selecione o cliente e registre o check-in na unidade." size="xl" onClose={onClose} footer={<><Button onClick={onClose}>Cancelar</Button><Button variant="primary" onClick={confirm}>Confirmar check-in</Button></>}>
       <Section title="1. Cliente">
         <div className="flex gap-6 border-b border-white/10 text-sm">
           {["Buscar cliente", "Check-in avulso"].map((item) => <button key={item} type="button" onClick={() => setTab(item)} className={`py-2 ${tab === item ? "border-b border-noogym-lime text-noogym-lime" : "text-zinc-400"}`}>{item}</button>)}
         </div>
-        <FormInput label="Busca por nome, CPF/BI ou codigo" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Digite o nome ou BI do cliente..." />
-        <div className="space-y-2">
-          {filteredClients.length ? filteredClients.map((client) => (
-            <button key={client.id} type="button" onClick={() => setSelectedClientId(client.id)} className={`flex w-full items-center gap-4 rounded-lg border p-4 text-left transition ${selectedClient?.id === client.id ? "border-noogym-lime bg-noogym-lime/10" : "border-white/10 bg-white/[0.03] hover:border-white/20"}`}>
-              <Avatar label={client.avatar ?? "CL"} className="h-14 w-14" />
-              <div className="min-w-0 flex-1"><p className="font-semibold">{client.name}</p><p className="truncate text-sm text-zinc-400">BI: {client.document ?? "-"} - {client.plan}</p></div>
-              <Badge>{client.status}</Badge>
+        <div className="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-end">
+          <FormInput label="Busca por nome, CPF/BI, telefone, e-mail ou codigo" value={query} onChange={(event) => { setQuery(event.target.value); setClientPage(1); setSelectedClientId(""); }} placeholder="Digite nome, BI, telefone ou codigo..." />
+          <div className="rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-zinc-300">
+            <span className="block text-zinc-500">Clientes encontrados</span>
+            <strong className="text-sm text-zinc-100">{filteredClients.length} de {clients.length}</strong>
+          </div>
+        </div>
+        <div className="max-h-[360px] space-y-2 overflow-y-auto pr-1">
+          {filteredClients.length ? clientPageRows.map((client) => (
+            <button key={client.id} type="button" onClick={() => setSelectedClientId(client.id)} className={`flex w-full items-center gap-3 rounded-lg border p-3 text-left transition sm:gap-4 ${selectedClient?.id === client.id ? "border-noogym-lime bg-noogym-lime/10" : "border-white/10 bg-white/[0.03] hover:border-white/20"}`}>
+              <Avatar label={client.avatar ?? "CL"} className="h-12 w-12 shrink-0 sm:h-14 sm:w-14" />
+              <div className="min-w-0 flex-1">
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <p className="truncate font-semibold">{client.name}</p>
+                  <Badge>{client.status}</Badge>
+                </div>
+                <p className="truncate text-sm text-zinc-400">BI: {client.document ?? "-"} - {client.id}</p>
+                <p className="truncate text-sm text-zinc-400">{client.phone} - {client.plan}</p>
+              </div>
+              <div className="hidden text-right text-xs text-zinc-400 sm:block">
+                <span className="block">Ultimo check-in</span>
+                <strong className="font-medium text-zinc-200">{client.lastCheckin ?? "Sem check-in"}</strong>
+                <span className="mt-1 block">Vence: {client.expires ?? "-"}</span>
+              </div>
             </button>
           )) : <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4 text-sm text-zinc-300">Nenhum cliente encontrado com estes dados.</div>}
         </div>
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-white/10 bg-white/[0.025] px-3 py-2 text-xs text-zinc-400">
+          <span>
+            Mostrando {clientRangeStart}-{clientRangeEnd} de {filteredClients.length}
+          </span>
+          <div className="flex items-center gap-2">
+            <button type="button" className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-white/10 text-zinc-200 disabled:cursor-not-allowed disabled:opacity-40" aria-label="Pagina anterior" disabled={clientPage <= 1} onClick={() => { setClientPage((page) => Math.max(1, page - 1)); setSelectedClientId(""); }}>
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            <span className="min-w-16 text-center text-zinc-200">
+              {clientPage} / {totalClientPages}
+            </span>
+            <button type="button" className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-white/10 text-zinc-200 disabled:cursor-not-allowed disabled:opacity-40" aria-label="Proxima pagina" disabled={clientPage >= totalClientPages} onClick={() => { setClientPage((page) => Math.min(totalClientPages, page + 1)); setSelectedClientId(""); }}>
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+        {selectedClient ? (
+          <div className={`rounded-md border p-3 text-sm ${selectedValidation?.allowed ? "border-noogym-lime/30 bg-noogym-lime/10 text-zinc-200" : "border-red-400/30 bg-red-500/10 text-red-100"}`}>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="font-medium">{selectedClient.name}</span>
+              <span>{selectedValidation?.allowed ? "Liberado para check-in" : selectedValidation?.title}</span>
+            </div>
+            {!selectedValidation?.allowed ? <p className="mt-1 text-xs opacity-90">{selectedValidation?.message}</p> : null}
+          </div>
+        ) : null}
+        {tab === "Check-in avulso" ? (
+          <div className="rounded-lg border border-noogym-lime/25 bg-noogym-lime/10 p-3">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <FormInput label="Valor pago pela entrada avulsa" inputMode="decimal" value={guestAmount} onChange={(event) => setGuestAmount(event.target.value)} placeholder="0" />
+              <FormSelect label="Metodo de pagamento" value={guestPaymentMethod} onChange={(event) => setGuestPaymentMethod(event.target.value)} options={["Dinheiro", "Cartao", "Transferencia", "TPA", "Outro"]} />
+            </div>
+            <p className="mt-2 text-xs text-zinc-300">Quando informado, o valor sera lancado em Financas como receita de Entrada avulsa.</p>
+          </div>
+        ) : null}
       </Section>
       <Section title="2. Detalhes do check-in">
         <div className="grid grid-cols-2 gap-3">
@@ -702,55 +936,221 @@ const parseSaleAmount = (value: string, subtotal: number) => {
 
 const moneyLabel = (value: number) => `${Math.round(value).toLocaleString("pt-AO")} Kz`;
 
-export function FinalizeSaleModal({ open, total, items, initialSaleType = "Venda normal", onClose, onConfirmed }: { open: boolean; total: number; items: SaleItemRecord[]; initialSaleType?: string; onClose: () => void; onConfirmed: (saleType: string) => void }) {
+function ClientAutocomplete({
+  clients,
+  value,
+  onChange,
+  requireCustomer
+}: {
+  clients: ClientRecord[];
+  value: string;
+  onChange: (value: string) => void;
+  requireCustomer?: boolean;
+}) {
+  const selected = clients.find((client) => client.id === value);
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const normalizedQuery = query.trim().toLowerCase();
+  const visibleClients = useMemo(() => {
+    if (!normalizedQuery) return clients.slice(0, 8);
+    return clients
+      .filter((client) =>
+        `${client.name} ${client.phone} ${client.email} ${client.document ?? ""} ${client.plan}`.toLowerCase().includes(normalizedQuery)
+      )
+      .slice(0, 8);
+  }, [clients, normalizedQuery]);
+
+  useEffect(() => {
+    setQuery(selected?.name ?? (value === "final" && !requireCustomer ? "Consumidor final" : ""));
+  }, [requireCustomer, selected?.name, value]);
+
+  const choose = (clientId: string) => {
+    onChange(clientId);
+    setOpen(false);
+  };
+
+  return (
+    <div className="relative">
+      <label className="mb-1.5 block text-sm text-zinc-300">{requireCustomer ? "Cliente obrigatorio" : "Cliente"}</label>
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+        <input
+          className="h-10 w-full rounded-md border border-white/10 bg-black/30 pl-9 pr-3 text-sm text-white outline-none transition placeholder:text-zinc-500 focus:border-noogym-lime/70"
+          value={query}
+          onChange={(event) => {
+            setQuery(event.target.value);
+            setOpen(true);
+            if (!event.target.value.trim() && !requireCustomer) onChange("final");
+          }}
+          onFocus={() => {
+            setOpen(true);
+            if (value === "final") setQuery("");
+          }}
+          onBlur={() => {
+            window.setTimeout(() => setOpen(false), 120);
+            if (!query.trim()) setQuery(selected?.name ?? (requireCustomer ? "" : "Consumidor final"));
+          }}
+          placeholder={requireCustomer ? "Escreva nome, telefone, email ou BI" : "Consumidor final ou procurar cliente"}
+        />
+      </div>
+      {open ? (
+        <div className="absolute z-50 mt-2 max-h-72 w-full overflow-auto rounded-md border border-white/10 bg-[#0b0f10] p-1 shadow-2xl">
+          {!requireCustomer ? (
+            <button
+              type="button"
+              className={`flex w-full items-center gap-3 rounded px-3 py-2 text-left text-sm transition hover:bg-white/10 ${value === "final" ? "text-noogym-lime" : "text-zinc-100"}`}
+              onMouseDown={(event) => {
+                event.preventDefault();
+                choose("final");
+              }}
+            >
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/10 text-xs">CF</span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate font-medium">Consumidor final</span>
+                <span className="block truncate text-xs text-zinc-500">Venda sem cliente associado</span>
+              </span>
+              {value === "final" ? <Check className="h-4 w-4" /> : null}
+            </button>
+          ) : null}
+          {visibleClients.length ? visibleClients.map((client) => (
+            <button
+              key={client.id}
+              type="button"
+              className={`flex w-full items-center gap-3 rounded px-3 py-2 text-left text-sm transition hover:bg-white/10 ${value === client.id ? "text-noogym-lime" : "text-zinc-100"}`}
+              onMouseDown={(event) => {
+                event.preventDefault();
+                choose(client.id);
+              }}
+            >
+              <Avatar label={client.avatar ?? client.name.slice(0, 2).toUpperCase()} className="h-8 w-8 shrink-0" />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate font-medium">{client.name}</span>
+                <span className="block truncate text-xs text-zinc-500">{client.phone} · {client.plan}</span>
+              </span>
+              {value === client.id ? <Check className="h-4 w-4" /> : null}
+            </button>
+          )) : (
+            <p className="px-3 py-3 text-sm text-zinc-400">Nenhum cliente encontrado.</p>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+export function FinalizeSaleModal({ open, total, items, initialSaleType = "Venda normal", editingSale, requireCustomer = false, cashSessionId, onClose, onConfirmed }: { open: boolean; total: number; items: SaleItemRecord[]; initialSaleType?: string; editingSale?: SaleRecord | null; requireCustomer?: boolean; cashSessionId?: string; onClose: () => void; onConfirmed: (saleType: string) => void }) {
   const addSale = useSalesStore((state) => state.addSale);
+  const updateSale = useSalesStore((state) => state.updateSale);
   const clients = useClientsStore((state) => state.clients);
+  const updateClient = useClientsStore((state) => state.updateClient);
   const employees = useEmployeesStore((state) => state.employees);
   const authUser = useAuthStore((state) => state.user);
   const [discount, setDiscount] = useState("");
+  const [discountReason, setDiscountReason] = useState("");
   const [tax, setTax] = useState("0");
   const [customerId, setCustomerId] = useState("final");
   const [seller, setSeller] = useState("Admin");
   const [saleType, setSaleType] = useState("Venda normal");
   const [paymentMethod, setPaymentMethod] = useState("Dinheiro");
+  const [secondaryPaymentMethod, setSecondaryPaymentMethod] = useState("Transferencia");
+  const [primaryAmount, setPrimaryAmount] = useState("");
+  const [secondaryAmount, setSecondaryAmount] = useState("");
+  const [paymentReference, setPaymentReference] = useState("");
   const [dateTime, setDateTime] = useState(dateTimeInputValue);
   const [note, setNote] = useState("");
   const [internalNote, setInternalNote] = useState("");
   const discountAmount = parseSaleAmount(discount, total);
   const taxAmount = parseSaleAmount(tax, total);
   const finalTotal = Math.max(0, total - discountAmount + taxAmount);
+  const primaryParsed = parseSaleAmount(primaryAmount, finalTotal);
+  const secondaryParsed = paymentMethod === "Multi pagamento" ? parseSaleAmount(secondaryAmount, finalTotal) : 0;
+  const paidAmount = paymentMethod === "Multi pagamento" ? primaryParsed + secondaryParsed : primaryParsed || finalTotal;
+  const changeAmount = paymentMethod === "Dinheiro" || paymentMethod === "Multi pagamento" ? Math.max(0, paidAmount - finalTotal) : 0;
+  const outstandingAmount = Math.max(0, finalTotal - paidAmount);
   const selectedCustomer = clients.find((client) => client.id === customerId);
   const sellerOptions = useMemo(() => Array.from(new Set([authUser?.name ?? "Admin", ...employees.filter((employee) => employee.status !== "Inativo").map((employee) => employee.name), "Recepcao"])), [authUser?.name, employees]);
+  const paymentMethods = ["Dinheiro", "Cartao de debito", "Cartao de credito", "Transferencia", "PIX/Referencia", "Multi pagamento", "Credito interno", "Vale presente"];
+  const needsReference = ["Cartao de debito", "Cartao de credito", "Transferencia", "PIX/Referencia", "Multi pagamento"].includes(paymentMethod);
+  const isEditingQuote = Boolean(editingSale);
+  const confirmLabel = isEditingQuote ? "Atualizar orcamento" : saleType === "Orcamento" ? "Salvar orcamento" : "Confirmar venda";
 
   useEffect(() => {
     if (!open) return;
-    setDiscount("");
-    setTax("0");
-    setCustomerId("final");
-    setSeller(authUser?.name ?? "Admin");
-    setSaleType(initialSaleType);
-    setPaymentMethod("Dinheiro");
-    setDateTime(dateTimeInputValue());
-    setNote("");
+    setDiscount(editingSale?.discountAmount ? String(Math.round(editingSale.discountAmount)) : "");
+    setDiscountReason(editingSale?.discountReason ?? "");
+    setTax(editingSale?.taxAmount ? String(Math.round(editingSale.taxAmount)) : "0");
+    setCustomerId(editingSale?.memberId ?? "final");
+    setSeller(editingSale?.seller ?? authUser?.name ?? "Admin");
+    setSaleType(editingSale?.type ?? initialSaleType);
+    setPaymentMethod(editingSale?.paymentMethod ?? "Dinheiro");
+    setSecondaryPaymentMethod("Transferencia");
+    setPrimaryAmount(editingSale?.amountReceived ? String(Math.round(editingSale.amountReceived)) : "");
+    setSecondaryAmount("");
+    setPaymentReference(editingSale?.paymentReference ?? "");
+    setDateTime(editingSale?.soldAtIso ? editingSale.soldAtIso.slice(0, 16) : dateTimeInputValue());
+    setNote(editingSale?.notes ?? "");
     setInternalNote("");
-  }, [authUser?.name, initialSaleType, open]);
+  }, [authUser?.name, editingSale, initialSaleType, open]);
 
   const confirm = () => {
     if (!items.length || finalTotal <= 0) {
       toastInfo("Venda sem itens", "Adicione pelo menos um item ao carrinho antes de confirmar.");
       return;
     }
+    if (requireCustomer && customerId === "final") {
+      toastInfo("Cliente obrigatorio", "Planos e aulas precisam estar associados a um cliente.");
+      return;
+    }
+    if (!cashSessionId && saleType !== "Orcamento") {
+      toastInfo("Caixa fechado", "Abra o caixa antes de finalizar vendas.");
+      return;
+    }
+    if (discountAmount > 0 && !discountReason.trim()) {
+      toastInfo("Motivo do desconto", "Informe o motivo para auditar o desconto.");
+      return;
+    }
+    if (needsReference && !paymentReference.trim()) {
+      toastInfo("Referencia obrigatoria", "Informe a referencia da transacao.");
+      return;
+    }
+    if (paymentMethod === "Multi pagamento" && Math.round(paidAmount) < Math.round(finalTotal)) {
+      toastInfo("Pagamento incompleto", "A soma dos pagamentos precisa cobrir o total.");
+      return;
+    }
+    if (paymentMethod === "Dinheiro" && primaryAmount && primaryParsed < finalTotal) {
+      toastInfo("Valor recebido insuficiente", "Informe um valor recebido igual ou superior ao total.");
+      return;
+    }
+
     const soldAt = new Date(dateTime);
     if (Number.isNaN(soldAt.getTime())) {
       toastInfo("Data invalida", "Selecione uma data e hora validas para a venda.");
       return;
     }
-    const notes = [note.trim(), internalNote.trim() ? `Interno: ${internalNote.trim()}` : ""].filter(Boolean).join("\n");
-    addSale({
+
+    const payments = paymentMethod === "Multi pagamento"
+      ? [
+          { id: "PAY-1", method: "Dinheiro", amount: primaryParsed, reference: undefined },
+          { id: "PAY-2", method: secondaryPaymentMethod, amount: secondaryParsed, reference: paymentReference.trim() || undefined }
+        ].filter((payment) => payment.amount > 0)
+      : [{ id: "PAY-1", method: paymentMethod, amount: finalTotal, reference: paymentReference.trim() || undefined }];
+    const notes = [
+      note.trim(),
+      discountAmount > 0 ? `Motivo desconto: ${discountReason.trim()}` : "",
+      paymentReference.trim() ? `Referencia pagamento: ${paymentReference.trim()}` : "",
+      internalNote.trim() ? `Interno: ${internalNote.trim()}` : ""
+    ].filter(Boolean).join("\n");
+
+    const payload = {
+      cashSessionId,
       total: finalTotal,
       subtotal: total,
       discountAmount,
+      discountReason: discountReason.trim() || undefined,
       taxAmount,
+      amountReceived: paidAmount || finalTotal,
+      changeAmount,
+      paymentReference: paymentReference.trim() || undefined,
       customer: selectedCustomer?.name,
       memberId: selectedCustomer?.id,
       seller,
@@ -758,21 +1158,109 @@ export function FinalizeSaleModal({ open, total, items, initialSaleType = "Venda
       paymentMethod,
       dateTime: formatDateTimeLabel(dateTime),
       soldAtIso: soldAt.toISOString(),
-      notes: notes || undefined
-    }, items);
-    toastSuccess("Venda concluida", "Carrinho limpo e historico atualizado.");
+      notes: notes || undefined,
+      payments
+    };
+    if (editingSale) {
+      updateSale(editingSale.id, { ...payload, status: "Orcamento", type: "Orcamento" }, items);
+    } else {
+      addSale(payload, items);
+    }
+    const soldPlan = items.find((item) => item.kind === "plan");
+    if (selectedCustomer && soldPlan && saleType !== "Orcamento") {
+      updateClient(selectedCustomer.id, {
+        plan: soldPlan.name,
+        planId: soldPlan.id.replace(/^plan-/, ""),
+        status: "Ativo"
+      });
+    }
+    toastSuccess(editingSale ? "Orcamento atualizado" : saleType === "Orcamento" ? "Orcamento salvo" : "Venda concluida", "Carrinho limpo e historico atualizado.");
     onConfirmed(saleType);
     onClose();
   };
+
   return (
-    <Modal open={open} title="Finalizar venda" description="Revise os detalhes e escolha a forma de pagamento." size="xl" onClose={onClose} footer={<><Button onClick={onClose}>Cancelar</Button><Button variant="primary" onClick={confirm}>Confirmar venda</Button></>}>
+    <Modal open={open} title={isEditingQuote ? "Editar orcamento" : "Finalizar venda"} description="Revise cliente, caixa, pagamento e desconto antes de confirmar." size="xl" onClose={onClose} footer={<><Button onClick={onClose}>Cancelar</Button><Button variant="primary" onClick={confirm}>{confirmLabel}</Button></>}>
       <div className="grid gap-6 lg:grid-cols-[1.1fr_.9fr]">
         <div className="space-y-5">
-          <Section title="1. Dados da venda"><FormSelect label="Cliente opcional" value={customerId} onChange={(event) => setCustomerId(event.target.value)}><option value="final">Consumidor final</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.name} - {client.phone}</option>)}</FormSelect><FormSelect label="Vendedor" value={seller} onChange={(event) => setSeller(event.target.value)}>{sellerOptions.map((option) => <option key={option} value={option}>{option}</option>)}</FormSelect><div className="grid grid-cols-2 gap-3"><FormSelect label="Tipo de venda" options={["Venda normal", "Orcamento", "Plano", "Servico"]} value={saleType} onChange={(event) => setSaleType(event.target.value)} /><FormInput label="Data da venda" type="datetime-local" value={dateTime} onChange={(event) => setDateTime(event.target.value)} /></div><FormTextarea label="Observacao" value={note} onChange={(event) => setNote(event.target.value)} /></Section>
-          <Section title="2. Forma de pagamento"><div className="grid grid-cols-4 gap-3">{["Dinheiro", "Cartão de débito", "Cartão de crédito", "Transferência", "PIX/Referência", "Multi pagamento", "Credifit/crédito interno", "Vale presente"].map((method) => <button key={method} type="button" onClick={() => setPaymentMethod(method)} className={`min-h-20 rounded-lg border p-2 text-sm ${paymentMethod === method ? "border-noogym-lime bg-noogym-lime/10 text-noogym-lime" : "border-white/10 bg-white/[0.03]"}`}>{method}</button>)}</div></Section>
+          <Section title="1. Dados da venda">
+            <ClientAutocomplete clients={clients} value={customerId} onChange={setCustomerId} requireCustomer={requireCustomer} />
+            <FormSelect label="Vendedor" value={seller} onChange={(event) => setSeller(event.target.value)}>
+              {sellerOptions.map((option) => <option key={option} value={option}>{option}</option>)}
+            </FormSelect>
+            <div className="grid grid-cols-2 gap-3">
+              <FormSelect label="Tipo de venda" options={["Venda normal", "Orcamento", "Plano", "Servico"]} value={saleType} onChange={(event) => setSaleType(event.target.value)} />
+              <FormInput label="Data da venda" type="datetime-local" value={dateTime} onChange={(event) => setDateTime(event.target.value)} />
+            </div>
+            <FormTextarea label="Observacao" value={note} onChange={(event) => setNote(event.target.value)} />
+          </Section>
+
+          <Section title="2. Forma de pagamento">
+            <Card className="border-noogym-lime/40 bg-noogym-lime/[0.06] p-4 shadow-none">
+              <div className="flex flex-wrap items-end justify-between gap-3">
+                <div>
+                  <span className="text-xs uppercase text-zinc-400">Total a pagar</span>
+                  <strong className="mt-1 block text-3xl text-noogym-lime">{moneyLabel(finalTotal)}</strong>
+                </div>
+                <div className="grid min-w-[260px] flex-1 gap-2 sm:grid-cols-3">
+                  <p className="rounded-md border border-white/10 bg-black/20 p-3 text-sm"><span className="block text-xs text-zinc-500">Recebido</span>{moneyLabel(paidAmount || 0)}</p>
+                  <p className="rounded-md border border-white/10 bg-black/20 p-3 text-sm"><span className="block text-xs text-zinc-500">Troco</span>{moneyLabel(changeAmount)}</p>
+                  <p className={`rounded-md border p-3 text-sm ${outstandingAmount > 0 ? "border-red-400/40 bg-red-500/10 text-red-200" : "border-white/10 bg-black/20"}`}><span className="block text-xs text-zinc-500">Falta</span>{moneyLabel(outstandingAmount)}</p>
+                </div>
+              </div>
+            </Card>
+
+            <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+              {paymentMethods.map((method) => <button key={method} type="button" onClick={() => setPaymentMethod(method)} className={`min-h-16 rounded-lg border p-2 text-sm transition ${paymentMethod === method ? "border-noogym-lime bg-noogym-lime/10 text-noogym-lime" : "border-white/10 bg-white/[0.03] text-zinc-200 hover:border-white/20"}`}>{method}</button>)}
+            </div>
+
+            <div className="grid gap-3 rounded-lg border border-white/10 bg-white/[0.03] p-3 md:grid-cols-3">
+              <label className="block text-sm md:col-span-1">
+                <span className="mb-2 block text-zinc-200">{paymentMethod === "Dinheiro" ? "Valor recebido" : paymentMethod === "Multi pagamento" ? "Valor em dinheiro" : "Valor pago"}</span>
+                <input
+                  className="h-12 w-full rounded-md border border-noogym-lime/40 bg-black/30 px-3 text-lg font-semibold text-white outline-none transition placeholder:text-zinc-500 focus:border-noogym-lime"
+                  type="number"
+                  min="0"
+                  value={primaryAmount}
+                  onChange={(event) => setPrimaryAmount(event.target.value)}
+                  placeholder={String(Math.round(finalTotal))}
+                />
+              </label>
+              {paymentMethod === "Multi pagamento" ? (
+                <>
+                  <FormSelect label="Segundo metodo" options={paymentMethods.filter((method) => method !== "Multi pagamento" && method !== "Dinheiro")} value={secondaryPaymentMethod} onChange={(event) => setSecondaryPaymentMethod(event.target.value)} />
+                  <label className="block text-sm">
+                    <span className="mb-2 block text-zinc-200">Valor segundo metodo</span>
+                    <input
+                      className="h-12 w-full rounded-md border border-white/10 bg-black/30 px-3 text-lg font-semibold text-white outline-none transition placeholder:text-zinc-500 focus:border-noogym-lime"
+                      type="number"
+                      min="0"
+                      value={secondaryAmount}
+                      onChange={(event) => setSecondaryAmount(event.target.value)}
+                    />
+                  </label>
+                </>
+              ) : null}
+              {needsReference ? <FormInput className={paymentMethod === "Multi pagamento" ? "md:col-span-3" : "md:col-span-2"} label="Referencia da transacao" value={paymentReference} onChange={(event) => setPaymentReference(event.target.value)} placeholder="TPA, transferencia ou referencia" /> : null}
+            </div>
+            {paymentMethod === "Multi pagamento" ? <p className="rounded-md border border-white/10 bg-black/20 p-3 text-sm text-zinc-300">Divisao: dinheiro {moneyLabel(primaryParsed)} + {secondaryPaymentMethod.toLowerCase()} {moneyLabel(secondaryParsed)}.</p> : null}
+          </Section>
         </div>
+
         <div className="space-y-5">
-          <Section title="3. Resumo financeiro"><Card className="space-y-4 p-4"><p className="flex justify-between">Itens <span>{items.length}</span></p><p className="flex justify-between">Subtotal <span>{moneyLabel(total)}</span></p><div className="grid grid-cols-[1fr_auto] items-end gap-3"><FormInput label="Desconto (Kz ou %)" value={discount} onChange={(event) => setDiscount(event.target.value)} placeholder="0 ou 10%" /><Button onClick={() => setDiscount("10%")}>10%</Button></div><FormInput label="Taxa (Kz ou %)" value={tax} onChange={(event) => setTax(event.target.value)} placeholder="0" /><p className="flex justify-between text-sm text-zinc-300">Desconto aplicado <span>{moneyLabel(discountAmount)}</span></p><p className="flex justify-between text-sm text-zinc-300">Taxa aplicada <span>{moneyLabel(taxAmount)}</span></p><p className="flex justify-between border-t border-white/10 pt-4 text-xl font-semibold">Total <span className="text-noogym-lime">{moneyLabel(finalTotal)}</span></p></Card><div className="rounded-lg border border-white/10 p-4 text-sm"><ShieldCheck className="mb-2 h-6 w-6 text-noogym-lime" />Ambiente seguro com dados protegidos localmente.</div></Section>
+          <Section title="3. Resumo financeiro">
+            <Card className="space-y-4 p-4">
+              <p className="flex justify-between">Itens <span>{items.length}</span></p>
+              <p className="flex justify-between">Subtotal <span>{moneyLabel(total)}</span></p>
+              <div className="grid grid-cols-[1fr_auto] items-end gap-3"><FormInput label="Desconto (Kz ou %)" value={discount} onChange={(event) => setDiscount(event.target.value)} placeholder="0 ou 10%" /><Button onClick={() => setDiscount("10%")}>10%</Button></div>
+              {discountAmount > 0 ? <FormInput label="Motivo do desconto" value={discountReason} onChange={(event) => setDiscountReason(event.target.value)} placeholder="Ex: campanha, autorizacao gerente" /> : null}
+              <FormInput label="Taxa (Kz ou %)" value={tax} onChange={(event) => setTax(event.target.value)} placeholder="0" />
+              <p className="flex justify-between text-sm text-zinc-300">Desconto aplicado <span>{moneyLabel(discountAmount)}</span></p>
+              <p className="flex justify-between text-sm text-zinc-300">Taxa aplicada <span>{moneyLabel(taxAmount)}</span></p>
+              <p className="flex justify-between border-t border-white/10 pt-4 text-xl font-semibold">Total <span className="text-noogym-lime">{moneyLabel(finalTotal)}</span></p>
+            </Card>
+            <div className="rounded-lg border border-white/10 p-4 text-sm"><ShieldCheck className="mb-2 h-6 w-6 text-noogym-lime" />Caixa, cliente, desconto e pagamentos ficam registados para auditoria operacional.</div>
+          </Section>
           <Section title="4. Observacoes internas"><FormTextarea label="Observacoes internas" value={internalNote} onChange={(event) => setInternalNote(event.target.value)} /></Section>
         </div>
       </div>
@@ -780,24 +1268,47 @@ export function FinalizeSaleModal({ open, total, items, initialSaleType = "Venda
   );
 }
 
-export function BarcodeModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function BarcodeModal({ open, onClose, onFound }: { open: boolean; onClose: () => void; onFound?: (product: ProductRecord) => void }) {
   const products = useProductsStore((state) => state.products);
   const [barcode, setBarcode] = useState("");
-  const normalizedBarcode = barcode.trim().toLowerCase();
-  const found = normalizedBarcode
-    ? products.find((product) => [product.barcode, product.sku, product.id].some((value) => value?.toLowerCase() === normalizedBarcode))
-    : undefined;
+  const findProduct = useCallback((value: string) => {
+    const normalized = value.trim().toLowerCase();
+    return normalized
+      ? products.find((product) => [product.barcode, product.sku, product.id].some((entry) => entry?.toLowerCase() === normalized))
+      : undefined;
+  }, [products]);
+  const found = findProduct(barcode);
+  const confirm = useCallback((product?: ProductRecord) => {
+    if (!product) return;
+    onFound?.(product);
+    toastSuccess("Produto encontrado", product.name);
+    onClose();
+  }, [onClose, onFound]);
 
   useEffect(() => {
     if (!open) return;
     setBarcode("");
   }, [open]);
 
+  useEffect(() => {
+    if (!open) return undefined;
+    const scanner = createKeyboardScanner({
+      onScan: (scan) => {
+        setBarcode(scan.value);
+        confirm(findProduct(scan.value));
+      },
+      preventDefaultOnTerminator: true,
+    });
+
+    scanner.start();
+    return () => scanner.stop();
+  }, [confirm, findProduct, open]);
+
   return (
-    <Modal open={open} title="Código de barras" size="sm" onClose={onClose} footer={<><Button onClick={onClose}>Cancelar</Button><Button variant="primary" disabled={!found} onClick={() => { if (!found) return; toastSuccess("Produto encontrado", found.name); onClose(); }}>Adicionar produto</Button></>}>
+    <Modal open={open} title="Codigo de barras" size="sm" onClose={onClose} footer={<><Button onClick={onClose}>Cancelar</Button><Button variant="primary" disabled={!found} onClick={() => confirm(found)}>Adicionar produto</Button></>}>
       <div className="space-y-4 text-center">
         <Barcode className="mx-auto h-16 w-16 text-noogym-lime" />
-        <FormInput label="Código de barras" value={barcode} onChange={(event) => setBarcode(event.target.value)} placeholder="Digite ou leia o código" />
+        <FormInput label="Codigo de barras" value={barcode} onChange={(event) => setBarcode(event.target.value)} placeholder="Digite ou leia o codigo" />
         <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
           {found ? (
             <>
@@ -871,7 +1382,7 @@ export function WeeklyScheduleModal({ open, onClose }: { open: boolean; onClose:
   return (
     <Modal open={open} title="Horário semanal" description="Defina os dias e horários em que a aula estará disponível." size="xl" onClose={onClose} footer={<><Button onClick={onClose}>Cancelar</Button><Button variant="primary" onClick={save}>Salvar horários</Button></>}>
       <div className="mb-5 grid grid-cols-2 gap-3"><FormSelect label="Aula" options={["Spinning", "Funcional", "Yoga"]} /><FormSelect label="Instrutor (opcional)" options={["João Silva", "Lucas Ferreira"]} /></div>
-      <div className="overflow-hidden rounded-lg border border-white/10"><div className="grid grid-cols-8 bg-white/[0.03] text-sm">{["Horários", ...days].map((label) => <div key={label} className="border-r border-white/10 p-3 text-center last:border-r-0">{label}</div>)}</div>{hours.map((hour, row) => <div key={hour} className="grid grid-cols-8 border-t border-white/10 text-sm"><div className="p-3 text-center">{hour}</div>{days.map((day, col) => <button key={`${day}-${hour}`} type="button" className="min-h-14 border-l border-white/10 p-1 hover:bg-noogym-lime/10">{(row + col) % 4 === 0 ? <span className="block rounded bg-noogym-lime/40 p-2 text-xs text-white">Spinning<br />João Silva</span> : null}</button>)}</div>)}</div>
+      <div className="overflow-x-auto rounded-lg border border-white/10"><div className="min-w-[760px]"><div className="grid grid-cols-8 bg-white/[0.03] text-sm">{["Horários", ...days].map((label) => <div key={label} className="border-r border-white/10 p-3 text-center last:border-r-0">{label}</div>)}</div>{hours.map((hour, row) => <div key={hour} className="grid grid-cols-8 border-t border-white/10 text-sm"><div className="p-3 text-center">{hour}</div>{days.map((day, col) => <button key={`${day}-${hour}`} type="button" className="min-h-14 border-l border-white/10 p-1 hover:bg-noogym-lime/10">{(row + col) % 4 === 0 ? <span className="block rounded bg-noogym-lime/40 p-2 text-xs text-white">Spinning<br />João Silva</span> : null}</button>)}</div>)}</div></div>
     </Modal>
   );
 }
@@ -1064,7 +1575,7 @@ export function ClassAgendaModal({ open, onClose }: { open: boolean; onClose: ()
   return (
     <Modal open={open} title="Agenda semanal" description="Clique nas celulas para criar sessoes recorrentes da aula." size="xl" onClose={onClose} footer={<><Button onClick={onClose}>Cancelar</Button><Button variant="primary" onClick={save}>Criar sessoes</Button></>}>
       <div className="mb-5 grid grid-cols-2 gap-3"><FormSelect label="Aula base" value={lessonId} onChange={(event) => setLessonId(event.target.value)}>{classes.map((lesson) => <option key={lesson.id} value={lesson.id}>{lesson.name}</option>)}</FormSelect><FormSelect label="Instrutor" options={instructorOptions} value={instructor} onChange={(event) => setInstructor(event.target.value)} /></div>
-      <div className="overflow-hidden rounded-lg border border-white/10"><div className="grid grid-cols-8 bg-white/[0.03] text-sm">{["Horarios", ...days].map((label) => <div key={label} className="border-r border-white/10 p-3 text-center last:border-r-0">{label}</div>)}</div>{hours.map((hour) => <div key={hour} className="grid grid-cols-8 border-t border-white/10 text-sm"><div className="p-3 text-center">{hour}</div>{days.map((day, col) => { const slot = `${col}|${hour}`; const selected = selectedSlots.includes(slot); return <button key={`${day}-${hour}`} type="button" onClick={() => toggleSlot(slot)} className="min-h-14 border-l border-white/10 p-1 hover:bg-noogym-lime/10">{selected ? <span className="block rounded bg-noogym-lime/40 p-2 text-xs text-white">{baseLesson?.name ?? "Aula"}<br />{instructor}</span> : null}</button>; })}</div>)}</div>
+      <div className="overflow-x-auto rounded-lg border border-white/10"><div className="min-w-[760px]"><div className="grid grid-cols-8 bg-white/[0.03] text-sm">{["Horarios", ...days].map((label) => <div key={label} className="border-r border-white/10 p-3 text-center last:border-r-0">{label}</div>)}</div>{hours.map((hour) => <div key={hour} className="grid grid-cols-8 border-t border-white/10 text-sm"><div className="p-3 text-center">{hour}</div>{days.map((day, col) => { const slot = `${col}|${hour}`; const selected = selectedSlots.includes(slot); return <button key={`${day}-${hour}`} type="button" onClick={() => toggleSlot(slot)} className="min-h-14 border-l border-white/10 p-1 hover:bg-noogym-lime/10">{selected ? <span className="block rounded bg-noogym-lime/40 p-2 text-xs text-white">{baseLesson?.name ?? "Aula"}<br />{instructor}</span> : null}</button>; })}</div>)}</div></div>
     </Modal>
   );
 }

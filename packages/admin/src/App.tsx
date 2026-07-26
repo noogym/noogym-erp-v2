@@ -27,6 +27,8 @@ import Treinos from "./pages/Treinos";
 import Funcionarios from "./pages/Funcionarios";
 import Relatorios from "./pages/Relatorios";
 import Financas from "./pages/Financas";
+import Sincronizacao from "./pages/Sincronizacao";
+import SuperAdmin from "./pages/SuperAdmin";
 import Configuracoes from "./pages/Configuracoes";
 import ForgotPassword from "./pages/auth/ForgotPassword";
 import Login from "./pages/auth/Login";
@@ -50,6 +52,8 @@ const pages = {
   funcionarios: Funcionarios,
   relatorios: Relatorios,
   financas: Financas,
+  sincronizacao: Sincronizacao,
+  "super-admin": SuperAdmin,
   configuracoes: Configuracoes,
 };
 
@@ -65,6 +69,8 @@ const pageLabels: Record<RouteId, string> = {
   funcionarios: "Funcionarios",
   relatorios: "Relatorios",
   financas: "Financas",
+  sincronizacao: "Sincronizacao",
+  "super-admin": "Super Admin",
   configuracoes: "Configuracoes",
 };
 
@@ -164,6 +170,7 @@ export default function App({ onlineOnly = false }: AdminAppProps) {
   const user = useAuthStore((state) => state.user);
   const accessToken = useAuthStore((state) => state.accessToken);
   const refreshSession = useAuthStore((state) => state.refreshSession);
+  const logout = useAuthStore((state) => state.logout);
   const loadLocalClients = useClientsStore((state) => state.loadLocal);
   const loadClients = useClientsStore((state) => state.loadOnline);
   const loadLocalPlans = usePlansStore((state) => state.loadLocal);
@@ -291,6 +298,18 @@ export default function App({ onlineOnly = false }: AdminAppProps) {
 
   useEffect(() => {
     if (!isAuthenticated) return undefined;
+    const handleUnauthorized = () => {
+      logout();
+      setAuthRoute("login");
+      updateAuthUrl("login", "replaceState");
+    };
+
+    window.addEventListener("noogym:api-unauthorized", handleUnauthorized);
+    return () => window.removeEventListener("noogym:api-unauthorized", handleUnauthorized);
+  }, [isAuthenticated, logout]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return undefined;
     return startConnectivityMonitor();
   }, [isAuthenticated, startConnectivityMonitor]);
 
@@ -318,7 +337,7 @@ export default function App({ onlineOnly = false }: AdminAppProps) {
   useEffect(() => {
     if (!isAuthenticated || onlineOnly || !user) return;
 
-    const initKey = `${user.id ?? user.email ?? user.name}:${accessToken ? "online" : "local"}`;
+    const initKey = `${user.id ?? user.email ?? user.name}:${activeGymId ?? "all"}:${accessToken ? "online" : "local"}`;
     if (desktopInitKeyRef.current === initKey) {
       void loadDesktopLocalModules().catch(reportBackgroundError);
       return;
@@ -347,6 +366,7 @@ export default function App({ onlineOnly = false }: AdminAppProps) {
     };
   }, [
     accessToken,
+    activeGymId,
     isAuthenticated,
     loadDesktopLocalModules,
     onlineOnly,

@@ -25,6 +25,10 @@ export interface ApiAuthUser {
   gyms?: Array<{ id: string; name: string }>;
   organizationId: string;
   organizationName?: string;
+  supportMode?: boolean;
+  supportSessionId?: string;
+  supportReason?: string;
+  supportActorEmail?: string;
 }
 
 export interface ApiAuthResponse {
@@ -212,6 +216,9 @@ export const apiRequest = async <T>(
 
   if (!response.ok || !payload?.success) {
     const code = resolveApiCode(payload);
+    if (response.status === 401) {
+      notifyUnauthorized();
+    }
     throw new ApiError(
       resolveApiMessage(payload, response.status, code),
       response.status,
@@ -243,6 +250,9 @@ const resolveApiMessage = <T>(
   if (status === 503 || code === "DATABASE_UNAVAILABLE") {
     return "O sistema ainda esta a iniciar. Tente novamente em alguns segundos.";
   }
+  if (status === 401) {
+    return "Sessao expirada. Entre novamente para continuar.";
+  }
 
   if (!payload || payload.success)
     return "Nao foi possivel comunicar com a API.";
@@ -254,6 +264,11 @@ const resolveApiMessage = <T>(
 const resolveApiCode = <T>(payload: ApiEnvelope<T> | null) => {
   if (!payload || payload.success) return undefined;
   return payload.error?.code;
+};
+
+const notifyUnauthorized = () => {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent("noogym:api-unauthorized"));
 };
 
 const readEnv = () => {
@@ -268,10 +283,25 @@ const readPublicEnv = (key: string) => {
   const metaEnv = (
     import.meta as unknown as { env?: Record<string, string | undefined> }
   ).env;
-  const processEnv =
-    typeof process !== "undefined"
-      ? (process.env as Record<string, string | undefined>)[key]
-      : undefined;
+  const processEnv = readNextPublicEnv(key);
 
   return processEnv ?? metaEnv?.[key];
+};
+
+const readNextPublicEnv = (key: string) => {
+  if (typeof process === "undefined") return undefined;
+
+  if (key === "NEXT_PUBLIC_NOOGYM_API_URL") {
+    return process.env.NEXT_PUBLIC_NOOGYM_API_URL;
+  }
+
+  if (key === "NEXT_PUBLIC_NOOGYM_WEB_URL") {
+    return process.env.NEXT_PUBLIC_NOOGYM_WEB_URL;
+  }
+
+  if (key === "NEXT_PUBLIC_NOOGYM_HTTP_ONLY_AUTH") {
+    return process.env.NEXT_PUBLIC_NOOGYM_HTTP_ONLY_AUTH;
+  }
+
+  return (process.env as Record<string, string | undefined>)[key];
 };
