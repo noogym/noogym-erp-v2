@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { randomBytes } from 'node:crypto';
 import { MemberStatus, Prisma } from '@prisma/client';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 import { directGymScope } from '../common/utils/gym-scope';
@@ -54,7 +55,11 @@ export class MembersService {
       this.prisma.member.count({ where }),
     ]);
 
-    return paginated(items, total, page, limit);
+    const members = await Promise.all(
+      items.map((member) => this.ensureQrToken(member)),
+    );
+
+    return paginated(members, total, page, limit);
   }
 
   async findOne(organizationId: string, id: string) {
@@ -73,7 +78,7 @@ export class MembersService {
       throw new NotFoundException('Member not found');
     }
 
-    return member;
+    return this.ensureQrToken(member);
   }
 
   async create(organizationId: string, dto: CreateMemberDto) {
@@ -85,6 +90,8 @@ export class MembersService {
       data: {
         ...data,
         organizationId,
+        qrToken: this.generateQrToken(),
+        qrTokenUpdatedAt: new Date(),
       } as Prisma.MemberUncheckedCreateInput,
       include: {
         gym: true,
@@ -93,6 +100,27 @@ export class MembersService {
           take: 1,
           include: { plan: true },
         },
+      },
+    });
+  }
+
+  async regenerateQrToken(organizationId: string, id: string) {
+    await this.ensureExists(organizationId, id);
+
+    return this.prisma.member.update({
+      where: { id },
+      data: {
+        qrToken: this.generateQrToken(),
+        qrTokenUpdatedAt: new Date(),
+      },
+      include: {
+        gym: true,
+        subscriptions: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          include: { plan: true },
+        },
+        checkIns: { orderBy: { checkedAt: 'desc' }, take: 1 },
       },
     });
   }
@@ -218,5 +246,26 @@ export class MembersService {
 
   private normalizeDocument(value?: string | null) {
     return value?.replace(/[^a-z0-9]/gi, '').toUpperCase() ?? '';
+  }
+
+  private async ensureQrToken<T extends { id: string; qrToken?: string | null }>(
+    member: T,
+  ) {
+    if (member.qrToken) return member;
+
+    const updated = await this.prisma.member.update({
+      where: { id: member.id },
+      data: {
+        qrToken: this.generateQrToken(),
+        qrTokenUpdatedAt: new Date(),
+      },
+      select: { qrToken: true, qrTokenUpdatedAt: true },
+    });
+
+    return { ...member, ...updated };
+  }
+
+  private generateQrToken() {
+    return randomBytes(24).toString('base64url');
   }
 }

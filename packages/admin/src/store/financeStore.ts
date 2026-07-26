@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { ApiError } from "../lib/api";
 import { createExpense, createRevenue, listFinanceRecords } from "../lib/domainApi";
 import {
   closeCashSession as closeCashSessionApi,
@@ -71,6 +72,28 @@ const applyRecordToAccounts = (accounts: FinanceAccountRecord[], record: Finance
 const accountSnapshot = (accounts: FinanceAccountRecord[], accountId?: string) => {
   const account = accounts.find((item) => item.id === accountId) ?? accounts.find((item) => item.isDefault) ?? accounts[0];
   return { accountId: account?.id, accountName: account?.name };
+};
+const syncWithAuthRetry = async (operation: (token: string) => Promise<unknown>) => {
+  const auth = useAuthStore.getState();
+  const token = auth.accessToken;
+  if (!token) return;
+
+  try {
+    await operation(token);
+  } catch (error) {
+    if (!(error instanceof ApiError) || error.status !== 401) {
+      console.error(error);
+      return;
+    }
+
+    try {
+      await auth.refreshSession();
+      const refreshedToken = useAuthStore.getState().accessToken;
+      if (refreshedToken) await operation(refreshedToken);
+    } catch {
+      useAuthStore.getState().logout();
+    }
+  }
 };
 
 export const useFinanceStore = create<{
@@ -153,9 +176,10 @@ export const useFinanceStore = create<{
   closeCashSession: async (id, payload) => {
     const token = useAuthStore.getState().accessToken;
     if (!token) throw new Error("AUTH_REQUIRED");
+    const activeGymId = useAppStore.getState().activeGymId ?? undefined;
     const session = await closeCashSessionApi(token, id, payload);
     const [currentCashSession, cashSessions] = await Promise.all([
-      getCurrentCashSession(token),
+      getCurrentCashSession(token, activeGymId),
       listCashSessions(token)
     ]);
     set({ currentCashSession, cashSessions });
@@ -179,8 +203,9 @@ export const useFinanceStore = create<{
       actionLabel: "Ver financas"
     });
 
-    const token = useAuthStore.getState().accessToken;
-    if (useAppStore.getState().onlineOnly && token) createRevenue(token, created).catch(console.error);
+    if (useAppStore.getState().onlineOnly) {
+      void syncWithAuthRetry((token) => createRevenue(token, created));
+    }
 
     return { records, accounts };
   }),
@@ -202,8 +227,9 @@ export const useFinanceStore = create<{
       actionLabel: "Ver financas"
     });
 
-    const token = useAuthStore.getState().accessToken;
-    if (useAppStore.getState().onlineOnly && token) createExpense(token, created).catch(console.error);
+    if (useAppStore.getState().onlineOnly) {
+      void syncWithAuthRetry((token) => createExpense(token, created));
+    }
 
     return { records, accounts };
   }),

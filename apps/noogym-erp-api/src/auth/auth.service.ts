@@ -45,6 +45,11 @@ type JwtPayload = {
   email: string;
   role: string;
   organizationId: string;
+  supportMode?: boolean;
+  supportSessionId?: string;
+  supportReason?: string;
+  supportActorId?: string;
+  supportActorEmail?: string;
 };
 
 type RefreshJwtPayload = JwtPayload & {
@@ -249,6 +254,55 @@ export class AuthService {
     });
 
     return { message: 'Password reset successfully' };
+  }
+
+  buildSupportAuthResponse(input: {
+    actor: {
+      id: string;
+      email: string;
+      name: string;
+      role: string;
+      organizationId: string;
+    };
+    targetOrganization: {
+      id: string;
+      name: string;
+    };
+    gyms: Array<{ id: string; name: string }>;
+    reason: string;
+    supportSessionId: string;
+  }) {
+    const payload: JwtPayload = {
+      sub: input.actor.id,
+      email: input.actor.email,
+      role: input.actor.role,
+      organizationId: input.targetOrganization.id,
+      supportMode: true,
+      supportSessionId: input.supportSessionId,
+      supportReason: input.reason,
+      supportActorId: input.actor.id,
+      supportActorEmail: input.actor.email,
+    };
+    const accessToken = this.jwtService.sign(payload, {
+      expiresIn: this.config.get<string>('SUPPORT_SESSION_EXPIRES_IN', '30m') as JwtSignOptions['expiresIn'],
+    });
+
+    return {
+      accessToken,
+      user: {
+        id: input.actor.id,
+        name: `${input.actor.name} (Suporte)`,
+        email: input.actor.email,
+        role: input.actor.role,
+        gyms: input.gyms,
+        organizationId: input.targetOrganization.id,
+        organizationName: input.targetOrganization.name,
+        supportMode: true,
+        supportSessionId: input.supportSessionId,
+        supportReason: input.reason,
+        supportActorEmail: input.actor.email,
+      },
+    };
   }
 
   async refresh(dto: RefreshTokenDto) {

@@ -9,18 +9,22 @@ describe('PaymentsService', () => {
     const prisma = {
       payment: {
         create: jest.fn(),
+        findUnique: jest.fn(),
         findFirst: jest.fn(),
         update: jest.fn(),
       },
       member: {
         findFirst: jest.fn(),
+        updateMany: jest.fn(),
       },
       subscription: {
         findFirst: jest.fn(),
+        update: jest.fn(),
       },
       sale: {
         findFirst: jest.fn(),
       },
+      $transaction: jest.fn((callback) => callback(prisma)),
     };
 
     return {
@@ -32,6 +36,7 @@ describe('PaymentsService', () => {
   it('sets paidAt automatically when creating a paid payment', async () => {
     const { prisma, service } = createService();
     prisma.payment.create.mockResolvedValue({ id: 'payment-1' });
+    prisma.payment.findUnique.mockResolvedValue({ id: 'payment-1' });
 
     await service.create(organizationId, {
       amount: 1000,
@@ -53,9 +58,10 @@ describe('PaymentsService', () => {
     prisma.subscription.findFirst.mockResolvedValue({
       id: 'subscription-1',
       memberId: 'member-1',
-      plan: { price: 3500 },
+      plan: { price: 3500, durationDays: 30 },
     });
     prisma.payment.create.mockResolvedValue({ id: 'payment-1' });
+    prisma.payment.findUnique.mockResolvedValue({ id: 'payment-1' });
 
     await service.create(organizationId, {
       subscriptionId: 'subscription-1',
@@ -69,7 +75,7 @@ describe('PaymentsService', () => {
       select: {
         id: true,
         memberId: true,
-        plan: { select: { price: true } },
+        plan: { select: { price: true, durationDays: true } },
       },
     });
     expect(prisma.payment.create).toHaveBeenCalledWith({
@@ -84,9 +90,65 @@ describe('PaymentsService', () => {
     });
   });
 
+  it('renews latest member subscription when a paid monthly payment is fully settled', async () => {
+    const { prisma, service } = createService();
+    const paidAt = new Date('2026-07-16T10:00:00.000Z');
+    prisma.member.findFirst.mockResolvedValue({ id: 'member-1' });
+    prisma.subscription.findFirst
+      .mockResolvedValueOnce({
+        id: 'subscription-1',
+        memberId: 'member-1',
+        plan: { price: 5000, durationDays: 30 },
+      })
+      .mockResolvedValueOnce({
+        id: 'subscription-1',
+        endDate: new Date('2026-07-08T00:00:00.000Z'),
+      });
+    prisma.payment.create.mockResolvedValue({ id: 'payment-1' });
+    prisma.payment.findUnique.mockResolvedValue({ id: 'payment-1' });
+    await service.create(organizationId, {
+      memberId: 'member-1',
+      amount: 5100,
+      grossAmount: 5000,
+      lateFeeAmount: 100,
+      outstandingAmount: 0,
+      paidAt,
+      method: PaymentMethod.CASH,
+      status: PaymentStatus.PAID,
+    });
+
+    expect(prisma.payment.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        memberId: 'member-1',
+        subscriptionId: 'subscription-1',
+        amount: 5100,
+        outstandingAmount: 0,
+        paidAt,
+      }),
+    });
+    expect(prisma.subscription.update).toHaveBeenCalledWith({
+      where: { id: 'subscription-1' },
+      data: expect.objectContaining({
+        status: 'ACTIVE',
+        startDate: expect.any(Date),
+        endDate: expect.any(Date),
+        nextBillingDate: expect.any(Date),
+      }),
+    });
+    expect(prisma.member.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'member-1',
+        organizationId,
+        status: { in: ['OVERDUE', 'INACTIVE'] },
+      },
+      data: { status: 'ACTIVE' },
+    });
+  });
+
   it('persists discount, late fee, outstanding balance and receipt number', async () => {
     const { prisma, service } = createService();
     prisma.payment.create.mockResolvedValue({ id: 'payment-1' });
+    prisma.payment.findUnique.mockResolvedValue({ id: 'payment-1' });
 
     await service.create(organizationId, {
       memberId: undefined,

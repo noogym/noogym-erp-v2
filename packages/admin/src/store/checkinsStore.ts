@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { apiRequest } from "../lib/api";
 import { checkinFromApi, checkinToDto, createResource, createSubscription, listResource } from "../lib/domainApi";
 import { scopeByGym } from "../lib/gymScope";
 import { readLocal, readLocalDb, uid, writeLocal } from "../lib/storage";
@@ -51,6 +52,11 @@ const sameDay = (value: string | undefined, date: Date) => {
   const parsed = new Date(value);
   return Number.isFinite(parsed.getTime()) && parsed.toDateString() === date.toDateString();
 };
+const dateTimeLabel = (date: Date) => {
+  const time = new Intl.DateTimeFormat("pt-AO", { hour: "2-digit", minute: "2-digit" }).format(date);
+  if (date.toDateString() === new Date().toDateString()) return `Hoje, ${time}`;
+  return new Intl.DateTimeFormat("pt-AO", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(date);
+};
 const normalizeText = (value: string | undefined) =>
   (value ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
 const isActiveClientStatus = (status: string | undefined) => ["ativo", "active", "activo", "ativa"].includes(normalizeText(status));
@@ -74,6 +80,39 @@ const mergeSyncedCheckin = (synced: CheckinRecord, fallback: CheckinRecord): Che
   type: isGuestCheckinType(fallback.type) ? fallback.type : synced.type,
   observation: fallback.observation ?? synced.observation
 });
+const parseQrPayload = (payload: string) => {
+  const raw = payload.trim();
+  try {
+    const parsed = JSON.parse(raw) as { memberId?: unknown; qrToken?: unknown; token?: unknown };
+    return {
+      memberId: typeof parsed.memberId === "string" ? parsed.memberId : undefined,
+      qrToken: typeof parsed.qrToken === "string" ? parsed.qrToken : typeof parsed.token === "string" ? parsed.token : undefined
+    };
+  } catch {
+    // Continue with URL/raw token parsing.
+  }
+  try {
+    const url = new URL(raw);
+    const parts = url.pathname.split("/").filter(Boolean);
+    if (url.protocol === "noogym:" && url.hostname === "checkin") return { memberId: parts[0], qrToken: parts[1] };
+    const index = parts.findIndex((part) => part === "checkin");
+    if (index >= 0) return { memberId: parts[index + 1], qrToken: parts[index + 2] };
+  } catch {
+    // Raw token fallback below.
+  }
+  return { qrToken: raw };
+};
+const notifyCheckin = (record: CheckinRecord) => {
+  useNotificationsStore.getState().addNotification({
+    sourceId: `event:checkins:${record.id}`,
+    title: "Check-in realizado",
+    description: `${record.clientName} registado por ${record.type}.`,
+    category: "checkins",
+    tone: "success",
+    route: "checkin",
+    actionLabel: "Ver check-ins"
+  });
+};
 const syncClientLastCheckins = (checkins: CheckinRecord[]) => {
   const latestByClient = new Map<string, string>();
 
@@ -93,6 +132,7 @@ export const useCheckinsStore = create<{
   loadOnline: () => Promise<void>;
   validateCheckin: (checkin: Partial<CheckinRecord>) => CheckinValidationResult;
   addCheckin: (checkin: Partial<CheckinRecord>) => boolean;
+  addQrCheckin: (payload: string, options?: { gymId?: string }) => Promise<CheckinRecord | null>;
 }>((set, get) => ({
   checkins: readLocal("noogym:checkins", initial),
   todayCount: readLocal("noogym:checkins", initial).length + 139,
@@ -212,15 +252,7 @@ export const useCheckinsStore = create<{
       persist(checkins, true);
       useClientsStore.getState().updateLastCheckin(record.clientId, record.dateTime);
       useAppStore.getState().addPendingSync();
-      useNotificationsStore.getState().addNotification({
-        sourceId: `event:checkins:${record.id}`,
-        title: "Check-in realizado",
-        description: `${record.clientName} registado por ${record.type}.`,
-        category: "checkins",
-        tone: "success",
-        route: "checkin",
-        actionLabel: "Ver check-ins"
-      });
+      notifyCheckin(record);
 
       return { checkins, todayCount: state.todayCount + 1 };
     });
@@ -270,5 +302,52 @@ export const useCheckinsStore = create<{
     }
 
     return true;
+  },
+  addQrCheckin: async (payload, options) => {
+    const checkedAt = new Date();
+    const checkedAtIso = checkedAt.toISOString();
+    const token = useAuthStore.getState().accessToken;
+    const gymId = options?.gymId ?? useAppStore.getState().activeGymId ?? undefined;
+
+    if (useAppStore.getState().onlineOnly && token) {
+      const apiCheckin = await apiRequest<Record<string, unknown>>("/checkins/qr/validate", {
+        method: "POST",
+        token,
+        body: { payload, gymId, checkedAt: checkedAtIso }
+      });
+      const record = checkinFromApi(apiCheckin);
+      const checkins = [record, ...get().checkins.filter((item) => item.id !== record.id)];
+      persist(checkins);
+      useClientsStore.getState().updateLastCheckin(record.clientId, record.dateTime);
+      notifyCheckin(record);
+      set({ checkins, todayCount: checkins.filter((item) => item.dateTime.startsWith("Hoje")).length });
+      return record;
+    }
+
+    const parsed = parseQrPayload(payload);
+    const clients = useClientsStore.getState().clients;
+    const client = clients.find((item) => {
+      const remoteId = (item as { remoteId?: string }).remoteId;
+      const tokenMatches = Boolean(parsed.qrToken && item.qrToken === parsed.qrToken);
+      const payloadMatches = Boolean(item.qrPayload && item.qrPayload === payload.trim());
+      const idMatches = Boolean(parsed.memberId && (item.id === parsed.memberId || remoteId === parsed.memberId));
+      return (tokenMatches && (!parsed.memberId || idMatches)) || payloadMatches || item.id === payload.trim();
+    });
+
+    if (!client) return null;
+
+    const record: Partial<CheckinRecord> = {
+      gymId,
+      clientName: client.name,
+      clientId: client.id,
+      type: "QR Code",
+      accessType: "Entrada",
+      dateTime: dateTimeLabel(checkedAt),
+      checkedAtIso
+    };
+    const validation = get().validateCheckin(record);
+    if (!validation.allowed) throw new Error(validation.message);
+    if (!get().addCheckin(record)) return null;
+    return get().checkins[0] ?? null;
   }
 }));

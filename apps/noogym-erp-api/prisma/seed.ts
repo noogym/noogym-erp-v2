@@ -12,6 +12,34 @@ const prisma = new PrismaClient();
 async function main() {
   const passwordHash = await bcrypt.hash('Noogym@123', 10);
 
+  const platformOrganization = await prisma.organization.upsert({
+    where: { slug: 'noogym-platform' },
+    update: {},
+    create: {
+      name: 'Noogym Platform',
+      slug: 'noogym-platform',
+      email: 'suporte@noogym.com',
+      phone: '+244 900 000 001',
+    },
+  });
+
+  const superAdmin = await prisma.user.upsert({
+    where: { email: 'super@noogym.com' },
+    update: {
+      organizationId: platformOrganization.id,
+      name: 'Super Admin Noogym',
+      passwordHash,
+      role: UserRole.SUPER_ADMIN,
+    },
+    create: {
+      organizationId: platformOrganization.id,
+      name: 'Super Admin Noogym',
+      email: 'super@noogym.com',
+      passwordHash,
+      role: UserRole.SUPER_ADMIN,
+    },
+  });
+
   const organization = await prisma.organization.upsert({
     where: { slug: 'noogym-demo' },
     update: {},
@@ -293,8 +321,18 @@ async function main() {
         phone: '+244 923 333 333',
       },
     ].map((member) =>
-      prisma.member.create({
-        data: {
+      prisma.member.upsert({
+        where: {
+          organizationId_email: {
+            organizationId: organization.id,
+            email: member.email,
+          },
+        },
+        update: {
+          ...member,
+          gymId: gym.id,
+        },
+        create: {
           ...member,
           organizationId: organization.id,
           gymId: gym.id,
@@ -494,6 +532,7 @@ async function main() {
   });
 
   console.log({
+    superAdmin: superAdmin.email,
     organization: organization.slug,
     gym: gym.slug,
     admin: admin.email,

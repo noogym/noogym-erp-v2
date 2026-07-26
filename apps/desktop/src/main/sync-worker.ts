@@ -82,6 +82,8 @@ type ClientPayload = Record<string, unknown> & {
   address?: string;
   city?: string;
   avatar?: string;
+  qrToken?: string;
+  qrPayload?: string;
   observations?: string;
   createdAt?: string;
   updatedAt?: string;
@@ -96,6 +98,7 @@ const CONFLICT_MESSAGE =
 export async function runSQLiteSync(
   options: SQLiteSyncOptions,
 ): Promise<SQLiteSyncResult> {
+  const syncOptions = { ...options, limit: apiPageLimit(options.limit) };
   const db = getSQLiteLocalDb();
   const errors: string[] = [];
   let pushed = 0;
@@ -103,19 +106,19 @@ export async function runSQLiteSync(
   let binding: DesktopBinding | null | undefined;
   let failed = 0;
 
-  if (options.session?.user) {
+  if (syncOptions.session?.user) {
     binding = db.saveDesktopBinding({
-      apiUrl: options.apiUrl,
-      user: options.session.user,
-      activeGymId: options.gymId,
+      apiUrl: syncOptions.apiUrl,
+      user: syncOptions.session.user,
+      activeGymId: syncOptions.gymId,
     });
   }
 
-  const pendingEvents = db.getPendingSyncEvents(options.limit ?? 50);
+  const pendingEvents = db.getPendingSyncEvents(syncOptions.limit ?? 50);
 
   for (const event of pendingEvents) {
     try {
-      const outcome = await pushEvent(options, event);
+      const outcome = await pushEvent(syncOptions, event);
       if (outcome === "conflict") {
         failed += 1;
         errors.push(CONFLICT_MESSAGE);
@@ -132,15 +135,15 @@ export async function runSQLiteSync(
   }
 
   try {
-    const result = await pullRemoteClients(options);
+    const result = await pullRemoteClients(syncOptions);
     pulled = result.pulled;
     binding = db.saveDesktopBinding({
-      apiUrl: options.apiUrl,
-      user: options.session?.user,
+      apiUrl: syncOptions.apiUrl,
+      user: syncOptions.session?.user,
       organization: result.bootstrap.organization ?? null,
       gyms: result.bootstrap.data?.gyms ?? [],
       users: result.bootstrap.data?.users ?? [],
-      activeGymId: options.gymId,
+      activeGymId: syncOptions.gymId,
       lastBootstrapAt: asString(
         result.bootstrap.generatedAt,
         new Date().toISOString(),
@@ -152,7 +155,7 @@ export async function runSQLiteSync(
   }
 
   try {
-    const result = await pullRemoteCollections(options);
+    const result = await pullRemoteCollections(syncOptions);
     pulled += result.pulled;
     failed += result.errors.length;
     errors.push(...result.errors);
@@ -356,7 +359,8 @@ async function pushSpecialGenericEvent(
 }
 
 async function pullRemoteClients(options: SQLiteSyncOptions) {
-  const params = new URLSearchParams({ limit: String(options.limit ?? 500) });
+  const params = new URLSearchParams({ limit: String(apiPageLimit(options.limit)) });
+  if (options.gymId) params.set("gymId", options.gymId);
   const bootstrap = await apiRequest<DesktopBootstrap>(
     options,
     `/entrypoints/desktop/sync/bootstrap?${params.toString()}`,
@@ -559,6 +563,10 @@ function clientFromApi(member: Entity, localId?: string): ClientPayload {
     expires: formatDate(asDate(subscription?.endDate)),
     birthday: formatBirthday(asDate(member.birthDate)),
     avatar: initials(name),
+    qrToken: asString(member.qrToken, undefined),
+    qrPayload: asString(member.qrToken, undefined)
+      ? `noogym://checkin/${asString(member.id)}/${asString(member.qrToken)}`
+      : undefined,
     document: asString(member.documentNumber, ""),
     createdAt: asString(member.createdAt, undefined),
     updatedAt: asString(member.updatedAt, undefined),
@@ -632,10 +640,16 @@ function saleFromApi(sale: Entity): Entity {
   return withRemoteFields(sale, {
     id: asString(sale.id),
     gymId: asString(sale.gymId ?? entity(sale.gym)?.id, undefined),
+    cashSessionId: asString(sale.cashSessionId, undefined),
+    receiptNumber: asString(sale.receiptNumber, undefined),
     total: asNumber(sale.total),
     subtotal: asNumber(sale.subtotal),
     discountAmount: asNumber(sale.discountAmount),
+    discountReason: asString(sale.discountReason, undefined),
     taxAmount: asNumber(sale.taxAmount),
+    amountReceived: optionalNumber(sale.amountReceived),
+    changeAmount: optionalNumber(sale.changeAmount),
+    paymentReference: asString(sale.paymentReference, undefined),
     customer:
       asString(sale.customerName, undefined) ||
       asString(entity(sale.member)?.name, undefined),
@@ -653,6 +667,12 @@ function saleFromApi(sale: Entity): Entity {
     soldAtIso: asDate(sale.soldAt)?.toISOString(),
     notes: asString(sale.notes, undefined),
     items: rows(sale.items).map(saleItemFromApi),
+    payments: rows(sale.payments).map((payment) => ({
+      id: asString(payment.id),
+      method: paymentMethodLabel(payment.method),
+      amount: asNumber(payment.amount),
+      reference: asString(payment.reference, undefined),
+    })),
   });
 }
 
@@ -660,6 +680,9 @@ function saleItemFromApi(item: Entity) {
   return {
     id: asString(item.id),
     productId: asString(item.productId, undefined),
+    planId: asString(item.planId, undefined),
+    classId: asString(item.classId, undefined),
+    kind: asString(item.kind, undefined),
     name: asString(item.productName, "Item POS"),
     sku: asString(item.sku, undefined),
     quantity: asNumber(item.quantity, 1),
@@ -1047,6 +1070,9 @@ function saleToDto(sale: Entity, fallbackGymId?: string) {
     customerName: cleanString(sale.customer),
     sellerName: asString(sale.seller, "Admin"),
     gymId: cleanString(sale.gymId) ?? cleanString(fallbackGymId),
+    cashSessionId: isUuidLike(cleanString(sale.cashSessionId))
+      ? cleanString(sale.cashSessionId)
+      : undefined,
     type: saleTypeValue(sale.type),
     status: String(sale.status).toLowerCase().includes("orc")
       ? "DRAFT"
@@ -1055,12 +1081,24 @@ function saleToDto(sale: Entity, fallbackGymId?: string) {
         : "COMPLETED",
     paymentMethod: paymentMethodValue(sale.paymentMethod),
     discountAmount: asNumber(sale.discountAmount),
+    discountReason: cleanString(sale.discountReason),
     taxAmount: asNumber(sale.taxAmount),
+    amountReceived: optionalNumber(sale.amountReceived),
+    changeAmount: optionalNumber(sale.changeAmount),
+    paymentReference: cleanString(sale.paymentReference),
     soldAt: cleanString(sale.soldAtIso) ?? new Date().toISOString(),
     notes: cleanString(sale.notes),
+    payments: rows(sale.payments).map((payment) => ({
+      method: paymentMethodValue(payment.method),
+      amount: asNumber(payment.amount),
+      reference: cleanString(payment.reference),
+    })),
     items: items.length
       ? items.map((item) => ({
           productId: cleanString(item.productId),
+          planId: cleanString(item.planId),
+          classId: cleanString(item.classId),
+          kind: cleanString(item.kind),
           productName: asString(item.name, "Item POS"),
           sku: cleanString(item.sku),
           quantity: Math.max(1, asNumber(item.quantity, 1)),
@@ -1200,7 +1238,8 @@ function financeRecordToPaymentDto(record: Entity) {
     outstandingAmount: optionalNumber(record.outstandingValue),
     method: paymentMethodValue(record.method),
     status: record.status === "Pendente" ? "PENDING" : "PAID",
-    dueDate: dateToIso(record.date),
+    dueDate: record.dueDate ? dateToIso(record.dueDate) : undefined,
+    paidAt: dateToIso(record.paidAt ?? record.date),
     reference: cleanString(record.receiptNumber) ?? cleanString(record.note),
     receiptNumber: cleanString(record.receiptNumber),
     notes,

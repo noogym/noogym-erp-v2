@@ -66,6 +66,12 @@ export const createSubscription = (
   },
 ) => apiRequest<Entity>("/subscriptions", { method: "POST", token, body });
 
+export const regenerateMemberQr = (token: string, memberId: string) =>
+  apiRequest<Entity>(`/members/${memberId}/qr-token/regenerate`, {
+    method: "POST",
+    token,
+  });
+
 export const listFinanceRecords = async (
   token: string,
   query?: {
@@ -130,9 +136,12 @@ export const clientFromApi = (member: Entity): ClientRecord => {
   const plan = getEntity(subscription?.plan);
   const expires = asDate(subscription?.endDate);
   const lastCheckin = first<Entity>(member.checkIns);
+  const id = asString(member.id);
+  const qrToken = asString(member.qrToken, undefined);
 
   return {
-    id: asString(member.id),
+    id,
+    remoteId: id,
     gymId: asString(member.gymId ?? getEntity(member.gym)?.id, undefined),
     name: asString(member.name, "Cliente Noogym"),
     phone: asString(member.phone, "+244 900 000 000"),
@@ -153,6 +162,8 @@ export const clientFromApi = (member: Entity): ClientRecord => {
     expires: formatDate(expires),
     birthday: formatBirthday(asDate(member.birthDate)),
     avatar: initials(asString(member.name, "CN")),
+    qrToken,
+    qrPayload: qrToken ? clientQrPayload(id, qrToken) : undefined,
     document: asString(member.documentNumber, "000000000LA000"),
     createdAt: asString(member.createdAt, undefined),
   };
@@ -166,6 +177,9 @@ export const clientToDto = (client: Partial<ClientRecord>) => ({
   gymId: client.gymId,
   status: client.status === "Inativo" ? "INACTIVE" : "ACTIVE",
 });
+
+export const clientQrPayload = (clientId: string, qrToken?: string) =>
+  qrToken ? `noogym://checkin/${clientId}/${qrToken}` : clientId;
 
 export const planFromApi = (plan: Entity): PlanRecord => {
   const gymLinks = rows(plan.gyms);
@@ -292,10 +306,16 @@ export const checkinToDto = (checkin: Partial<CheckinRecord>) => ({
 export const saleFromApi = (sale: Entity): SaleRecord => ({
   id: asString(sale.id),
   gymId: asString(sale.gymId ?? getEntity(sale.gym)?.id, undefined),
+  cashSessionId: asString(sale.cashSessionId, undefined),
+  receiptNumber: asString(sale.receiptNumber, undefined),
   total: asNumber(sale.total),
   subtotal: asNumber(sale.subtotal),
   discountAmount: asNumber(sale.discountAmount),
+  discountReason: asString(sale.discountReason, undefined),
   taxAmount: asNumber(sale.taxAmount),
+  amountReceived: optionalNumber(sale.amountReceived),
+  changeAmount: optionalNumber(sale.changeAmount),
+  paymentReference: asString(sale.paymentReference, undefined),
   customer:
     asString(sale.customerName, undefined) ||
     asString(getEntity(sale.member)?.name, undefined),
@@ -313,6 +333,12 @@ export const saleFromApi = (sale: Entity): SaleRecord => ({
   soldAtIso: asDate(sale.soldAt)?.toISOString(),
   notes: asString(sale.notes, undefined),
   items: rows(sale.items).map(saleItemFromApi),
+  payments: rows(sale.payments).map((payment) => ({
+    id: asString(payment.id),
+    method: paymentMethodLabel(payment.method),
+    amount: asNumber(payment.amount),
+    reference: asString(payment.reference, undefined),
+  })),
 });
 
 export const saleToDto = (
@@ -323,6 +349,7 @@ export const saleToDto = (
   customerName: sale.customer,
   sellerName: sale.seller ?? "Admin",
   gymId: sale.gymId,
+  cashSessionId: isUuidLike(sale.cashSessionId) ? sale.cashSessionId : undefined,
   type: saleTypeValue(sale.type),
   status:
     sale.type === "Orcamento" || sale.type === "Orçamento"
@@ -330,12 +357,24 @@ export const saleToDto = (
       : "COMPLETED",
   paymentMethod: paymentMethodValue(sale.paymentMethod),
   discountAmount: sale.discountAmount ?? 0,
+  discountReason: sale.discountReason,
   taxAmount: sale.taxAmount ?? 0,
+  amountReceived: sale.amountReceived,
+  changeAmount: sale.changeAmount,
+  paymentReference: sale.paymentReference,
   soldAt: sale.soldAtIso ?? new Date().toISOString(),
   notes: sale.notes,
+  payments: sale.payments?.map((payment) => ({
+    method: paymentMethodValue(payment.method),
+    amount: payment.amount,
+    reference: payment.reference,
+  })),
   items: items.length
     ? items.map((item) => ({
         productId: item.productId,
+        planId: item.planId,
+        classId: item.classId,
+        kind: item.kind,
         productName: item.name,
         sku: item.sku,
         quantity: Math.max(1, Number(item.quantity ?? 1)),
@@ -348,6 +387,9 @@ function saleItemFromApi(item: Entity): SaleItemRecord {
   return {
     id: asString(item.id),
     productId: asString(item.productId, undefined),
+    planId: asString(item.planId, undefined),
+    classId: asString(item.classId, undefined),
+    kind: asString(item.kind, undefined),
     name: asString(item.productName, "Item POS"),
     sku: asString(item.sku, undefined),
     quantity: asNumber(item.quantity, 1),
@@ -617,7 +659,8 @@ function financeRecordToPaymentDto(record: Partial<FinanceRecord>) {
     outstandingAmount: record.outstandingValue,
     method: paymentMethodValue(record.method),
     status: record.status === "Pendente" ? "PENDING" : "PAID",
-    dueDate: dateToIso(record.date),
+    dueDate: record.dueDate ? dateToIso(record.dueDate) : undefined,
+    paidAt: dateToIso(record.paidAt ?? record.date),
     reference: record.receiptNumber ?? record.note,
     receiptNumber: record.receiptNumber,
     notes,

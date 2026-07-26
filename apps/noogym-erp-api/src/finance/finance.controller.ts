@@ -34,6 +34,7 @@ const financeRoles = [
   UserRole.FINANCE,
   UserRole.SUPER_ADMIN,
 ];
+const cashSessionRoles = [...financeRoles, UserRole.RECEPTIONIST];
 
 @ApiTags('Finance')
 @ApiBearerAuth()
@@ -105,7 +106,7 @@ export class FinanceController {
   }
 
   @Get('cash-sessions')
-  @Roles(...financeRoles)
+  @Roles(...cashSessionRoles)
   cashSessions(
     @CurrentUser() user: AuthUser,
     @Query() query: PaginationQueryDto,
@@ -114,7 +115,7 @@ export class FinanceController {
   }
 
   @Get('cash-sessions/current')
-  @Roles(...financeRoles)
+  @Roles(...cashSessionRoles)
   currentCashSession(
     @CurrentUser() user: AuthUser,
     @Query() query: PaginationQueryDto,
@@ -123,7 +124,7 @@ export class FinanceController {
   }
 
   @Post('cash-sessions/open')
-  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.FINANCE, UserRole.SUPER_ADMIN)
+  @Roles(...cashSessionRoles)
   openCashSession(
     @CurrentUser() user: AuthUser,
     @Body() dto: OpenCashSessionDto,
@@ -136,7 +137,7 @@ export class FinanceController {
   }
 
   @Post('cash-sessions/:id/close')
-  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.FINANCE, UserRole.SUPER_ADMIN)
+  @Roles(...cashSessionRoles)
   closeCashSession(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,

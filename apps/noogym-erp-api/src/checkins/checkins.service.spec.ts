@@ -74,6 +74,53 @@ describe('CheckinsService', () => {
     });
   });
 
+  it('creates check-in from a valid QR token', async () => {
+    const { prisma, service } = createService();
+    prisma.member.findFirst
+      .mockResolvedValueOnce({ id: 'member-1' })
+      .mockResolvedValueOnce({
+        id: 'member-1',
+        status: MemberStatus.ACTIVE,
+        gymId: 'gym-1',
+      });
+    prisma.subscription.findFirst.mockResolvedValue({ id: 'subscription-1' });
+    prisma.checkIn.count.mockResolvedValue(0);
+    prisma.checkIn.create.mockResolvedValue({ id: 'checkin-1' });
+
+    await service.createFromQr(organizationId, {
+      payload: 'noogym://checkin/member-1/token-1',
+    });
+
+    expect(prisma.member.findFirst).toHaveBeenNthCalledWith(1, {
+      where: {
+        organizationId,
+        qrToken: 'token-1',
+        id: 'member-1',
+      },
+      select: { id: true },
+    });
+    expect(prisma.checkIn.create).toHaveBeenCalledWith({
+      data: {
+        organizationId,
+        memberId: 'member-1',
+        gymId: 'gym-1',
+        method: CheckInMethod.QR_CODE,
+        checkedAt: expect.any(Date),
+        notes: 'QR Code',
+      },
+      include: { member: true, gym: true },
+    });
+  });
+
+  it('throws when QR token is missing or revoked', async () => {
+    const { prisma, service } = createService();
+    prisma.member.findFirst.mockResolvedValue(null);
+
+    await expect(
+      service.createFromQr(organizationId, { payload: 'revoked-token' }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
   it('throws when member does not exist in tenant', async () => {
     const { prisma, service } = createService();
     prisma.member.findFirst.mockResolvedValue(null);

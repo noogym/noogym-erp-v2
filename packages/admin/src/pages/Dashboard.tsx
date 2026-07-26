@@ -32,6 +32,7 @@ const quickServices = [
   { name: "Plano alimentar", price: "10.000 Kz", detail: "Consulta nutricional" },
   { name: "Massagem desportiva", price: "15.000 Kz", detail: "Recuperação muscular" }
 ];
+const pendingQuickSaleKey = "noogym:pos-pending-item";
 
 const dayMs = 24 * 60 * 60 * 1000;
 const startOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -60,10 +61,14 @@ const changeVs = (current: number, previous: number, label: string) => {
   return `${percent >= 0 ? "+" : ""} ${percent}% ${label}`;
 };
 const weekdayLabel = (date: Date) => new Intl.DateTimeFormat("pt-AO", { weekday: "short" }).format(date).replace(".", "");
+const quickSalePriceValue = (value: string) => {
+  const numeric = value.split("Kz")[0]?.replace(/\s/g, "").replace(/\./g, "").replace(",", ".");
+  const parsed = Number(numeric);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
 
 export default function Dashboard() {
   const [checkinTab, setCheckinTab] = useState("QR Code");
-  const [tab, setTab] = useState("Planos");
   const [manualOpen, setManualOpen] = useState(false);
   const [qrOpen, setQrOpen] = useState(false);
   const setRoute = useAppStore((state) => state.setRoute);
@@ -119,17 +124,16 @@ export default function Dashboard() {
     });
   }, [clientsWithPlan, plans]);
   const activities = useMemo(() => [
-    ...(canUseCheckin ? checkins.slice(0, 4).map((checkin) => ({ title: "Check-in realizado", subject: checkin.clientName, time: checkin.dateTime, amount: "" })) : []),
-    ...(canUseSales ? sales.slice(0, 3).map((sale) => ({ title: "Venda registrada", subject: sale.customer ?? sale.type, time: sale.dateTime, amount: money(sale.total) })) : [])
+    ...(canUseCheckin ? checkins.slice(0, 4).map((checkin) => ({ id: `checkin-${checkin.id}`, title: "Check-in realizado", subject: checkin.clientName, time: checkin.dateTime, amount: "" })) : []),
+    ...(canUseSales ? sales.slice(0, 3).map((sale) => ({ id: `sale-${sale.id}`, title: "Venda registrada", subject: sale.customer ?? sale.type, time: sale.dateTime, amount: money(sale.total) })) : [])
   ].sort((a, b) => timeMinutes(b.time) - timeMinutes(a.time)).slice(0, 5), [canUseCheckin, canUseSales, checkins, sales]);
   const dashboardDate = new Intl.DateTimeFormat("pt-AO", { day: "2-digit", month: "long", year: "numeric" }).format(new Date());
-  const quickSaleItems = tab === "Produtos"
-    ? products.slice(0, 5).map((product) => ({ name: product.name, price: money(product.price), detail: `${product.stock} un` }))
-    : tab === "Serviços"
-      ? quickServices
-      : tab === "Aulas"
-        ? classes.slice(0, 5).map((lesson) => ({ name: lesson.name, price: "3.000 Kz", detail: lesson.time }))
-        : plans.slice(0, 5).map((plan) => ({ name: plan.name, price: plan.price, detail: plan.duration }));
+  const quickSaleItems = useMemo(() => [
+    ...plans.slice(0, 2).map((plan) => ({ id: plan.id, kind: "plan", name: plan.name, price: plan.price, rawPrice: quickSalePriceValue(plan.price), detail: plan.duration })),
+    ...products.slice(0, 1).map((product) => ({ id: product.id, kind: "product", name: product.name, price: money(product.price), rawPrice: product.price, detail: `${product.stock} un`, sku: product.sku })),
+    ...quickServices.slice(0, 1).map((service) => ({ id: service.name, kind: "service", rawPrice: quickSalePriceValue(service.price), ...service })),
+    ...classes.slice(0, 1).map((lesson) => ({ id: lesson.id, kind: "class", name: lesson.name, price: "3.000 Kz", rawPrice: 3000, detail: lesson.time }))
+  ].slice(0, 5), [classes, plans, products]);
 
   const handleQuickCheckin = () => {
     if (checkinTab === "QR Code") {
@@ -143,6 +147,21 @@ export default function Dashboard() {
     }
 
     toastSuccess("Código validado", "Check-in por código simulado.");
+  };
+  const handleQuickSaleItem = (item: (typeof quickSaleItems)[number]) => {
+    if (typeof window !== "undefined") {
+      window.sessionStorage.setItem(pendingQuickSaleKey, JSON.stringify({
+        id: item.id,
+        name: item.name,
+        category: "Favoritos",
+        price: item.rawPrice,
+        detail: item.detail,
+        emoji: item.kind === "product" ? "PRD" : item.kind === "plan" ? "PLN" : item.kind === "class" ? "AUL" : "SVC",
+        kind: item.kind,
+        sku: "sku" in item ? item.sku : undefined
+      }));
+    }
+    setRoute("vendas");
   };
 
   return (
@@ -179,8 +198,8 @@ export default function Dashboard() {
           <Card className="p-4">
             <h2 className="mb-3 font-semibold">Atividades recentes</h2>
             <div className="space-y-3">
-              {activities.map((activity) => (
-                <div key={`${activity.title}-${activity.subject}-${activity.time}`} className="flex items-center gap-3 border-b border-white/[0.07] pb-3 last:border-0">
+              {activities.map((activity, index) => (
+                <div key={activity.id || `${activity.title}-${activity.subject}-${activity.time}-${index}`} className="flex items-center gap-3 border-b border-white/[0.07] pb-3 last:border-0">
                   <span className="icon-tile h-9 w-9 text-noogym-lime"><ClipboardCheck className="h-4 w-4" /></span>
                   <div className="min-w-0 flex-1"><p className="text-sm">{activity.title}</p><p className="text-xs text-zinc-400">{activity.subject}</p></div>
                   <div className="text-right text-xs text-zinc-400"><p>{activity.time}</p>{activity.amount ? <p className="text-noogym-lime">{activity.amount}</p> : null}</div>
@@ -236,14 +255,16 @@ export default function Dashboard() {
           </div>
         </Card> : null}
         {canUseSales ? <Card className="p-4">
-          <h2 className="mb-4 text-lg font-semibold">Venda rápida (POS)</h2>
-          <Tabs tabs={["Planos", "Produtos", "Serviços", "Aulas"]} active={tab} onChange={setTab} />
+          <div className="mb-3">
+            <h2 className="text-lg font-semibold">Atalhos POS</h2>
+            <p className="mt-1 text-xs text-zinc-400">Favoritos para iniciar uma venda no PDV.</p>
+          </div>
           <div className="mt-3 space-y-2">
             {quickSaleItems.map((item) => (
-              <div key={`${tab}-${item.name}`} className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 border-b border-white/[0.07] py-2 text-sm">
+              <div key={`${item.kind}-${item.id}`} className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 border-b border-white/[0.07] py-2 text-sm">
                 <span className="min-w-0 truncate">{item.name}</span>
                 <span className="text-right">{item.price}</span>
-                <button className="rounded border border-noogym-lime/50 p-1 text-noogym-lime" onClick={() => toastSuccess("Item adicionado", `${item.name} foi adicionado à venda rápida.`)}>
+                <button className="rounded border border-noogym-lime/50 p-1 text-noogym-lime" title="Adicionar no PDV" onClick={() => handleQuickSaleItem(item)}>
                   <Plus className="h-4 w-4" />
                 </button>
                 {item.detail ? <span className="col-span-3 text-xs text-zinc-400">{item.detail}</span> : null}

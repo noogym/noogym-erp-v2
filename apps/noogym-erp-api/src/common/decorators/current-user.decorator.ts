@@ -5,6 +5,11 @@ export type AuthUser = {
   email: string;
   role: string;
   organizationId: string;
+  supportMode?: boolean;
+  supportSessionId?: string;
+  supportReason?: string;
+  supportActorId?: string;
+  supportActorEmail?: string;
 };
 
 export const CurrentUser = createParamDecorator(

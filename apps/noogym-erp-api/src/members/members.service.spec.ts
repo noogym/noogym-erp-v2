@@ -42,6 +42,8 @@ describe('MembersService', () => {
         email: 'ana.costa@example.com',
         phone: '+244 923 111 111',
         documentNumber: '000000000LA001',
+        qrToken: expect.any(String),
+        qrTokenUpdatedAt: expect.any(Date),
       },
       include: {
         gym: true,

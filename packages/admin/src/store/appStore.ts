@@ -22,6 +22,8 @@ export type RouteId =
   | "funcionarios"
   | "relatorios"
   | "financas"
+  | "sincronizacao"
+  | "super-admin"
   | "configuracoes";
 
 type SyncState = "idle" | "syncing";

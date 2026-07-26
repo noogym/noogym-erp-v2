@@ -13,6 +13,8 @@ type ClientPayload = Record<string, unknown> & {
   phone?: string;
   document?: string;
   status?: string;
+  qrToken?: string;
+  qrPayload?: string;
   createdAt?: string;
   updatedAt?: string;
 };
@@ -30,7 +32,11 @@ export type SyncQueueEvent = {
   entityId: string;
   operation: SyncOperation;
   payload: ClientPayload;
+  status?: "pending" | "failed" | "conflict" | "synced";
   attempts: number;
+  error?: string;
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 type SyncQueueRow = {
@@ -39,7 +45,11 @@ type SyncQueueRow = {
   entity_id: string;
   operation: SyncOperation;
   payload: string;
+  status: "pending" | "failed" | "conflict" | "synced";
   attempts: number;
+  error: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 export type SyncConflictResolution = "keep_local" | "use_remote";
@@ -217,7 +227,7 @@ export class SQLiteLocalDb {
     return this.db
       .prepare(
         `
-          SELECT id, entity, entity_id, operation, payload, attempts
+          SELECT id, entity, entity_id, operation, payload, status, attempts, error, created_at, updated_at
           FROM sync_queue
           WHERE status = 'pending'
           ORDER BY datetime(created_at) ASC
@@ -233,9 +243,62 @@ export class SQLiteLocalDb {
           entityId: event.entity_id,
           operation: event.operation,
           payload: JSON.parse(event.payload) as ClientPayload,
-          attempts: event.attempts
+          status: event.status,
+          attempts: event.attempts,
+          error: event.error ?? undefined,
+          createdAt: event.created_at,
+          updatedAt: event.updated_at
         };
       });
+  }
+
+  listSyncQueueEvents(status: "pending" | "failed" | "conflict" | "synced" = "pending", limit = 50): SyncQueueEvent[] {
+    return this.db
+      .prepare(
+        `
+          SELECT id, entity, entity_id, operation, payload, status, attempts, error, created_at, updated_at
+          FROM sync_queue
+          WHERE status = @status
+          ORDER BY datetime(updated_at) DESC
+          LIMIT @limit
+        `
+      )
+      .all({ status, limit: Math.min(Math.max(Math.floor(limit) || 50, 1), 100) })
+      .map((row) => {
+        const event = row as SyncQueueRow;
+        return {
+          id: event.id,
+          entity: event.entity,
+          entityId: event.entity_id,
+          operation: event.operation,
+          payload: JSON.parse(event.payload) as ClientPayload,
+          status: event.status,
+          attempts: event.attempts,
+          error: event.error ?? undefined,
+          createdAt: event.created_at,
+          updatedAt: event.updated_at
+        };
+      });
+  }
+
+  retrySyncQueueEvent(id: string) {
+    const event = this.getSyncEventMeta(id);
+    if (!event) return null;
+
+    this.db
+      .prepare(
+        `
+          UPDATE sync_queue
+          SET status = 'pending',
+            attempts = 0,
+            error = NULL,
+            updated_at = @updatedAt
+          WHERE id = @id AND status IN ('failed', 'conflict')
+        `
+      )
+      .run({ id, updatedAt: nowIso() });
+
+    return this.listSyncQueueEvents("pending", 100).find((item) => item.id === id) ?? null;
   }
 
   getPendingSyncCount() {

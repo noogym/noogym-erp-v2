@@ -42,6 +42,10 @@ contextBridge.exposeInMainWorld("noogym", {
       list: (status?: "open" | "resolved") => ipcRenderer.invoke("localdb:conflicts:list", status),
       resolve: (id: string, resolution: "keep_local" | "use_remote") => ipcRenderer.invoke("localdb:conflicts:resolve", id, resolution)
     },
+    syncEvents: {
+      list: (status?: "pending" | "failed" | "conflict" | "synced", limit?: number) => ipcRenderer.invoke("localdb:sync-events:list", status, limit),
+      retry: (id: string) => ipcRenderer.invoke("localdb:sync-events:retry", id)
+    },
     clients: {
       list: () => ipcRenderer.invoke("localdb:clients:list"),
       replace: (clients: unknown[]) => ipcRenderer.invoke("localdb:clients:replace", clients),

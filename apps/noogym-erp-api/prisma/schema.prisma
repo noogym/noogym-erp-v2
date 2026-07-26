@@ -310,6 +310,8 @@ model Member {
   city               String?
   status             MemberStatus         @default(ACTIVE)
   avatarUrl          String?
+  qrToken            String?              @unique
+  qrTokenUpdatedAt   DateTime?
   emergencyName      String?
   emergencyPhone     String?
   notes              String?
@@ -350,6 +352,7 @@ model Plan {
   updatedAt        DateTime       @updatedAt
   organization     Organization   @relation(fields: [organizationId], references: [id])
   subscriptions    Subscription[]
+  saleItems        SaleItem[]
   gyms             PlanGym[]
 }
 
@@ -496,6 +499,7 @@ model CashSession {
   gym            Gym?              @relation(fields: [gymId], references: [id])
   openedBy       User?             @relation("CashSessionOpenedBy", fields: [openedById], references: [id])
   closing        CashClosing?
+  sales          Sale[]
 
   @@index([organizationId, status, openedAt])
   @@index([gymId, status])
@@ -708,44 +712,62 @@ model StockMovement {
 }
 
 model Sale {
-  id             String        @id @default(uuid())
-  organizationId String
-  gymId          String?
-  memberId       String?
-  sellerId       String?
-  customerName   String?
-  sellerName     String?
-  type           SaleType      @default(NORMAL)
-  status         SaleStatus    @default(COMPLETED)
-  subtotal       Decimal       @db.Decimal(12, 2)
-  discountAmount Decimal       @default(0) @db.Decimal(12, 2)
-  taxAmount      Decimal       @default(0) @db.Decimal(12, 2)
-  total          Decimal       @db.Decimal(12, 2)
-  paymentMethod  PaymentMethod
-  soldAt         DateTime      @default(now())
-  notes          String?
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
-  organization   Organization  @relation(fields: [organizationId], references: [id])
-  gym            Gym?          @relation(fields: [gymId], references: [id])
-  member         Member?       @relation(fields: [memberId], references: [id])
-  seller         User?         @relation("SaleSeller", fields: [sellerId], references: [id])
-  items          SaleItem[]
-  payments       Payment[]
+  id               String        @id @default(uuid())
+  organizationId   String
+  gymId            String?
+  memberId         String?
+  sellerId         String?
+  cashSessionId    String?
+  customerName     String?
+  sellerName       String?
+  type             SaleType      @default(NORMAL)
+  status           SaleStatus    @default(COMPLETED)
+  subtotal         Decimal       @db.Decimal(12, 2)
+  discountAmount   Decimal       @default(0) @db.Decimal(12, 2)
+  discountReason   String?
+  taxAmount        Decimal       @default(0) @db.Decimal(12, 2)
+  total            Decimal       @db.Decimal(12, 2)
+  paymentMethod    PaymentMethod
+  amountReceived   Decimal?      @db.Decimal(12, 2)
+  changeAmount     Decimal       @default(0) @db.Decimal(12, 2)
+  paymentReference String?
+  receiptNumber    String?
+  soldAt           DateTime      @default(now())
+  notes            String?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  organization     Organization  @relation(fields: [organizationId], references: [id])
+  gym              Gym?          @relation(fields: [gymId], references: [id])
+  member           Member?       @relation(fields: [memberId], references: [id])
+  seller           User?         @relation("SaleSeller", fields: [sellerId], references: [id])
+  cashSession      CashSession?  @relation(fields: [cashSessionId], references: [id])
+  items            SaleItem[]
+  payments         Payment[]
+
+  @@unique([organizationId, receiptNumber])
+  @@index([cashSessionId])
 }
 
 model SaleItem {
-  id          String   @id @default(uuid())
+  id          String    @id @default(uuid())
   saleId      String
   productId   String?
+  planId      String?
+  classId     String?
+  kind        String?
   productName String
   sku         String?
   quantity    Int
-  unitPrice   Decimal  @db.Decimal(12, 2)
-  unitCost    Decimal? @db.Decimal(12, 2)
-  total       Decimal  @db.Decimal(12, 2)
-  sale        Sale     @relation(fields: [saleId], references: [id])
-  product     Product? @relation(fields: [productId], references: [id])
+  unitPrice   Decimal   @db.Decimal(12, 2)
+  unitCost    Decimal?  @db.Decimal(12, 2)
+  total       Decimal   @db.Decimal(12, 2)
+  sale        Sale      @relation(fields: [saleId], references: [id])
+  product     Product?  @relation(fields: [productId], references: [id])
+  plan        Plan?     @relation(fields: [planId], references: [id])
+  gymClass    GymClass? @relation(fields: [classId], references: [id])
+
+  @@index([planId])
+  @@index([classId])
 }
 
 model Employee {
@@ -797,6 +819,7 @@ model GymClass {
   room            Room?             @relation(fields: [roomId], references: [id])
   instructor      Employee?         @relation("ClassInstructor", fields: [instructorId], references: [id])
   enrollments     ClassEnrollment[]
+  saleItems       SaleItem[]
 }
 
 model ClassEnrollment {
