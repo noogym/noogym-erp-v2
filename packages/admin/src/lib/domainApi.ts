@@ -26,6 +26,18 @@ export type ResourceName =
   | "employees"
   | "workouts";
 
+export const remoteIdOf = (
+  record: { id?: string; remoteId?: string } | undefined,
+  localPrefixes: string[],
+) => {
+  const id = record?.remoteId ?? record?.id;
+  if (!id) return undefined;
+
+  return localPrefixes.some((prefix) => id.startsWith(prefix))
+    ? undefined
+    : id;
+};
+
 const API_PAGE_LIMIT = 100;
 const API_MAX_PAGES = 1_000;
 
@@ -70,6 +82,67 @@ export const regenerateMemberQr = (token: string, memberId: string) =>
   apiRequest<Entity>(`/members/${memberId}/qr-token/regenerate`, {
     method: "POST",
     token,
+  });
+
+export interface IdentityLinkResult {
+  identity: {
+    id: string;
+    noogymId: string;
+    name: string;
+    email?: string | null;
+    phone?: string | null;
+    birthDate?: string | null;
+    gender?: string;
+    documentNumber?: string | null;
+    avatarUrl?: string | null;
+    aliases?: Array<{
+      type: "NOOGYM_ID" | "QR_TOKEN" | "BARCODE" | "CARD";
+      value: string;
+      label?: string | null;
+      expiresAt?: string | null;
+    }>;
+  };
+  existingMember?: Entity | null;
+  canLink: boolean;
+}
+
+export const resolveNoogymIdentity = (token: string, identifier: string) =>
+  apiRequest<IdentityLinkResult>("/identity-links/resolve", {
+    method: "POST",
+    token,
+    body: { identifier },
+  });
+
+export const linkNoogymIdentityMember = (
+  token: string,
+  body: { identityId?: string; identifier?: string; gymId?: string },
+) =>
+  apiRequest<Entity>("/identity-links/members", {
+    method: "POST",
+    token,
+    body,
+  });
+
+export const inviteMemberToNoogymApp = (
+  token: string,
+  memberId: string,
+  channels = ["WHATSAPP", "SMS", "EMAIL"],
+) =>
+  apiRequest<Entity>(`/identity-links/members/${memberId}/invite`, {
+    method: "POST",
+    token,
+    body: { channels },
+  });
+
+export const inviteEmployeeToAccount = (
+  token: string,
+  employeeId: string,
+  channels = ["WHATSAPP", "SMS", "EMAIL"],
+) =>
+  apiRequest<Entity>(`/identity-links/employees/${employeeId}/invite`, {
+    method: "POST",
+    token,
+    body: { channels },
   });
 
 export const listFinanceRecords = async (
@@ -138,11 +211,22 @@ export const clientFromApi = (member: Entity): ClientRecord => {
   const lastCheckin = first<Entity>(member.checkIns);
   const id = asString(member.id);
   const qrToken = asString(member.qrToken, undefined);
+  const noogymIdentity = getEntity(member.noogymIdentity);
+  const identityAliases = rows(noogymIdentity?.aliases);
+  const barcodeAlias = identityAliases.find((alias) => alias.type === "BARCODE");
+  const cardAlias = identityAliases.find((alias) => alias.type === "CARD");
+  const accessCode = asString(
+    member.accessCode ?? barcodeAlias?.value ?? cardAlias?.value,
+    undefined,
+  );
 
   return {
     id,
     remoteId: id,
     gymId: asString(member.gymId ?? getEntity(member.gym)?.id, undefined),
+    noogymIdentityId: asString(member.noogymIdentityId ?? noogymIdentity?.id, undefined),
+    noogymId: asString(noogymIdentity?.noogymId, undefined),
+    appLinked: Boolean(member.noogymIdentityId ?? noogymIdentity?.id),
     name: asString(member.name, "Cliente Noogym"),
     phone: asString(member.phone, "+244 900 000 000"),
     email: asString(member.email, "cliente@email.com"),
@@ -164,6 +248,8 @@ export const clientFromApi = (member: Entity): ClientRecord => {
     avatar: initials(asString(member.name, "CN")),
     qrToken,
     qrPayload: qrToken ? clientQrPayload(id, qrToken) : undefined,
+    accessCode,
+    barcodePayload: accessCode ? clientBarcodePayload(accessCode) : undefined,
     document: asString(member.documentNumber, "000000000LA000"),
     createdAt: asString(member.createdAt, undefined),
   };
@@ -174,6 +260,8 @@ export const clientToDto = (client: Partial<ClientRecord>) => ({
   email: cleanEmail(client.email),
   phone: client.phone,
   documentNumber: client.document,
+  noogymIdentityId: client.noogymIdentityId,
+  accessCode: client.accessCode,
   gymId: client.gymId,
   status: client.status === "Inativo" ? "INACTIVE" : "ACTIVE",
 });
@@ -181,10 +269,15 @@ export const clientToDto = (client: Partial<ClientRecord>) => ({
 export const clientQrPayload = (clientId: string, qrToken?: string) =>
   qrToken ? `noogym://checkin/${clientId}/${qrToken}` : clientId;
 
+export const clientBarcodePayload = (accessCode: string) =>
+  `noogym://barcode/${accessCode}`;
+
 export const planFromApi = (plan: Entity): PlanRecord => {
   const gymLinks = rows(plan.gyms);
+  const id = asString(plan.id);
   return {
-    id: asString(plan.id),
+    id,
+    remoteId: id,
     name: asString(plan.name, "Plano"),
     description: asString(plan.description, ""),
     category: asString(
@@ -244,6 +337,7 @@ export const planCategoryToDto = (category: Partial<PlanCategoryRecord>) => ({
 
 export const productFromApi = (product: Entity): ProductRecord => ({
   id: asString(product.id),
+  remoteId: asString(product.id),
   gymId: asString(product.gymId ?? getEntity(product.gym)?.id, undefined),
   name: asString(product.name, "Produto"),
   category: asString(product.category, "Outros"),
@@ -282,8 +376,10 @@ export const productToDto = (product: Partial<ProductRecord>) => ({
 export const checkinFromApi = (checkin: Entity): CheckinRecord => {
   const member = getEntity(checkin.member);
   const checkedAt = asDate(checkin.checkedAt);
+  const id = asString(checkin.id);
   return {
-    id: asString(checkin.id),
+    id,
+    remoteId: id,
     gymId: asString(checkin.gymId ?? getEntity(checkin.gym)?.id, undefined),
     clientName: asString(member?.name, "Cliente Noogym"),
     clientId: asString(checkin.memberId),
@@ -305,6 +401,7 @@ export const checkinToDto = (checkin: Partial<CheckinRecord>) => ({
 
 export const saleFromApi = (sale: Entity): SaleRecord => ({
   id: asString(sale.id),
+  remoteId: asString(sale.id),
   gymId: asString(sale.gymId ?? getEntity(sale.gym)?.id, undefined),
   cashSessionId: asString(sale.cashSessionId, undefined),
   receiptNumber: asString(sale.receiptNumber, undefined),
@@ -399,6 +496,7 @@ function saleItemFromApi(item: Entity): SaleItemRecord {
 
 export const classFromApi = (lesson: Entity): ClassRecord => ({
   id: asString(lesson.id),
+  remoteId: asString(lesson.id),
   gymId: asString(lesson.gymId ?? getEntity(lesson.gym)?.id, undefined),
   name: asString(lesson.name, "Aula"),
   room: asString(getEntity(lesson.room)?.name, "Sala 1"),
@@ -449,6 +547,7 @@ export const classToDto = (lesson: Partial<ClassRecord>) => ({
 
 export const employeeFromApi = (employee: Entity): EmployeeRecord => ({
   id: asString(employee.id),
+  remoteId: asString(employee.id),
   name: asString(employee.name, "Funcionario"),
   role: asString(employee.role, "Recepcionista"),
   email: asString(employee.email, "funcionario@noogym.com"),
@@ -503,6 +602,7 @@ export const employeeToDto = (employee: Partial<EmployeeRecord>) => ({
 
 export const workoutFromApi = (workout: Entity): WorkoutRecord => ({
   id: asString(workout.id),
+  remoteId: asString(workout.id),
   name: asString(workout.name, "Treino"),
   client: asString(
     getEntity(first<Entity>(workout.assignments)?.member)?.name,
@@ -820,6 +920,7 @@ function parseDuration(value: unknown) {
 function methodLabel(value: unknown) {
   const labels: Record<string, string> = {
     QR_CODE: "QR Code",
+    BARCODE: "Codigo de barras",
     MANUAL: "Manual",
     BIOMETRIC: "Biometria",
     APP: "App",
@@ -831,6 +932,7 @@ function methodLabel(value: unknown) {
 function methodValue(value: unknown) {
   const text = String(value ?? "").toLowerCase();
   if (text.includes("qr")) return "QR_CODE";
+  if (text.includes("codigo") || text.includes("barra") || text.includes("barcode")) return "BARCODE";
   if (text.includes("bio")) return "BIOMETRIC";
   if (text.includes("app")) return "APP";
   if (text.includes("nfc")) return "NFC";

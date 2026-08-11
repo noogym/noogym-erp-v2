@@ -24,9 +24,23 @@ const printer: PrinterConfig = {
 await printTestPage(printer);
 ```
 
-## Configurar USB no Electron
+## Configurar USB no Desktop Windows
 
-USB precisa de uma bridge Electron/nativa para listar dispositivos e enviar bytes. A lib procura por `globalThis.noogymUsbPrinterBridge`.
+No Windows, a lib lista as impressoras instaladas no sistema e envia ESC/POS como trabalho `RAW` pelo spooler. Para a maioria das termicas USB, instale o driver/porta da impressora no Windows e use exatamente o nome listado.
+
+```ts
+await printTestPage({
+  name: "Wintec 80mm",
+  connectionType: "usb",
+  profile: "wintec",
+  paperWidth: 80,
+  usb: {
+    deviceName: "Wintec 80mm"
+  }
+});
+```
+
+Em outros ambientes, ou quando houver driver nativo dedicado, a lib ainda procura por `globalThis.noogymUsbPrinterBridge`.
 
 ```ts
 globalThis.noogymUsbPrinterBridge = {
@@ -44,6 +58,23 @@ globalThis.noogymUsbPrinterBridge = {
     };
   }
 };
+```
+
+## Configurar serial
+
+No Windows, portas COM sao listadas automaticamente e a lib envia bytes pela porta serial configurada.
+
+```ts
+await printTestPage({
+  name: "Serial COM4",
+  connectionType: "serial",
+  profile: "generic",
+  paperWidth: 58,
+  serial: {
+    path: "COM4",
+    baudRate: 9600
+  }
+});
 ```
 
 ## Imprimir recibo

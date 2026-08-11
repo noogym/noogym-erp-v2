@@ -1756,7 +1756,7 @@ function ClientQrModal({
   return (
     <Modal
       open={open}
-      title="QR Code do cliente"
+      title="Identificadores do cliente"
       description={current.name}
       size="md"
       onClose={onClose}
@@ -1764,7 +1764,7 @@ function ClientQrModal({
         <>
           <Button onClick={onClose}>Fechar</Button>
           <Button icon={<Copy className="h-4 w-4" />} onClick={copyPayload}>
-            Copiar codigo
+            Copiar QR
           </Button>
           <Button
             variant="primary"
@@ -1772,7 +1772,7 @@ function ClientQrModal({
             disabled={isRegenerating}
             onClick={regenerate}
           >
-            {payload ? "Regenerar" : "Gerar QR"}
+            {payload ? "Regenerar QR" : "Gerar QR"}
           </Button>
         </>
       }
@@ -1794,6 +1794,11 @@ function ClientQrModal({
         <div className="rounded-md border border-white/10 bg-black/20 p-3 text-xs text-zinc-400">
           <p className="mb-1 text-zinc-300">Payload</p>
           <p className="break-all">{payload ?? "Sem QR Code gerado"}</p>
+        </div>
+        <div className="rounded-md border border-white/10 bg-black/20 p-3 text-xs text-zinc-400">
+          <p className="mb-1 text-zinc-300">Codigo de barras / cartao</p>
+          <p className="break-all font-mono text-base text-zinc-100">{current.accessCode ?? "Sem codigo de acesso gerado"}</p>
+          <p className="mt-2 break-all">{current.barcodePayload ?? ""}</p>
         </div>
       </div>
     </Modal>

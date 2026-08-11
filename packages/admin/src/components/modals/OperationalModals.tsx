@@ -14,6 +14,8 @@ import { FormSelect } from "@noogym/ui";
 import { FormSwitch } from "@noogym/ui";
 import { FormTextarea } from "@noogym/ui";
 import { Modal } from "@noogym/ui";
+import { apiRequest } from "../../lib/api";
+import { remoteIdOf, resolveNoogymIdentity, type IdentityLinkResult } from "../../lib/domainApi";
 import { useCheckinsStore } from "../../store/checkinsStore";
 import { useClassesStore } from "../../store/classesStore";
 import { useClientsStore } from "../../store/clientsStore";
@@ -26,7 +28,7 @@ import { useSettingsStore } from "../../store/settingsStore";
 import { useAppStore } from "../../store/appStore";
 import { useWorkoutsStore } from "../../store/workoutsStore";
 import { useAuthStore } from "../../store/authStore";
-import { toastInfo, toastSuccess } from "../../store/toastStore";
+import { toastError, toastInfo, toastSuccess } from "../../store/toastStore";
 import type { CheckinRecord, ClassRecord, ClientRecord, EmployeeRecord, PlanRecord, ProductRecord, SaleItemRecord, SaleRecord, WorkoutExerciseRecord, WorkoutRecord } from "@noogym/types";
 import type { PlanCategory, PlanCategoryInput } from "../../store/plansStore";
 
@@ -169,19 +171,19 @@ export function QrScannerModal({ open, onClose }: { open: boolean; onClose: () =
     if (!normalized || scanningRef.current) return;
 
     scanningRef.current = true;
-    setStatus("A validar QR Code...");
+    setStatus("A validar codigo...");
     try {
       const checkin = await addQrCheckin(normalized);
       if (!checkin) {
-        setStatus("QR Code nao encontrado ou ja revogado.");
-        toastInfo("QR Code invalido", "Nao encontrei este QR em clientes ativos desta unidade.");
+        setStatus("Codigo nao encontrado ou ja revogado.");
+        toastInfo("Codigo invalido", "Nao encontrei este QR, codigo de barras ou cartao em clientes ativos desta unidade.");
         return;
       }
       setResult(checkin);
       setStatus("Check-in confirmado.");
-      toastSuccess("Check-in realizado", `${checkin.clientName} registado por QR Code.`);
+      toastSuccess("Check-in realizado", `${checkin.clientName} registado por scanner.`);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Nao foi possivel validar este QR Code.";
+      const message = error instanceof Error ? error.message : "Nao foi possivel validar este codigo.";
       setStatus(message);
       toastInfo("Check-in bloqueado", message);
     } finally {
@@ -224,8 +226,8 @@ export function QrScannerModal({ open, onClose }: { open: boolean; onClose: () =
           videoRef.current.srcObject = stream;
           await videoRef.current.play();
         }
-        setStatus("Aponte a camera para o QR Code do cliente.");
-        const detector = new Detector({ formats: ["qr_code"] });
+        setStatus("Aponte a camera para o QR Code ou codigo de barras do cliente.");
+        const detector = new Detector({ formats: ["qr_code", "code_128", "ean_13", "ean_8", "code_39"] });
         const scan = async () => {
           if (!active || !videoRef.current) return;
           try {
@@ -266,14 +268,14 @@ export function QrScannerModal({ open, onClose }: { open: boolean; onClose: () =
     return () => scanner.stop();
   }, [open, processPayload]);
   return (
-    <Modal open={open} title="Escanear QR Code" description="Use o scanner USB como leitura principal. A camera funciona como apoio quando o navegador suportar." size="md" onClose={onClose}>
+    <Modal open={open} title="Escanear QR ou codigo de barras" description="Use o scanner USB como leitura principal. A camera funciona como apoio quando o navegador suportar." size="md" onClose={onClose}>
       <div className="space-y-4">
         <div className="rounded-lg border border-noogym-lime/30 bg-noogym-lime/10 p-3 text-sm">
           <div className="flex items-start gap-3">
             <Barcode className="mt-0.5 h-5 w-5 text-noogym-lime" />
             <div>
               <p className="font-semibold text-noogym-lime">Scanner USB pronto</p>
-              <p className="mt-1 text-zinc-300">Leia o cartao ou QR do cliente. Se preferir, cole o codigo no campo abaixo.</p>
+              <p className="mt-1 text-zinc-300">Leia o cartao, codigo de barras ou QR do cliente. Se preferir, cole o codigo no campo abaixo.</p>
             </div>
           </div>
         </div>
@@ -288,10 +290,10 @@ export function QrScannerModal({ open, onClose }: { open: boolean; onClose: () =
           <p className="text-zinc-300">{result.dateTime}</p>
         </div> : null}
         <div className="space-y-2">
-          <FormTextarea label="Scanner USB ou codigo manual" value={manualPayload} onChange={(event) => setManualPayload(event.target.value)} placeholder="Leia com o scanner USB ou cole o payload/token do QR Code..." rows={3} />
+          <FormTextarea label="Scanner USB ou codigo manual" value={manualPayload} onChange={(event) => setManualPayload(event.target.value)} placeholder="Leia com o scanner USB ou cole o Noogym ID, QR, barcode ou cartao..." rows={3} />
           <div className="grid grid-cols-2 gap-3">
             <Button onClick={onClose}>Cancelar</Button>
-            <Button variant="primary" icon={<QrCode className="h-4 w-4" />} onClick={() => processPayload(manualPayload)}>Validar QR Code</Button>
+            <Button variant="primary" icon={<QrCode className="h-4 w-4" />} onClick={() => processPayload(manualPayload)}>Validar codigo</Button>
         </div>
         </div>
       </div>
@@ -489,13 +491,75 @@ export function NewCheckinModal({ open, onClose }: { open: boolean; onClose: () 
 }
 
 export function MessageModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const send = () => { toastSuccess("Mensagem enviada", "Envio simulado concluído."); onClose(); };
+  const clients = useClientsStore((state) => state.clients);
+  const token = useAuthStore((state) => state.accessToken);
+  const onlineOnly = useAppStore((state) => state.onlineOnly);
+  const [recipientMode, setRecipientMode] = useState("Todos");
+  const [channel, setChannel] = useState("WhatsApp");
+  const [content, setContent] = useState("");
+  const [sending, setSending] = useState(false);
+  const channelValue = channel === "E-mail" ? "EMAIL" : channel === "SMS" ? "SMS" : "WHATSAPP";
+  const recipientClients = clients.filter((client) => {
+    if (recipientMode === "Por status") return client.status !== "Ativo";
+    return client.status === "Ativo";
+  });
+  const memberIds = recipientClients
+    .map((client) => remoteIdOf(client, ["CLI"]))
+    .filter((id): id is string => Boolean(id));
+
+  useEffect(() => {
+    if (!open) return;
+    setRecipientMode("Todos");
+    setChannel("WhatsApp");
+    setContent("");
+    setSending(false);
+  }, [open]);
+
+  const send = async () => {
+    if (!onlineOnly || !token) {
+      toastInfo("Mensagens online indisponiveis", "Entre no web-admin conectado a API para registrar envios.");
+      return;
+    }
+    if (!content.trim()) {
+      toastInfo("Mensagem obrigatoria", "Escreva o conteudo antes de enviar.");
+      return;
+    }
+    if (!memberIds.length) {
+      toastInfo("Sem destinatarios sincronizados", "Os destinatarios precisam estar carregados da API antes do envio.");
+      return;
+    }
+
+    setSending(true);
+    try {
+      const message = await apiRequest<{ id: string }>("/messages", {
+        method: "POST",
+        token,
+        body: {
+          title: `Comunicado ${channel}`,
+          content: `${content.trim()}\n\nBaixe o app Noogym para acompanhar treinos, pagamentos e check-ins.`,
+          channel: channelValue,
+          status: "DRAFT",
+          memberIds
+        }
+      });
+      await apiRequest(`/messages/${message.id}/send`, { method: "PATCH", token });
+      toastSuccess("Mensagem registrada", `${memberIds.length} destinatario(s) marcados como enviados na API.`);
+      onClose();
+    } catch (error) {
+      toastError("Mensagem nao enviada", error instanceof Error ? error.message : "A API nao confirmou o envio.");
+    } finally {
+      setSending(false);
+    }
+  };
   return (
-    <Modal open={open} title="Enviar mensagem" size="md" onClose={onClose} footer={<><Button onClick={onClose}>Cancelar</Button><Button variant="primary" onClick={send}>Enviar</Button></>}>
+    <Modal open={open} title="Enviar mensagem" size="md" onClose={onClose} footer={<><Button onClick={onClose}>Cancelar</Button><Button variant="primary" disabled={sending} onClick={send}>{sending ? "Enviando..." : "Enviar"}</Button></>}>
       <div className="grid gap-3">
-        <FormSelect label="Destinatários" options={["Todos", "Selecionados", "Por plano", "Por status"]} />
-        <FormSelect label="Canal" options={["WhatsApp", "E-mail", "SMS"]} />
-        <FormTextarea label="Mensagem" placeholder="Escreva a mensagem em português..." />
+        <FormSelect label="Destinatarios" value={recipientMode} onChange={(event) => setRecipientMode(event.target.value)} options={["Todos", "Por status"]} />
+        <FormSelect label="Canal" value={channel} onChange={(event) => setChannel(event.target.value)} options={["WhatsApp", "E-mail", "SMS"]} />
+        <FormTextarea label="Mensagem" value={content} onChange={(event) => setContent(event.target.value)} placeholder="Escreva a mensagem em portugues..." />
+        <div className="rounded-md border border-white/10 bg-white/[0.03] p-3 text-xs text-zinc-300">
+          {memberIds.length} destinatario(s) sincronizados. O rodape do app sera incluido automaticamente.
+        </div>
       </div>
     </Modal>
   );
@@ -506,6 +570,11 @@ export function NewClientModal({ open, client, onClose }: { open: boolean; clien
   const updateClient = useClientsStore((state) => state.updateClient);
   const plans = usePlansStore((state) => state.plans);
   const activeGymId = useAppStore((state) => state.activeGymId);
+  const onlineOnly = useAppStore((state) => state.onlineOnly);
+  const token = useAuthStore((state) => state.accessToken);
+  const [identityLookup, setIdentityLookup] = useState("");
+  const [identityResult, setIdentityResult] = useState<IdentityLinkResult | null>(null);
+  const [identityLoading, setIdentityLoading] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -531,6 +600,9 @@ export function NewClientModal({ open, client, onClose }: { open: boolean; clien
 
   useEffect(() => {
     if (!open) return;
+    setIdentityLookup("");
+    setIdentityResult(null);
+    setIdentityLoading(false);
     setName(client?.name ?? "");
     setEmail(client?.email ?? "");
     setPhone(client?.phone ?? "");
@@ -552,6 +624,48 @@ export function NewClientModal({ open, client, onClose }: { open: boolean; clien
   }, [activePlans, client, open]);
 
   const birthdayLabel = birthDate ? new Intl.DateTimeFormat("pt-AO", { day: "2-digit", month: "short" }).format(new Date(`${birthDate}T00:00:00`)).replace(".", "") : undefined;
+
+  const applyIdentity = (result: IdentityLinkResult) => {
+    const identity = result.identity;
+    const barcodeAlias = identity.aliases?.find((alias) => alias.type === "BARCODE");
+    const cardAlias = identity.aliases?.find((alias) => alias.type === "CARD");
+    setIdentityResult(result);
+    setName(identity.name ?? "");
+    setEmail(identity.email ?? "");
+    setPhone(identity.phone ?? "");
+    setBirthDate(identity.birthDate ? identity.birthDate.slice(0, 10) : "");
+    setDocument(identity.documentNumber ?? "");
+    setObservations((current) => {
+      const accessCode = barcodeAlias?.value ?? cardAlias?.value;
+      if (!accessCode || current.includes("Codigo de acesso:")) return current;
+      return [current, `Codigo de acesso: ${accessCode}`].filter(Boolean).join("\n");
+    });
+    if (identity.gender === "FEMALE") setGender("Feminino");
+    if (identity.gender === "MALE") setGender("Masculino");
+    if (identity.gender === "OTHER") setGender("Outro");
+  };
+
+  const resolveIdentity = async () => {
+    if (!onlineOnly || !token) {
+      toastInfo("Vinculacao indisponivel", "Entre no web-admin conectado a API para buscar contas Noogym.");
+      return;
+    }
+    if (!identityLookup.trim()) {
+      toastInfo("Informe o identificador", "Digite o Noogym ID, leia o QR, codigo de barras ou cartao.");
+      return;
+    }
+    setIdentityLoading(true);
+    try {
+      const result = await resolveNoogymIdentity(token, identityLookup.trim());
+      applyIdentity(result);
+      toastSuccess("Conta Noogym encontrada", result.existingMember ? "Este aluno ja tinha cadastro nesta organizacao." : "Dados prontos para cadastro rapido.");
+    } catch (error) {
+      setIdentityResult(null);
+      toastInfo("Conta Noogym nao encontrada", error instanceof Error ? error.message : "Confirme o Noogym ID, QR, codigo de barras ou cartao apresentado pelo aluno.");
+    } finally {
+      setIdentityLoading(false);
+    }
+  };
 
   const save = () => {
     if (!name.trim() || !phone.trim()) { toastInfo("Campos obrigatórios", "Informe pelo menos nome e telefone."); return; }
@@ -577,7 +691,11 @@ export function NewClientModal({ open, client, onClose }: { open: boolean; clien
       profession: profession.trim(),
       source,
       goal,
-      observations: observations.trim()
+      observations: observations.trim(),
+      noogymIdentityId: identityResult?.identity.id,
+      noogymId: identityResult?.identity.noogymId,
+      accessCode: identityResult?.identity.aliases?.find((alias) => alias.type === "BARCODE")?.value ?? identityResult?.identity.aliases?.find((alias) => alias.type === "CARD")?.value,
+      appLinked: Boolean(identityResult?.identity.id)
     };
 
     const saved = client ? updateClient(client.id, payload) : addClient(payload);
@@ -592,6 +710,36 @@ export function NewClientModal({ open, client, onClose }: { open: boolean; clien
   return (
     <Modal open={open} title={isEditing ? "Editar cliente" : "Novo cliente"} description={isEditing ? "Atualize as informações cadastrais do cliente." : "Preencha as informações para cadastrar um novo cliente."} size="xl" onClose={onClose} footer={<><Button onClick={onClose}>Cancelar</Button><Button variant="primary" onClick={save}>{isEditing ? "Salvar alterações" : "Cadastrar cliente"}</Button></>}>
       <div className="space-y-5">
+        {!isEditing ? (
+          <Section title="Conta Noogym">
+            <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
+              <FormInput label="Noogym ID, QR, codigo de barras ou cartao" value={identityLookup} onChange={(event) => setIdentityLookup(event.target.value)} placeholder="Ex: NG-123456, 930000000001 ou payload do QR" />
+              <div className="flex items-end">
+                <Button disabled={identityLoading} onClick={resolveIdentity}>{identityLoading ? "Buscando..." : "Buscar conta"}</Button>
+              </div>
+            </div>
+            {identityResult ? (
+              <div className="rounded-md border border-noogym-lime/30 bg-noogym-lime/10 p-3 text-sm text-zinc-200">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <strong>{identityResult.identity.name}</strong>
+                  <span className="text-noogym-lime">{identityResult.identity.noogymId}</span>
+                </div>
+                {identityResult.identity.aliases?.length ? (
+                  <p className="mt-1 text-xs text-zinc-300">
+                    Identificadores: {identityResult.identity.aliases.map((alias) => `${alias.type}: ${alias.value}`).join(" | ")}
+                  </p>
+                ) : null}
+                <p className="mt-1 text-xs text-zinc-300">
+                  {identityResult.existingMember ? "Cadastro encontrado e pronto para atualizar o vinculo com esta unidade." : "Dados importados do app para cadastro rapido."}
+                </p>
+              </div>
+            ) : (
+              <div className="rounded-md border border-white/10 bg-white/[0.03] p-3 text-xs text-zinc-300">
+                Se o aluno ainda nao tem app, cadastre normalmente; apos salvar, o Noogym registra convite por WhatsApp, SMS e e-mail quando houver contacto.
+              </div>
+            )}
+          </Section>
+        ) : null}
         <Section title="1. Dados pessoais">
           <div className="grid gap-3 lg:grid-cols-[140px_minmax(0,1fr)]">
             <div className="flex min-h-36 flex-col items-center justify-center rounded-lg border border-white/10 bg-white/[0.03] text-center text-sm text-zinc-400">Foto opcional<br />PNG, JPG até 5MB</div>
@@ -1038,7 +1186,7 @@ function ClientAutocomplete({
   );
 }
 
-export function FinalizeSaleModal({ open, total, items, initialSaleType = "Venda normal", editingSale, requireCustomer = false, cashSessionId, onClose, onConfirmed }: { open: boolean; total: number; items: SaleItemRecord[]; initialSaleType?: string; editingSale?: SaleRecord | null; requireCustomer?: boolean; cashSessionId?: string; onClose: () => void; onConfirmed: (saleType: string) => void }) {
+export function FinalizeSaleModal({ open, total, items, initialSaleType = "Venda normal", editingSale, requireCustomer = false, cashSessionId, onClose, onConfirmed }: { open: boolean; total: number; items: SaleItemRecord[]; initialSaleType?: string; editingSale?: SaleRecord | null; requireCustomer?: boolean; cashSessionId?: string; onClose: () => void; onConfirmed: (saleType: string, sale?: SaleRecord) => void }) {
   const addSale = useSalesStore((state) => state.addSale);
   const updateSale = useSalesStore((state) => state.updateSale);
   const clients = useClientsStore((state) => state.clients);
@@ -1161,11 +1309,9 @@ export function FinalizeSaleModal({ open, total, items, initialSaleType = "Venda
       notes: notes || undefined,
       payments
     };
-    if (editingSale) {
-      updateSale(editingSale.id, { ...payload, status: "Orcamento", type: "Orcamento" }, items);
-    } else {
-      addSale(payload, items);
-    }
+    const savedSale = editingSale
+      ? updateSale(editingSale.id, { ...payload, status: "Orcamento", type: "Orcamento" }, items)
+      : addSale(payload, items);
     const soldPlan = items.find((item) => item.kind === "plan");
     if (selectedCustomer && soldPlan && saleType !== "Orcamento") {
       updateClient(selectedCustomer.id, {
@@ -1175,7 +1321,7 @@ export function FinalizeSaleModal({ open, total, items, initialSaleType = "Venda
       });
     }
     toastSuccess(editingSale ? "Orcamento atualizado" : saleType === "Orcamento" ? "Orcamento salvo" : "Venda concluida", "Carrinho limpo e historico atualizado.");
-    onConfirmed(saleType);
+    onConfirmed(saleType, savedSale);
     onClose();
   };
 

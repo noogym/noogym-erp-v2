@@ -1,11 +1,12 @@
 import { create } from "zustand";
 import { employees as mockEmployees } from "../data/mock";
-import { createResource, employeeFromApi, employeeToDto, listResource, updateResource } from "../lib/domainApi";
+import { createResource, employeeFromApi, employeeToDto, inviteEmployeeToAccount, listResource, remoteIdOf, updateResource } from "../lib/domainApi";
 import { scopeByGym } from "../lib/gymScope";
 import { listUserSettings, type UserSettings } from "../lib/settingsApi";
 import { readLocal, readLocalDb, uid, writeLocal } from "../lib/storage";
 import { useAppStore } from "./appStore";
 import { useAuthStore } from "./authStore";
+import { toastInfo } from "./toastStore";
 import type { EmployeeActivityRecord, EmployeeRecord, EmployeeRoleRecord } from "@noogym/types";
 
 export const employeeModules = ["Dashboard", "Check-in", "Clientes", "Planos", "Vendas", "Produtos", "Aulas", "Treinos", "Funcionarios", "Relatorios", "Financas", "Configuracoes"];
@@ -211,6 +212,7 @@ export const useEmployeesStore = create<{
     const token = useAuthStore.getState().accessToken;
     if (!token) return;
     const activeGymId = useAppStore.getState().activeGymId ?? undefined;
+    set({ employees: [], roles: withEmployeeCount(mergeDefaultRoles(get().roles), []), activities: [] });
     const [apiEmployees, apiUsers] = await Promise.all([
       listResource<Record<string, unknown>>("employees", token, { gymId: activeGymId }),
       listUserSettings(token).catch(() => [] as UserSettings[])
@@ -255,7 +257,7 @@ export const useEmployeesStore = create<{
           persistRoles(nextRoles);
           set({ employees: nextEmployees, roles: nextRoles });
         })
-        .catch(console.error);
+        .catch(() => toastInfo("Funcionario salvo localmente", "Nao foi possivel sincronizar com a API agora."));
     }
 
     return { employees, roles, activities };
@@ -271,7 +273,11 @@ export const useEmployeesStore = create<{
 
     const token = useAuthStore.getState().accessToken;
     if (useAppStore.getState().onlineOnly && token && !id.startsWith("USER-")) {
-      updateResource<Record<string, unknown>>("employees", id, token, employeeToDto(nextEmployee))
+      const remoteId = remoteIdOf(current, ["FUNC", "USER-"]);
+      const request = remoteId
+        ? updateResource<Record<string, unknown>>("employees", remoteId, token, employeeToDto(nextEmployee))
+        : createResource<Record<string, unknown>>("employees", token, employeeToDto(nextEmployee));
+      request
         .then((apiEmployee) => {
           const synced = mergeSyncedEmployee(employeeFromApi(apiEmployee), nextEmployee);
           const nextEmployees = get().employees.map((item) => item.id === id ? synced : item);
@@ -280,7 +286,7 @@ export const useEmployeesStore = create<{
           persistRoles(nextRoles);
           set({ employees: nextEmployees, roles: nextRoles });
         })
-        .catch(console.error);
+        .catch(() => toastInfo("Funcionario salvo localmente", "Nao foi possivel sincronizar com a API agora."));
     }
 
     return { employees, roles };
@@ -319,6 +325,28 @@ export const useEmployeesStore = create<{
     const activities = [{ id: uid("ACT"), employeeId: id, employeeName: employee.name, action: "Convite enviado", module: "Acesso", dateTime: activityTime(), detail: employee.accountEmail ?? employee.email }, ...get().activities];
     persistActivities(activities);
     set({ activities });
+    const token = useAuthStore.getState().accessToken;
+    const remoteId = remoteIdOf(employee, ["FUNC", "USER-"]);
+    if (useAppStore.getState().onlineOnly && token && remoteId) {
+      inviteEmployeeToAccount(token, remoteId)
+        .then((result) => {
+          const data = result as { userId?: string; inviteUrl?: string; accountEmail?: string };
+          const nextEmployees = get().employees.map((item) => item.id === id ? normalizeEmployee({
+            ...item,
+            userId: data.userId ?? item.userId,
+            accountEmail: data.accountEmail ?? item.accountEmail,
+            inviteUrl: data.inviteUrl ?? item.inviteUrl,
+            accountStatus: "Convite pendente",
+            accessStatus: "Convite pendente",
+            lastAccess: "Convite enviado agora"
+          }) : item);
+          const nextRoles = withEmployeeCount(get().roles, nextEmployees);
+          persist(nextEmployees);
+          persistRoles(nextRoles);
+          set({ employees: nextEmployees, roles: nextRoles });
+        })
+        .catch(() => toastInfo("Convite registado localmente", "Nao foi possivel confirmar o convite na API agora."));
+    }
   },
   resetPassword: (id) => {
     const employee = get().employees.find((item) => item.id === id);

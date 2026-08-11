@@ -42,6 +42,41 @@ packages/
 pnpm install
 ```
 
+## Preparar Ambiente Local
+
+Para deixar o ambiente de desenvolvimento previsivel, rode:
+
+```bash
+pnpm setup:local
+```
+
+Esse comando cria ficheiros `.env` locais quando faltarem, sobe apenas o PostgreSQL do ERP em Docker, aguarda o banco ficar pronto, gera o Prisma Client, aplica migrations e cria o seed demo quando ele ainda nao existir.
+
+Rode com os servidores de desenvolvimento parados. No Windows, processos Nest/Next/Vite abertos podem bloquear o Prisma Client. Para permitir que o setup encerre esses processos automaticamente:
+
+```bash
+NOOGYM_SETUP_STOP_DEV=true pnpm setup:local
+```
+
+No PowerShell:
+
+```powershell
+$env:NOOGYM_SETUP_STOP_DEV="true"; pnpm setup:local
+```
+
+Credenciais demo:
+
+```text
+Email: admin@noogym.com
+Password: Noogym@123
+```
+
+Depois rode:
+
+```bash
+pnpm run dev
+```
+
 ## Rodar Desktop
 
 ```bash

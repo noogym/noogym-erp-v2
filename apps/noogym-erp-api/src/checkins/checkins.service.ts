@@ -3,7 +3,12 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { CheckInMethod, Prisma, SubscriptionStatus } from '@prisma/client';
+import {
+  CheckInMethod,
+  NoogymIdentityAliasType,
+  Prisma,
+  SubscriptionStatus,
+} from '@prisma/client';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 import { directGymScope } from '../common/utils/gym-scope';
 import { getPagination, paginated } from '../common/utils/pagination';
@@ -146,29 +151,57 @@ export class CheckinsService {
 
   async createFromQr(organizationId: string, dto: QrCheckinDto) {
     const parsed = this.parseQrPayload(dto.payload);
-    if (!parsed.qrToken) {
-      throw new BadRequestException('Invalid QR Code payload');
+    if (!parsed.qrToken && !parsed.accessCode) {
+      throw new BadRequestException('Invalid scanner payload');
+    }
+    const or: Prisma.MemberWhereInput[] = [];
+    if (parsed.qrToken) or.push({ qrToken: parsed.qrToken });
+    if (parsed.accessCode) {
+      or.push(
+        { accessCode: parsed.accessCode },
+        {
+          noogymIdentity: {
+            OR: [
+              { noogymId: parsed.accessCode },
+              {
+                aliases: {
+                  some: {
+                    value: parsed.accessCode,
+                    isActive: true,
+                    type: {
+                      in: [
+                        NoogymIdentityAliasType.BARCODE,
+                        NoogymIdentityAliasType.CARD,
+                      ],
+                    },
+                  },
+                },
+              },
+            ],
+          },
+        },
+      );
     }
 
     const member = await this.prisma.member.findFirst({
       where: {
         organizationId,
-        qrToken: parsed.qrToken,
         ...(parsed.memberId ? { id: parsed.memberId } : {}),
+        OR: or,
       },
       select: { id: true },
     });
 
     if (!member) {
-      throw new NotFoundException('QR Code not found or revoked');
+      throw new NotFoundException('Scanner code not found or revoked');
     }
 
     return this.create(organizationId, {
       memberId: member.id,
       gymId: dto.gymId,
-      method: CheckInMethod.QR_CODE,
+      method: parsed.accessCode ? CheckInMethod.BARCODE : CheckInMethod.QR_CODE,
       checkedAt: dto.checkedAt,
-      notes: dto.notes ?? 'QR Code',
+      notes: dto.notes ?? (parsed.accessCode ? 'Codigo de barras' : 'QR Code'),
     });
   }
 
@@ -179,6 +212,7 @@ export class CheckinsService {
     const methodMap: Record<CheckInMethod, string> = {
       [CheckInMethod.MANUAL]: 'manual',
       [CheckInMethod.QR_CODE]: 'qrCode',
+      [CheckInMethod.BARCODE]: 'qrCode',
       [CheckInMethod.BIOMETRIC]: 'biometric',
       [CheckInMethod.APP]: 'qrCode',
       [CheckInMethod.NFC]: 'turnstile',
@@ -225,7 +259,21 @@ export class CheckinsService {
         memberId?: unknown;
         qrToken?: unknown;
         token?: unknown;
+        barcode?: unknown;
+        accessCode?: unknown;
+        cardCode?: unknown;
+        card?: unknown;
       };
+      const accessCode =
+        typeof parsed.barcode === 'string'
+          ? parsed.barcode
+          : typeof parsed.accessCode === 'string'
+            ? parsed.accessCode
+            : typeof parsed.cardCode === 'string'
+              ? parsed.cardCode
+              : typeof parsed.card === 'string'
+                ? parsed.card
+                : undefined;
       return {
         memberId:
           typeof parsed.memberId === 'string' ? parsed.memberId : undefined,
@@ -235,6 +283,7 @@ export class CheckinsService {
             : typeof parsed.token === 'string'
               ? parsed.token
               : undefined,
+        accessCode,
       };
     } catch {
       // Continue with URL/raw token parsing.
@@ -246,6 +295,9 @@ export class CheckinsService {
       if (url.protocol === 'noogym:' && url.hostname === 'checkin') {
         return { memberId: parts[0], qrToken: parts[1] };
       }
+      if (url.protocol === 'noogym:' && ['barcode', 'card'].includes(url.hostname)) {
+        return { accessCode: parts[0] };
+      }
 
       const checkinIndex = parts.findIndex((part) => part === 'checkin');
       if (checkinIndex >= 0) {
@@ -254,10 +306,14 @@ export class CheckinsService {
           qrToken: parts[checkinIndex + 2],
         };
       }
+      const barcodeIndex = parts.findIndex((part) =>
+        ['barcode', 'card'].includes(part),
+      );
+      if (barcodeIndex >= 0) return { accessCode: parts[barcodeIndex + 1] };
     } catch {
       // Raw token fallback below.
     }
 
-    return { qrToken: raw };
+    return /^\d{6,}$/.test(raw) ? { accessCode: raw } : { qrToken: raw };
   }
 }

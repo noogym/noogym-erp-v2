@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { plans as mockPlans } from "../data/mock";
-import { createResource, listResource, planCategoryFromApi, planCategoryToDto, planFromApi, planToDto, updateResource } from "../lib/domainApi";
+import { createResource, listResource, planCategoryFromApi, planCategoryToDto, planFromApi, planToDto, remoteIdOf, updateResource } from "../lib/domainApi";
 import { scopeByGym } from "../lib/gymScope";
 import { readLocal, readLocalDb, uid, writeLocal } from "../lib/storage";
 import { useAppStore } from "./appStore";
@@ -98,13 +98,14 @@ export const usePlansStore = create<{
     const token = useAuthStore.getState().accessToken;
     if (!token) return;
     const activeGymId = useAppStore.getState().activeGymId ?? undefined;
+    set({ plans: [], categories: [], categoryDetails: [] });
     const [apiPlans, apiCategories] = await Promise.all([
       listResource<Record<string, unknown>>("plans", token, { gymId: activeGymId }),
       listResource<Record<string, unknown>>("plan-categories", token)
     ]);
     const plans = apiPlans.map(planFromApi);
     const apiCategoryDetails = apiCategories.map(planCategoryFromApi);
-    let categoryDetails = uniqueCategoryDetails([...apiCategoryDetails, ...get().categoryDetails]);
+    let categoryDetails = uniqueCategoryDetails(apiCategoryDetails);
     plans.map((plan) => plan.category).filter(Boolean).forEach((name) => {
       if (!categoryDetails.some((category) => category.name.toLowerCase() === name.toLowerCase())) categoryDetails.push(categoryFromName(name, categoryDetails.length));
     });
@@ -171,7 +172,11 @@ export const usePlansStore = create<{
 
     const token = useAuthStore.getState().accessToken;
     if (useAppStore.getState().onlineOnly && token) {
-      updateResource<Record<string, unknown>>("plans", id, token, planToDto(nextPlan))
+      const remoteId = remoteIdOf(nextPlan, ["PLN"]);
+      const request = remoteId
+        ? updateResource<Record<string, unknown>>("plans", remoteId, token, planToDto(nextPlan))
+        : createResource<Record<string, unknown>>("plans", token, planToDto(nextPlan));
+      request
         .then((apiPlan) => {
           const synced = planFromApi(apiPlan);
           const nextPlans = get().plans.map((item) => item.id === id ? mergeSyncedPlan(synced, item) : item);

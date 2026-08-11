@@ -44,6 +44,7 @@ Campos que devem mudar em producao:
 - `CORS_ORIGINS`
 - `NOOGYM_API_URL`
 - `NEXT_PUBLIC_NOOGYM_API_URL`
+- `SUPER_ADMIN_PASSWORD`
 
 No Coolify, configure o dominio no servico correto e inclua a porta interna do container no campo de dominio:
 
@@ -77,6 +78,25 @@ antes de iniciar. Para desativar isso em algum ambiente controlado:
 ```env
 RUN_MIGRATIONS=false
 ```
+
+## Super admin de producao
+
+Para garantir o super admin principal no deploy, configure:
+
+```env
+SUPER_ADMIN_EMAIL=noogym.startup@gmail.com
+SUPER_ADMIN_NAME=Noogym Startup
+SUPER_ADMIN_PASSWORD=<senha-forte-temporaria>
+RUN_SUPER_ADMIN_BOOTSTRAP=true
+```
+
+O bootstrap cria ou promove esse usuario para `SUPER_ADMIN` na organizacao `noogym-platform`. Se o usuario ja existir, a senha nao e alterada por padrao. Para trocar a senha no proximo deploy:
+
+```env
+SUPER_ADMIN_ROTATE_PASSWORD=true
+```
+
+Depois da rotacao, volte `SUPER_ADMIN_ROTATE_PASSWORD=false`.
 
 ## WSO2
 

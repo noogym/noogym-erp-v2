@@ -20,6 +20,7 @@ import { ExercisesModule } from './exercises/exercises.module';
 import { ExpensesModule } from './expenses/expenses.module';
 import { FinanceModule } from './finance/finance.module';
 import { GymsModule } from './gyms/gyms.module';
+import { IdentityLinksModule } from './identity-links/identity-links.module';
 import { IntegrationsModule } from './integrations/integrations.module';
 import { MembersModule } from './members/members.module';
 import { MessagesModule } from './messages/messages.module';
@@ -53,6 +54,7 @@ import { WorkoutsModule } from './workouts/workouts.module';
     AuthModule,
     OrganizationsModule,
     GymsModule,
+    IdentityLinksModule,
     UsersModule,
     MembersModule,
     PlansModule,

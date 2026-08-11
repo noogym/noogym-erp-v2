@@ -87,6 +87,7 @@ enum AppointmentStatus {
 
 enum CheckInMethod {
   QR_CODE
+  BARCODE
   MANUAL
   BIOMETRIC
   APP
@@ -125,6 +126,13 @@ enum Gender {
   FEMALE
   OTHER
   NOT_INFORMED
+}
+
+enum NoogymIdentityAliasType {
+  NOOGYM_ID
+  QR_TOKEN
+  BARCODE
+  CARD
 }
 
 enum ProductStatus {
@@ -296,10 +304,45 @@ model UserGym {
   @@unique([userId, gymId])
 }
 
+model NoogymIdentity {
+  id              String   @id @default(uuid())
+  noogymId        String   @unique
+  name            String
+  email           String?  @unique
+  phone           String?  @unique
+  birthDate       DateTime?
+  gender          Gender   @default(NOT_INFORMED)
+  documentNumber  String?  @unique
+  avatarUrl       String?
+  qrToken         String?  @unique
+  qrTokenExpiresAt DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  aliases         NoogymIdentityAlias[]
+  members         Member[]
+}
+
+model NoogymIdentityAlias {
+  id          String                  @id @default(uuid())
+  identityId  String
+  type        NoogymIdentityAliasType
+  value       String
+  label       String?
+  isActive    Boolean                 @default(true)
+  expiresAt   DateTime?
+  createdAt   DateTime                @default(now())
+  updatedAt   DateTime                @updatedAt
+  identity    NoogymIdentity          @relation(fields: [identityId], references: [id], onDelete: Cascade)
+
+  @@unique([type, value])
+  @@index([identityId, type, isActive])
+}
+
 model Member {
   id                 String               @id @default(uuid())
   organizationId     String
   gymId              String?
+  noogymIdentityId   String?
   name               String
   email              String?
   phone              String?
@@ -310,6 +353,7 @@ model Member {
   city               String?
   status             MemberStatus         @default(ACTIVE)
   avatarUrl          String?
+  accessCode         String?
   qrToken            String?              @unique
   qrTokenUpdatedAt   DateTime?
   emergencyName      String?
@@ -319,6 +363,7 @@ model Member {
   updatedAt          DateTime             @updatedAt
   organization       Organization         @relation(fields: [organizationId], references: [id])
   gym                Gym?                 @relation(fields: [gymId], references: [id])
+  noogymIdentity     NoogymIdentity?      @relation(fields: [noogymIdentityId], references: [id])
   subscriptions      Subscription[]
   payments           Payment[]
   checkIns           CheckIn[]
@@ -332,6 +377,8 @@ model Member {
   @@unique([organizationId, email])
   @@unique([organizationId, phone])
   @@unique([organizationId, documentNumber])
+  @@unique([organizationId, noogymIdentityId])
+  @@unique([organizationId, accessCode])
 }
 
 model Plan {

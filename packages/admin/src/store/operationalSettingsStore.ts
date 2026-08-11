@@ -80,6 +80,8 @@ export interface OperationalSettings {
     networkPort: number;
     usbDeviceName: string;
     serialPath: string;
+    webPrintMode: "browser" | "agent";
+    printAgentUrl: string;
     cashDrawerEnabled: boolean;
     cashDrawerPin: 0 | 1;
     cashDrawerOnTimeMs: number;
@@ -188,6 +190,8 @@ export const defaultSettings: OperationalSettings = {
     networkPort: 9100,
     usbDeviceName: "",
     serialPath: "COM1",
+    webPrintMode: "browser",
+    printAgentUrl: "http://127.0.0.1:47891",
     cashDrawerEnabled: false,
     cashDrawerPin: 0,
     cashDrawerOnTimeMs: 50,

@@ -39,6 +39,7 @@ import { ApiError, isHttpOnlyAuthEnabled } from "./lib/api";
 import { isDesktopLocalDbAvailable } from "./lib/desktopLocalDb";
 import { canAccessRoute, firstAllowedRoute } from "./lib/permissions";
 import { navItems } from "./routes/nav";
+import { toastError } from "./store/toastStore";
 
 const pages = {
   dashboard: Dashboard,
@@ -82,6 +83,10 @@ const reportBackgroundError = (error: unknown) => {
 const ignoreBackgroundError = () => undefined;
 
 type AuthRoute = "login" | "register" | "forgot-password" | "reset-password";
+type OnlineModuleError = { module: string; message: string };
+
+const errorMessage = (error: unknown) =>
+  error instanceof Error ? error.message : "Nao foi possivel carregar este modulo.";
 
 const authRouteFromValue = (value: string): AuthRoute | null => {
   const normalized = value
@@ -190,12 +195,14 @@ export default function App({ onlineOnly = false }: AdminAppProps) {
   const loadLocalFinance = useFinanceStore((state) => state.loadLocal);
   const loadFinance = useFinanceStore((state) => state.loadOnline);
   const loadLocalOperationalSettings = useOperationalSettingsStore((state) => state.loadLocal);
+  const loadOperationalSettings = useOperationalSettingsStore((state) => state.loadOnline);
   const loadSettings = useSettingsStore((state) => state.loadOnline);
   const loadLocalSettings = useSettingsStore((state) => state.loadLocal);
   const gyms = useSettingsStore((state) => state.gyms);
   const loadLocalWorkouts = useWorkoutsStore((state) => state.loadLocal);
   const loadWorkouts = useWorkoutsStore((state) => state.loadOnline);
   const [authRoute, setAuthRoute] = useState<AuthRoute>(getAuthRoute);
+  const [onlineModuleErrors, setOnlineModuleErrors] = useState<OnlineModuleError[]>([]);
   const desktopInitKeyRef = useRef<string | null>(null);
   const desktopLoginOnly = isDesktopLocalDbAvailable();
   const allowedRoute = firstAllowedRoute(
@@ -378,24 +385,49 @@ export default function App({ onlineOnly = false }: AdminAppProps) {
   useEffect(() => {
     if (!onlineOnly || !isAuthenticated || !accessToken) {
       setGymDataLoading(false);
+      setOnlineModuleErrors([]);
       return;
     }
 
     let cancelled = false;
     const startedAt = Date.now();
-    setGymDataLoading(Boolean(activeGymId));
+    setGymDataLoading(true);
+    setOnlineModuleErrors([]);
 
-    void Promise.allSettled([
-      loadClients(),
-      loadPlans(),
-      loadProducts(),
-      loadCheckins(),
-      loadSales(),
-      loadClasses(),
-      loadEmployees(),
-      loadFinance(),
-      loadWorkouts(),
-    ]).finally(() => {
+    const loaders = [
+      ["Clientes", loadClients],
+      ["Planos", loadPlans],
+      ["Produtos", loadProducts],
+      ["Check-ins", loadCheckins],
+      ["Vendas", loadSales],
+      ["Aulas", loadClasses],
+      ["Funcionarios", loadEmployees],
+      ["Financas", loadFinance],
+      ["Operacional", loadOperationalSettings],
+      ["Treinos", loadWorkouts],
+    ] as const;
+
+    void Promise.allSettled(
+      loaders.map(async ([module, load]) => {
+        try {
+          await load();
+        } catch (error) {
+          throw { module, message: errorMessage(error) };
+        }
+      }),
+    ).then((results) => {
+      if (cancelled) return;
+      const errors = results
+        .filter((result): result is PromiseRejectedResult => result.status === "rejected")
+        .map((result) => result.reason as OnlineModuleError);
+      setOnlineModuleErrors(errors);
+      if (errors.length) {
+        toastError(
+          "Alguns modulos nao carregaram",
+          errors.map((item) => item.module).join(", "),
+        );
+      }
+    }).finally(() => {
       const remainingMs = Math.max(0, 550 - (Date.now() - startedAt));
       window.setTimeout(() => {
         if (!cancelled) setGymDataLoading(false);
@@ -414,6 +446,7 @@ export default function App({ onlineOnly = false }: AdminAppProps) {
     loadClients,
     loadEmployees,
     loadFinance,
+    loadOperationalSettings,
     loadPlans,
     loadProducts,
     loadSales,
@@ -459,13 +492,51 @@ export default function App({ onlineOnly = false }: AdminAppProps) {
             {isGymDataLoading ? (
               <UnitDataLoadingScreen gymName={activeGymName} />
             ) : (
-              <Page />
+              <>
+                {onlineOnly && onlineModuleErrors.length ? (
+                  <OnlineModuleErrorBanner errors={onlineModuleErrors} />
+                ) : null}
+                <Page />
+              </>
             )}
           </AppRouteErrorBoundary>
         </main>
       </div>
       <BottomSyncBar />
       <ToastViewport />
+    </div>
+  );
+}
+
+function OnlineModuleErrorBanner({ errors }: { errors: OnlineModuleError[] }) {
+  return (
+    <div className="mb-3 rounded-md border border-red-400/30 bg-red-500/10 p-3 text-sm text-red-50">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="font-semibold">Alguns modulos nao carregaram da API.</p>
+          <p className="mt-1 text-red-100/80">
+            Corrija a conexao ou recarregue para evitar trabalhar com dados incompletos.
+          </p>
+        </div>
+        <button
+          type="button"
+          className="rounded-md border border-red-200/30 px-3 py-1.5 text-xs font-medium text-red-50 hover:bg-red-500/20"
+          onClick={() => window.location.reload()}
+        >
+          Recarregar
+        </button>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {errors.map((error) => (
+          <span
+            key={`${error.module}-${error.message}`}
+            className="rounded border border-red-200/20 bg-black/20 px-2 py-1 text-xs"
+            title={error.message}
+          >
+            {error.module}
+          </span>
+        ))}
+      </div>
     </div>
   );
 }

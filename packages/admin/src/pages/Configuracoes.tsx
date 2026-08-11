@@ -27,6 +27,8 @@ import { Badge, Button, Card, FormInput, FormSelect, FormSwitch, FormTextarea, T
 import { NoogymLogo } from "../components/brand/NoogymLogo";
 import { PageHeader } from "../components/layout/PageHeader";
 import { ConfirmModal } from "../components/modals/ConfirmModal";
+import { buildPrinterConfig, validatePrintingConfig } from "../lib/printerConfig";
+import { openCashDrawerViaAgent, printReceiptInBrowser, printReceiptViaAgent } from "../lib/webPrint";
 import { useAppStore } from "../store/appStore";
 import { useOperationalSettingsStore, type OperationalSettings } from "../store/operationalSettingsStore";
 import { useSettingsStore } from "../store/settingsStore";
@@ -601,15 +603,25 @@ function PrintingTab() {
   };
 
   const testPrint = () => {
-    if (!printerBridge) {
-      toastInfo("Impressao desktop", "A impressao termica esta disponivel no aplicativo Desktop/Electron.");
+    const config = buildPrinterConfig(printing);
+    const validation = validatePrintingConfig(printing, { requireDevice: Boolean(printerBridge) || printing.webPrintMode === "agent" });
+    if (validation) {
+      toastInfo("Configuracao incompleta", validation);
       return;
     }
 
-    const config = buildPrinterConfig(printing);
-    const validation = validatePrintingConfig(printing);
-    if (validation) {
-      toastInfo("Configuracao incompleta", validation);
+    if (!printerBridge) {
+      if (printing.webPrintMode === "agent") {
+        setIsTesting(true);
+        printReceiptViaAgent(testReceiptData(), config, printing.printAgentUrl)
+          .then((result) => result.success ? toastSuccess("Teste enviado", result.message) : toastInfo("Teste falhou", result.error || result.message))
+          .catch((error) => toastInfo("Teste falhou", error instanceof Error ? error.message : "Nao foi possivel contactar o Print Agent."))
+          .finally(() => setIsTesting(false));
+        return;
+      }
+
+      const result = printReceiptInBrowser(testReceiptData(), { paperWidth: printing.paperWidth, title: "Teste de impressao Noogym" });
+      result.success ? toastSuccess("Teste aberto", result.message) : toastInfo("Teste falhou", result.error || result.message);
       return;
     }
 
@@ -622,7 +634,15 @@ function PrintingTab() {
 
   const openDrawer = () => {
     if (!printerBridge) {
-      toastInfo("Gaveta de dinheiro", "A abertura de gaveta precisa do aplicativo Desktop/Electron.");
+      if (printing.webPrintMode === "agent") {
+        setIsOpeningDrawer(true);
+        openCashDrawerViaAgent(buildPrinterConfig(printing), printing.printAgentUrl)
+          .then((result) => result.success ? toastSuccess("Pulso enviado", result.message) : toastInfo("Gaveta nao abriu", result.error || result.message))
+          .catch((error) => toastInfo("Gaveta nao abriu", error instanceof Error ? error.message : "Nao foi possivel contactar o Print Agent."))
+          .finally(() => setIsOpeningDrawer(false));
+        return;
+      }
+      toastInfo("Gaveta de dinheiro", "No navegador puro a gaveta precisa do Noogym Print Agent ou do Desktop.");
       return;
     }
 
@@ -673,6 +693,11 @@ function PrintingTab() {
             </div>
           ) : null}
 
+          <div className="mt-4 grid gap-3 md:grid-cols-3">
+            <FormSelect label="Modo na versao web" value={printing.webPrintMode} onChange={(event) => updatePrinting({ webPrintMode: event.target.value as OperationalSettings["printing"]["webPrintMode"] })} options={["browser", "agent"]} />
+            <FormInput className="md:col-span-2" label="URL do Print Agent" value={printing.printAgentUrl} onChange={(event) => updatePrinting({ printAgentUrl: event.target.value })} />
+          </div>
+
           <div className="mt-4 flex flex-wrap justify-end gap-2">
             <Button disabled={isSaving} onClick={() => saveOperational("Impressora salva", "A configuracao de impressao foi guardada na API.")}>
               {isSaving ? "Salvando..." : "Salvar impressora"}
@@ -706,6 +731,7 @@ function PrintingTab() {
           <SectionTitle icon={Printer} title="Estado de impressao" description="Resumo da configuracao aplicada ao Desktop." />
           <div className="space-y-3 text-sm">
             <InfoLine label="Bridge" value={bridgeLabel} />
+            <InfoLine label="Web" value={printing.webPrintMode === "agent" ? `Print Agent (${printing.printAgentUrl})` : "Browser / janela de impressao"} />
             <InfoLine label="Conexao" value={printing.connectionType.toUpperCase()} />
             <InfoLine label="Papel" value={`${printing.paperWidth}mm`} />
             <InfoLine label="Perfil" value={printing.profile} />
@@ -721,7 +747,12 @@ function PrintingTab() {
                 <button
                   key={printer.id}
                   className="w-full rounded-md border border-white/10 bg-white/[0.03] p-3 text-left text-sm transition hover:border-noogym-lime/50"
-                  onClick={() => updatePrinting({ defaultPrinterName: printer.name, connectionType: printer.connectionType as OperationalSettings["printing"]["connectionType"] })}
+                  onClick={() => updatePrinting({
+                    defaultPrinterName: printer.name,
+                    connectionType: printer.connectionType as OperationalSettings["printing"]["connectionType"],
+                    usbDeviceName: printer.connectionType === "usb" ? printer.name : printing.usbDeviceName,
+                    serialPath: printer.connectionType === "serial" ? printer.name : printing.serialPath
+                  })}
                 >
                   <span className="flex items-center justify-between gap-3">
                     <span className="font-medium">{printer.name}</span>
@@ -1463,44 +1494,30 @@ function fallbackUsers() {
   ];
 }
 
-function numberValue(value: string, fallback = 0) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : fallback;
-}
-
-function buildPrinterConfig(printing: OperationalSettings["printing"]) {
+function testReceiptData() {
   return {
-    name: printing.defaultPrinterName,
-    connectionType: printing.connectionType,
-    profile: printing.profile,
-    paperWidth: printing.paperWidth,
-    network: printing.connectionType === "network" ? {
-      host: printing.networkHost.trim(),
-      port: printing.networkPort || 9100,
-      timeoutMs: 5000
-    } : undefined,
-    usb: printing.connectionType === "usb" ? {
-      deviceName: printing.usbDeviceName.trim() || undefined
-    } : undefined,
-    serial: printing.connectionType === "serial" ? {
-      path: printing.serialPath.trim(),
-      baudRate: 9600
-    } : undefined,
-    cashDrawer: {
-      enabled: printing.cashDrawerEnabled,
-      pin: printing.cashDrawerPin,
-      onTimeMs: printing.cashDrawerOnTimeMs,
-      offTimeMs: printing.cashDrawerOffTimeMs
-    }
+    gymName: "Noogym Fitness Center",
+    customerName: "Cliente teste",
+    cashierName: "Recepcao",
+    items: [
+      { name: "Teste de impressao", quantity: 1, unitPrice: 1000, total: 1000 }
+    ],
+    subtotal: 1000,
+    discount: 0,
+    tax: 0,
+    total: 1000,
+    paymentMethod: "Dinheiro",
+    paidAmount: 1000,
+    changeAmount: 0,
+    date: new Date(),
+    message: "Teste Noogym concluido.",
+    invoiceNumber: "TESTE-WEB"
   };
 }
 
-function validatePrintingConfig(printing: OperationalSettings["printing"]) {
-  if (!printing.enabled) return "Ative a impressao antes de testar.";
-  if (!printing.defaultPrinterName.trim()) return "Informe o nome da impressora padrao.";
-  if (printing.connectionType === "network" && !printing.networkHost.trim()) return "Informe o IP/host da impressora LAN.";
-  if (printing.connectionType === "serial" && !printing.serialPath.trim()) return "Informe a porta serial.";
-  return "";
+function numberValue(value: string, fallback = 0) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
 }
 
 function optional(value: string) {
