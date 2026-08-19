@@ -120,6 +120,16 @@ EMAIL_MAX_ATTEMPTS=5
 EMAIL_RETRY_DELAY_MS=60000
 EMAIL_RECOVERY_INTERVAL_MS=60000
 EMAIL_RECOVERY_BATCH_SIZE=100
+BACKGROUND_JOBS_ENABLED=true
+BACKGROUND_JOBS_REQUIRED=false
+BACKGROUND_WORKER_ENABLED=true
+BACKGROUND_WORKER_CONCURRENCY=5
+BACKGROUND_MAX_ATTEMPTS=5
+BACKGROUND_RETRY_DELAY_MS=60000
+BACKGROUND_RECOVERY_INTERVAL_MS=60000
+BACKGROUND_RECOVERY_BATCH_SIZE=200
+BACKGROUND_SCHEDULER_INTERVAL_MS=900000
+BACKGROUND_RECURRING_ENABLED=true
 SMTP_HOST=
 SMTP_PORT=587
 SMTP_SECURE=false
@@ -131,6 +141,8 @@ SMTP_FROM="Noogym <noreply@noogym.com>"
 Use `EMAIL_PROVIDER=resend` para forcar apenas Resend ou `EMAIL_PROVIDER=smtp` para forcar apenas SMTP. O dominio usado em `RESEND_FROM` precisa estar verificado no Resend.
 
 Em producao, mantenha `EMAIL_QUEUE_ENABLED=true` com Redis persistente. A API grava o email antes de enfileirar, o worker processa em paralelo (`EMAIL_WORKER_CONCURRENCY`) e falhas sao repetidas com backoff ate `EMAIL_MAX_ATTEMPTS`. Use `EMAIL_QUEUE_REQUIRED=true` quando preferir falhar a requisicao em vez de enviar direto se Redis cair.
+
+Para tarefas gerais, mantenha `BACKGROUND_JOBS_ENABLED=true`. Estes jobs usam a tabela `BackgroundJob` para historico/deduplicacao e Redis/BullMQ para execucao. O scheduler cria tarefas recorrentes de reconciliacao, expiracao de planos, lembretes, renovacao, limpeza de tokens, limpeza de ficheiros e metricas.
 
 ## WSO2
 

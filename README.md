@@ -117,12 +117,16 @@ EMAIL_LOGO_URL=
 REDIS_URL="redis://localhost:6379"
 EMAIL_QUEUE_ENABLED=true
 EMAIL_WORKER_ENABLED=true
+BACKGROUND_JOBS_ENABLED=true
+BACKGROUND_WORKER_ENABLED=true
 PORT=3333
 ```
 
 Para envio de e-mails, `EMAIL_PROVIDER=auto` usa Resend quando `RESEND_API_KEY` estiver configurado e mantém SMTP como fallback pelos campos `SMTP_*`. O template usa `EMAIL_LOGO_URL`; se ficar vazio, tenta carregar `/noogym-email-logo.png` no dominio do admin.
 
 Com `EMAIL_QUEUE_ENABLED=true`, a API grava cada email em `EmailDelivery`, coloca o envio na fila Redis/BullMQ e o worker tenta reenviar com backoff (`EMAIL_MAX_ATTEMPTS`, `EMAIL_RETRY_DELAY_MS`).
+
+Com `BACKGROUND_JOBS_ENABLED=true`, a API usa `BackgroundJob` + Redis/BullMQ para trabalhos demorados: auditoria, pos-pagamento, recibos, lembretes, expiracao/renovacao de assinaturas, campanhas, exportacoes, sincronizacoes, check-ins, ficheiros e metricas.
 
 Comandos a partir da raiz do monorepo:
 

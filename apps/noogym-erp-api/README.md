@@ -81,12 +81,16 @@ EMAIL_LOGO_URL=
 REDIS_URL="redis://localhost:6379"
 EMAIL_QUEUE_ENABLED=true
 EMAIL_WORKER_ENABLED=true
+BACKGROUND_JOBS_ENABLED=true
+BACKGROUND_WORKER_ENABLED=true
 PORT=3333
 ```
 
 Com `EMAIL_PROVIDER=auto`, a API tenta Resend primeiro quando `RESEND_API_KEY` existe e cai para SMTP quando os campos `SMTP_*` estiverem configurados. O HTML dos e-mails segue o template Noogym escuro/neon e usa `EMAIL_LOGO_URL` ou `/noogym-email-logo.png` no dominio do admin.
 
 Com `EMAIL_QUEUE_ENABLED=true`, a API persiste cada email em `EmailDelivery`, envia para a fila Redis/BullMQ e o worker reprocessa falhas com backoff. Use `EMAIL_QUEUE_REQUIRED=true` se quiser impedir fallback direto quando Redis estiver indisponivel.
+
+Com `BACKGROUND_JOBS_ENABLED=true`, a API persiste trabalhos em `BackgroundJob` e processa no worker Redis/BullMQ. Estao cobertos jobs de auditoria, notificacoes nao-email, campanhas, exportacoes, pos-pagamento, recibos, reconciliacao, assinaturas, sync, check-ins, ficheiros e analytics. Conectores externos ainda nao configurados ficam como `SKIPPED` com motivo no `result`.
 
 ## Instalacao
 

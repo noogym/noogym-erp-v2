@@ -952,6 +952,32 @@ model EmailDelivery {
   @@index([messageRecipientId])
 }
 
+model BackgroundJob {
+  id             String    @id @default(uuid())
+  organizationId String?
+  queue          String
+  name           String
+  status         String    @default("QUEUED")
+  payload        Json?
+  result         Json?
+  dedupeKey      String?   @unique
+  referenceId    String?
+  jobId          String?
+  attempts       Int       @default(0)
+  maxAttempts    Int       @default(5)
+  lastError      String?
+  scheduledAt    DateTime?
+  processingAt   DateTime?
+  completedAt    DateTime?
+  failedAt       DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([queue, status, scheduledAt])
+  @@index([organizationId, name])
+  @@index([referenceId])
+}
+
 model Integration {
   id             String       @id @default(uuid())
   organizationId String

@@ -13,6 +13,7 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { AuditLogInterceptor } from './common/interceptors/audit-log.interceptor';
 import { DatabaseReadinessInterceptor } from './common/interceptors/database-readiness.interceptor';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
+import { BackgroundJobsModule } from './common/jobs/background-jobs.module';
 import { validateEnv } from './config/env.validation';
 import { EmployeesModule } from './employees/employees.module';
 import { EntrypointsModule } from './entrypoints/entrypoints.module';
@@ -49,6 +50,7 @@ import { WorkoutsModule } from './workouts/workouts.module';
         limit: Number(process.env.THROTTLE_LIMIT ?? 120),
       },
     ]),
+    BackgroundJobsModule,
     PrismaModule,
     EntrypointsModule,
     AuthModule,

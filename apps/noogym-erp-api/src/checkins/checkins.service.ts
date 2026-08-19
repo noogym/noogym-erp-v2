@@ -10,6 +10,7 @@ import {
   SubscriptionStatus,
 } from '@prisma/client';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
+import { BackgroundJobsService } from '../common/jobs/background-jobs.service';
 import { directGymScope } from '../common/utils/gym-scope';
 import { getPagination, paginated } from '../common/utils/pagination';
 import { assertActiveMember } from '../members/member-status';
@@ -23,6 +24,7 @@ export class CheckinsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly settingsService: SettingsService,
+    private readonly backgroundJobs: BackgroundJobsService,
   ) {}
 
   async findAll(organizationId: string, query: PaginationQueryDto) {
@@ -136,7 +138,7 @@ export class CheckinsService {
       }
     }
 
-    return this.prisma.checkIn.create({
+    const checkin = await this.prisma.checkIn.create({
       data: {
         organizationId,
         memberId: dto.memberId,
@@ -147,6 +149,9 @@ export class CheckinsService {
       },
       include: { member: true, gym: true },
     });
+    void this.backgroundJobs.enqueueCheckinProcessed(organizationId, checkin.id);
+
+    return checkin;
   }
 
   async createFromQr(organizationId: string, dto: QrCheckinDto) {

@@ -109,6 +109,66 @@ export function validateEnv(config: Record<string, unknown>) {
     config.EMAIL_RECOVERY_BATCH_SIZE = '100';
   }
 
+  const backgroundJobsEnabled = String(
+    config.BACKGROUND_JOBS_ENABLED ?? 'true',
+  ).toLowerCase();
+  if (!['true', 'false'].includes(backgroundJobsEnabled)) {
+    throw new Error('BACKGROUND_JOBS_ENABLED must be true or false');
+  }
+  config.BACKGROUND_JOBS_ENABLED = backgroundJobsEnabled;
+
+  const backgroundWorkerEnabled = String(
+    config.BACKGROUND_WORKER_ENABLED ?? 'true',
+  ).toLowerCase();
+  if (!['true', 'false'].includes(backgroundWorkerEnabled)) {
+    throw new Error('BACKGROUND_WORKER_ENABLED must be true or false');
+  }
+  config.BACKGROUND_WORKER_ENABLED = backgroundWorkerEnabled;
+
+  const backgroundJobsRequired = String(
+    config.BACKGROUND_JOBS_REQUIRED ?? 'false',
+  ).toLowerCase();
+  if (!['true', 'false'].includes(backgroundJobsRequired)) {
+    throw new Error('BACKGROUND_JOBS_REQUIRED must be true or false');
+  }
+  config.BACKGROUND_JOBS_REQUIRED = backgroundJobsRequired;
+
+  const backgroundRecurringEnabled = String(
+    config.BACKGROUND_RECURRING_ENABLED ?? 'true',
+  ).toLowerCase();
+  if (!['true', 'false'].includes(backgroundRecurringEnabled)) {
+    throw new Error('BACKGROUND_RECURRING_ENABLED must be true or false');
+  }
+  config.BACKGROUND_RECURRING_ENABLED = backgroundRecurringEnabled;
+
+  if (backgroundJobsEnabled === 'true' && !config.REDIS_URL) {
+    config.REDIS_URL = 'redis://localhost:6379';
+  }
+
+  if (!config.BACKGROUND_WORKER_CONCURRENCY) {
+    config.BACKGROUND_WORKER_CONCURRENCY = '5';
+  }
+
+  if (!config.BACKGROUND_MAX_ATTEMPTS) {
+    config.BACKGROUND_MAX_ATTEMPTS = '5';
+  }
+
+  if (!config.BACKGROUND_RETRY_DELAY_MS) {
+    config.BACKGROUND_RETRY_DELAY_MS = '60000';
+  }
+
+  if (!config.BACKGROUND_RECOVERY_INTERVAL_MS) {
+    config.BACKGROUND_RECOVERY_INTERVAL_MS = '60000';
+  }
+
+  if (!config.BACKGROUND_RECOVERY_BATCH_SIZE) {
+    config.BACKGROUND_RECOVERY_BATCH_SIZE = '200';
+  }
+
+  if (!config.BACKGROUND_SCHEDULER_INTERVAL_MS) {
+    config.BACKGROUND_SCHEDULER_INTERVAL_MS = '900000';
+  }
+
   const authProvider = String(config.AUTH_PROVIDER ?? 'local').toLowerCase();
   if (!['local', 'wso2'].includes(authProvider)) {
     throw new Error('AUTH_PROVIDER must be either local or wso2');
