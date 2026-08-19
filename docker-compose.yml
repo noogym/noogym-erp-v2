@@ -19,6 +19,24 @@ services:
       retries: 10
       start_period: 30s
 
+  redis:
+    image: "redis:7-alpine"
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    expose:
+      - "6379"
+    volumes:
+      - "noogym_redis_data:/data"
+    healthcheck:
+      test:
+        - CMD
+        - redis-cli
+        - ping
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
   api:
     build:
       context: .
@@ -28,12 +46,15 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       NODE_ENV: production
       AUTH_PROVIDER: "${AUTH_PROVIDER:-local}"
       PORT: 3333
       DATABASE_URL: "${DATABASE_URL:-postgresql://noogym:noogym_password@postgres:5432/noogymsoftware?schema=public}"
       DATABASE_RETRY_DELAY_MS: "${DATABASE_RETRY_DELAY_MS:-2000}"
+      REDIS_URL: "${REDIS_URL:-redis://redis:6379}"
       JWT_SECRET: "${JWT_SECRET:-change-this-secret-before-production-please}"
       JWT_EXPIRES_IN: "${JWT_EXPIRES_IN:-1d}"
       JWT_REFRESH_SECRET: "${JWT_REFRESH_SECRET:-change-this-refresh-secret-before-production-please}"
@@ -41,6 +62,22 @@ services:
       PASSWORD_RESET_BASE_URL: "${PASSWORD_RESET_BASE_URL:-https://admin.noogym.com}"
       PASSWORD_RESET_TTL_MINUTES: "${PASSWORD_RESET_TTL_MINUTES:-30}"
       PASSWORD_RESET_EXPOSE_TOKEN: "${PASSWORD_RESET_EXPOSE_TOKEN:-false}"
+      EMAIL_PROVIDER: "${EMAIL_PROVIDER:-auto}"
+      RESEND_API_KEY: "${RESEND_API_KEY:-}"
+      RESEND_FROM: "${RESEND_FROM:-Noogym <noreply@noogym.com>}"
+      EMAIL_LOGO_URL: "${EMAIL_LOGO_URL:-}"
+      EMAIL_SITE_URL: "${EMAIL_SITE_URL:-https://noogym.com}"
+      EMAIL_SUPPORT_URL: "${EMAIL_SUPPORT_URL:-https://noogym.com/suporte}"
+      EMAIL_PRIVACY_URL: "${EMAIL_PRIVACY_URL:-https://noogym.com/privacidade}"
+      EMAIL_TERMS_URL: "${EMAIL_TERMS_URL:-https://noogym.com/termos}"
+      EMAIL_QUEUE_ENABLED: "${EMAIL_QUEUE_ENABLED:-true}"
+      EMAIL_QUEUE_REQUIRED: "${EMAIL_QUEUE_REQUIRED:-false}"
+      EMAIL_WORKER_ENABLED: "${EMAIL_WORKER_ENABLED:-true}"
+      EMAIL_WORKER_CONCURRENCY: "${EMAIL_WORKER_CONCURRENCY:-5}"
+      EMAIL_MAX_ATTEMPTS: "${EMAIL_MAX_ATTEMPTS:-5}"
+      EMAIL_RETRY_DELAY_MS: "${EMAIL_RETRY_DELAY_MS:-60000}"
+      EMAIL_RECOVERY_INTERVAL_MS: "${EMAIL_RECOVERY_INTERVAL_MS:-60000}"
+      EMAIL_RECOVERY_BATCH_SIZE: "${EMAIL_RECOVERY_BATCH_SIZE:-100}"
       SMTP_HOST: "${SMTP_HOST:-}"
       SMTP_PORT: "${SMTP_PORT:-587}"
       SMTP_SECURE: "${SMTP_SECURE:-false}"
@@ -95,3 +132,4 @@ services:
 
 volumes:
   noogym_postgres_data: null
+  noogym_redis_data: null

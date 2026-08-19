@@ -108,6 +108,14 @@ enum MessageStatus {
   FAILED
 }
 
+enum EmailDeliveryStatus {
+  QUEUED
+  PROCESSING
+  RETRYING
+  SENT
+  FAILED
+}
+
 enum WorkoutLevel {
   BEGINNER
   INTERMEDIATE
@@ -895,6 +903,7 @@ model Message {
   updatedAt      DateTime           @updatedAt
   organization   Organization       @relation(fields: [organizationId], references: [id])
   recipients     MessageRecipient[]
+  emailDeliveries EmailDelivery[]
 }
 
 model MessageRecipient {
@@ -906,8 +915,41 @@ model MessageRecipient {
   clicked   Boolean @default(false)
   message   Message @relation(fields: [messageId], references: [id])
   member    Member  @relation(fields: [memberId], references: [id])
+  emailDeliveries EmailDelivery[]
 
   @@unique([messageId, memberId])
+}
+
+model EmailDelivery {
+  id                 String              @id @default(uuid())
+  organizationId     String?
+  to                 String
+  subject            String
+  text               String?
+  html               String?
+  status             EmailDeliveryStatus @default(QUEUED)
+  provider           String?
+  providerMessageId  String?
+  jobId              String?
+  attempts           Int                 @default(0)
+  maxAttempts        Int                 @default(5)
+  lastError          String?
+  metadata           Json?
+  messageId          String?
+  messageRecipientId String?
+  queuedAt           DateTime            @default(now())
+  processingAt       DateTime?
+  sentAt             DateTime?
+  failedAt           DateTime?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  message            Message?            @relation(fields: [messageId], references: [id])
+  messageRecipient   MessageRecipient?   @relation(fields: [messageRecipientId], references: [id])
+
+  @@index([status, queuedAt])
+  @@index([organizationId, status])
+  @@index([messageId])
+  @@index([messageRecipientId])
 }
 
 model Integration {

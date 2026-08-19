@@ -45,11 +45,15 @@ import {
   paginateRows,
 } from "../components/tables/ListControls";
 import { TableActions } from "../components/tables/TableActions";
+import { apiRequest } from "../lib/api";
+import { remoteIdOf } from "../lib/domainApi";
+import { useAppStore } from "../store/appStore";
+import { useAuthStore } from "../store/authStore";
 import { useCheckinsStore } from "../store/checkinsStore";
 import { useClientsStore } from "../store/clientsStore";
 import { useFinanceStore } from "../store/financeStore";
 import { usePlansStore } from "../store/plansStore";
-import { toastInfo, toastSuccess } from "../store/toastStore";
+import { toastError, toastInfo, toastSuccess } from "../store/toastStore";
 
 const badgeTone = (tone?: string) =>
   [
@@ -420,7 +424,9 @@ export default function Clientes() {
   const clients = useClientsStore((state) => state.clients);
   const addClient = useClientsStore((state) => state.addClient);
   const deactivateClient = useClientsStore((state) => state.deactivateClient);
-  const regenerateClientQr = useClientsStore((state) => state.regenerateClientQr);
+  const regenerateClientQr = useClientsStore(
+    (state) => state.regenerateClientQr,
+  );
   const updateClient = useClientsStore((state) => state.updateClient);
   const addRevenue = useFinanceStore((state) => state.addRevenue);
   const financeRecords = useFinanceStore((state) => state.records);
@@ -1006,7 +1012,10 @@ export default function Clientes() {
           if (!selectedClient) return;
           const updated = await regenerateClientQr(selectedClient.id);
           if (updated) setSelectedClient(updated);
-          toastSuccess("QR Code atualizado", "O QR antigo deixa de ser valido.");
+          toastSuccess(
+            "QR Code atualizado",
+            "O QR antigo deixa de ser valido.",
+          );
         }}
         onClose={closeModal}
       />
@@ -1732,7 +1741,10 @@ function ClientQrModal({
 
   const copyPayload = async () => {
     if (!payload) {
-      toastInfo("QR Code indisponivel", "Gere um QR Code para este cliente primeiro.");
+      toastInfo(
+        "QR Code indisponivel",
+        "Gere um QR Code para este cliente primeiro.",
+      );
       return;
     }
     await navigator.clipboard?.writeText(payload);
@@ -1746,7 +1758,9 @@ function ClientQrModal({
     } catch (error) {
       toastInfo(
         "QR Code nao atualizado",
-        error instanceof Error ? error.message : "Tente novamente em instantes.",
+        error instanceof Error
+          ? error.message
+          : "Tente novamente em instantes.",
       );
     } finally {
       setIsRegenerating(false);
@@ -1786,10 +1800,18 @@ function ClientQrModal({
           </div>
         </div>
         <div className="flex min-h-[292px] items-center justify-center rounded-md border border-white/10 bg-white p-4">
-          {qrImage ? <img src={qrImage} alt={`QR Code de ${current.name}`} className="h-64 w-64" /> : <div className="text-center text-sm text-zinc-700">
-            <QrCode className="mx-auto mb-3 h-12 w-12" />
-            Gere um QR Code para este cliente.
-          </div>}
+          {qrImage ? (
+            <img
+              src={qrImage}
+              alt={`QR Code de ${current.name}`}
+              className="h-64 w-64"
+            />
+          ) : (
+            <div className="text-center text-sm text-zinc-700">
+              <QrCode className="mx-auto mb-3 h-12 w-12" />
+              Gere um QR Code para este cliente.
+            </div>
+          )}
         </div>
         <div className="rounded-md border border-white/10 bg-black/20 p-3 text-xs text-zinc-400">
           <p className="mb-1 text-zinc-300">Payload</p>
@@ -1797,7 +1819,9 @@ function ClientQrModal({
         </div>
         <div className="rounded-md border border-white/10 bg-black/20 p-3 text-xs text-zinc-400">
           <p className="mb-1 text-zinc-300">Codigo de barras / cartao</p>
-          <p className="break-all font-mono text-base text-zinc-100">{current.accessCode ?? "Sem codigo de acesso gerado"}</p>
+          <p className="break-all font-mono text-base text-zinc-100">
+            {current.accessCode ?? "Sem codigo de acesso gerado"}
+          </p>
           <p className="mt-2 break-all">{current.barcodePayload ?? ""}</p>
         </div>
       </div>
@@ -1815,13 +1839,83 @@ function ClientMessageModal({
   onClose: () => void;
 }) {
   const [message, setMessage] = useState("");
-  const send = () => {
+  const [channel, setChannel] = useState("WhatsApp");
+  const [sending, setSending] = useState(false);
+  const token = useAuthStore((state) => state.accessToken);
+  const onlineOnly = useAppStore((state) => state.onlineOnly);
+  const channelValue =
+    channel === "E-mail" ? "EMAIL" : channel === "SMS" ? "SMS" : "WHATSAPP";
+
+  useEffect(() => {
+    if (!open) return;
+    setMessage("");
+    setChannel("WhatsApp");
+    setSending(false);
+  }, [open]);
+
+  const send = async () => {
+    if (!onlineOnly || !token) {
+      toastInfo(
+        "Mensagens online indisponiveis",
+        "Entre no web-admin conectado a API para enviar.",
+      );
+      return;
+    }
     if (!message.trim()) {
       toastInfo("Mensagem obrigatoria", "Escreva a mensagem antes de enviar.");
       return;
     }
-    toastSuccess("Mensagem enviada", client.name);
-    onClose();
+    const memberId = remoteIdOf(client, ["CLI"]);
+    if (!memberId) {
+      toastInfo(
+        "Cliente nao sincronizado",
+        "Sincronize este cliente com a API antes de enviar mensagem.",
+      );
+      return;
+    }
+
+    setSending(true);
+    try {
+      const created = await apiRequest<{ id: string }>("/messages", {
+        method: "POST",
+        token,
+        body: {
+          title: `Mensagem ${channel}`,
+          content: message.trim(),
+          channel: channelValue,
+          status: "DRAFT",
+          memberIds: [memberId],
+        },
+      });
+      const sent = await apiRequest<{ status?: string }>(
+        `/messages/${created.id}/send`,
+        {
+          method: "PATCH",
+          token,
+        },
+      );
+      if (sent.status === "FAILED") {
+        toastError("Mensagem nao enviada", "A API registou falha na entrega.");
+        return;
+      }
+      if (channelValue === "EMAIL" && sent.status === "SCHEDULED") {
+        toastSuccess("E-mail em fila", client.name);
+        onClose();
+        return;
+      }
+      toastSuccess(
+        channelValue === "EMAIL" ? "E-mail enviado" : "Mensagem enviada",
+        client.name,
+      );
+      onClose();
+    } catch (error) {
+      toastError(
+        "Mensagem nao enviada",
+        error instanceof Error ? error.message : "A API nao confirmou o envio.",
+      );
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
@@ -1834,8 +1928,8 @@ function ClientMessageModal({
       footer={
         <>
           <Button onClick={onClose}>Cancelar</Button>
-          <Button variant="primary" onClick={send}>
-            Enviar
+          <Button variant="primary" disabled={sending} onClick={send}>
+            {sending ? "Enviando..." : "Enviar"}
           </Button>
         </>
       }
@@ -1847,7 +1941,12 @@ function ClientMessageModal({
             {client.phone} | {client.email}
           </p>
         </div>
-        <FormSelect label="Canal" options={["WhatsApp", "E-mail", "SMS"]} />
+        <FormSelect
+          label="Canal"
+          value={channel}
+          onChange={(event) => setChannel(event.target.value)}
+          options={["WhatsApp", "E-mail", "SMS"]}
+        />
         <FormTextarea
           label="Mensagem"
           placeholder="Escreva a mensagem para este cliente..."
@@ -1874,6 +1973,12 @@ function BulkClientMessageModal({
 }) {
   const [audience, setAudience] = useState("Selecionados");
   const [message, setMessage] = useState("");
+  const [channel, setChannel] = useState("WhatsApp");
+  const [sending, setSending] = useState(false);
+  const token = useAuthStore((state) => state.accessToken);
+  const onlineOnly = useAppStore((state) => state.onlineOnly);
+  const channelValue =
+    channel === "E-mail" ? "EMAIL" : channel === "SMS" ? "SMS" : "WHATSAPP";
   const recipients = useMemo(() => {
     if (audience === "Selecionados") return selectedClients;
     if (audience === "Filtrados") return filteredClients;
@@ -1883,7 +1988,23 @@ function BulkClientMessageModal({
       return clients.filter((client) => client.status !== "Ativo");
     return clients;
   }, [audience, clients, filteredClients, selectedClients]);
-  const send = () => {
+
+  useEffect(() => {
+    if (!open) return;
+    setAudience("Selecionados");
+    setMessage("");
+    setChannel("WhatsApp");
+    setSending(false);
+  }, [open]);
+
+  const send = async () => {
+    if (!onlineOnly || !token) {
+      toastInfo(
+        "Mensagens online indisponiveis",
+        "Entre no web-admin conectado a API para enviar.",
+      );
+      return;
+    }
     if (!recipients.length) {
       toastInfo(
         "Sem destinatarios",
@@ -1895,11 +2016,62 @@ function BulkClientMessageModal({
       toastInfo("Mensagem obrigatoria", "Escreva a mensagem antes de enviar.");
       return;
     }
-    toastSuccess(
-      "Mensagem enviada",
-      `${recipients.length} cliente(s) na fila.`,
-    );
-    onClose();
+    const memberIds = recipients
+      .map((recipient) => remoteIdOf(recipient, ["CLI"]))
+      .filter((id): id is string => Boolean(id));
+    if (!memberIds.length) {
+      toastInfo(
+        "Sem destinatarios sincronizados",
+        "Os clientes precisam estar carregados da API antes do envio.",
+      );
+      return;
+    }
+
+    setSending(true);
+    try {
+      const created = await apiRequest<{ id: string }>("/messages", {
+        method: "POST",
+        token,
+        body: {
+          title: `Comunicado ${channel}`,
+          content: message.trim(),
+          channel: channelValue,
+          status: "DRAFT",
+          memberIds,
+        },
+      });
+      const sent = await apiRequest<{ status?: string }>(
+        `/messages/${created.id}/send`,
+        {
+          method: "PATCH",
+          token,
+        },
+      );
+      if (sent.status === "FAILED") {
+        toastError("Mensagem nao enviada", "A API registou falha na entrega.");
+        return;
+      }
+      if (channelValue === "EMAIL" && sent.status === "SCHEDULED") {
+        toastSuccess(
+          "E-mails em fila",
+          `${memberIds.length} destinatario(s).`,
+        );
+        onClose();
+        return;
+      }
+      toastSuccess(
+        channelValue === "EMAIL" ? "E-mails enviados" : "Mensagem enviada",
+        `${memberIds.length} destinatario(s).`,
+      );
+      onClose();
+    } catch (error) {
+      toastError(
+        "Mensagem nao enviada",
+        error instanceof Error ? error.message : "A API nao confirmou o envio.",
+      );
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
@@ -1912,8 +2084,8 @@ function BulkClientMessageModal({
       footer={
         <>
           <Button onClick={onClose}>Cancelar</Button>
-          <Button variant="primary" onClick={send}>
-            Enviar
+          <Button variant="primary" disabled={sending} onClick={send}>
+            {sending ? "Enviando..." : "Enviar"}
           </Button>
         </>
       }
@@ -1932,7 +2104,12 @@ function BulkClientMessageModal({
               "Todos",
             ]}
           />
-          <FormSelect label="Canal" options={["WhatsApp", "E-mail", "SMS"]} />
+          <FormSelect
+            label="Canal"
+            value={channel}
+            onChange={(event) => setChannel(event.target.value)}
+            options={["WhatsApp", "E-mail", "SMS"]}
+          />
         </div>
         <div className="rounded-md border border-white/10 bg-white/[0.03] p-3 text-sm">
           <p className="font-medium">{recipients.length} destinatário(s)</p>

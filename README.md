@@ -110,8 +110,19 @@ JWT_SECRET="change-me"
 JWT_EXPIRES_IN="1d"
 JWT_REFRESH_SECRET="change-me-too"
 JWT_REFRESH_EXPIRES_IN="7d"
+EMAIL_PROVIDER=auto
+RESEND_API_KEY=
+RESEND_FROM="Noogym <noreply@noogym.com>"
+EMAIL_LOGO_URL=
+REDIS_URL="redis://localhost:6379"
+EMAIL_QUEUE_ENABLED=true
+EMAIL_WORKER_ENABLED=true
 PORT=3333
 ```
+
+Para envio de e-mails, `EMAIL_PROVIDER=auto` usa Resend quando `RESEND_API_KEY` estiver configurado e mantém SMTP como fallback pelos campos `SMTP_*`. O template usa `EMAIL_LOGO_URL`; se ficar vazio, tenta carregar `/noogym-email-logo.png` no dominio do admin.
+
+Com `EMAIL_QUEUE_ENABLED=true`, a API grava cada email em `EmailDelivery`, coloca o envio na fila Redis/BullMQ e o worker tenta reenviar com backoff (`EMAIL_MAX_ATTEMPTS`, `EMAIL_RETRY_DELAY_MS`).
 
 Comandos a partir da raiz do monorepo:
 

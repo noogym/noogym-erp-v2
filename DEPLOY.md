@@ -98,6 +98,40 @@ SUPER_ADMIN_ROTATE_PASSWORD=true
 
 Depois da rotacao, volte `SUPER_ADMIN_ROTATE_PASSWORD=false`.
 
+## E-mail
+
+Para envio via Resend com fallback SMTP:
+
+```env
+EMAIL_PROVIDER=auto
+RESEND_API_KEY=re_xxxxxxxxx
+RESEND_FROM="Noogym <noreply@noogym.com>"
+EMAIL_LOGO_URL=https://admin.noogym.com/noogym-email-logo.png
+EMAIL_SITE_URL=https://noogym.com
+EMAIL_SUPPORT_URL=https://noogym.com/suporte
+EMAIL_PRIVACY_URL=https://noogym.com/privacidade
+EMAIL_TERMS_URL=https://noogym.com/termos
+REDIS_URL=redis://redis:6379
+EMAIL_QUEUE_ENABLED=true
+EMAIL_QUEUE_REQUIRED=false
+EMAIL_WORKER_ENABLED=true
+EMAIL_WORKER_CONCURRENCY=5
+EMAIL_MAX_ATTEMPTS=5
+EMAIL_RETRY_DELAY_MS=60000
+EMAIL_RECOVERY_INTERVAL_MS=60000
+EMAIL_RECOVERY_BATCH_SIZE=100
+SMTP_HOST=
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=
+SMTP_PASS=
+SMTP_FROM="Noogym <noreply@noogym.com>"
+```
+
+Use `EMAIL_PROVIDER=resend` para forcar apenas Resend ou `EMAIL_PROVIDER=smtp` para forcar apenas SMTP. O dominio usado em `RESEND_FROM` precisa estar verificado no Resend.
+
+Em producao, mantenha `EMAIL_QUEUE_ENABLED=true` com Redis persistente. A API grava o email antes de enfileirar, o worker processa em paralelo (`EMAIL_WORKER_CONCURRENCY`) e falhas sao repetidas com backoff ate `EMAIL_MAX_ATTEMPTS`. Use `EMAIL_QUEUE_REQUIRED=true` quando preferir falhar a requisicao em vez de enviar direto se Redis cair.
+
 ## WSO2
 
 Nao e necessario incluir WSO2 no MVP. A aplicacao fica funcional com `AUTH_PROVIDER=local`.

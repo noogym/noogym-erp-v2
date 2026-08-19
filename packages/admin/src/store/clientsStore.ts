@@ -30,6 +30,7 @@ import { uid } from "../lib/storage";
 import { useAppStore } from "./appStore";
 import { useAuthStore } from "./authStore";
 import { useNotificationsStore } from "./notificationsStore";
+import { toastInfo, toastSuccess } from "./toastStore";
 import type { ClientRecord } from "@noogym/types";
 
 const seedClients = () =>
@@ -75,7 +76,8 @@ const normalizeEmail = (value?: string) => value?.trim().toLowerCase() ?? "";
 const normalizeDigits = (value?: string) => value?.replace(/\D/g, "") ?? "";
 const normalizeDocument = (value?: string) =>
   value?.replace(/[^a-z0-9]/gi, "").toUpperCase() ?? "";
-const normalizeAccessCode = (value?: string) => value?.replace(/\s/g, "").toUpperCase() ?? "";
+const normalizeAccessCode = (value?: string) =>
+  value?.replace(/\s/g, "").toUpperCase() ?? "";
 const generateAccessCode = () =>
   `930${Array.from(crypto.getRandomValues(new Uint8Array(9)), (byte) => String(byte % 10)).join("")}`;
 const hasDuplicateClientIdentity = (
@@ -184,8 +186,11 @@ export const useClientsStore = create<ClientsState>((set, get) => ({
       goal: client.goal,
       observations: client.observations,
     };
-    created.qrPayload = client.qrPayload ?? clientQrPayload(created.id, created.qrToken);
-    created.barcodePayload = client.barcodePayload ?? clientBarcodePayload(created.accessCode ?? created.id);
+    created.qrPayload =
+      client.qrPayload ?? clientQrPayload(created.id, created.qrToken);
+    created.barcodePayload =
+      client.barcodePayload ??
+      clientBarcodePayload(created.accessCode ?? created.id);
     const clients = [created, ...get().clients];
     persist(clients);
     void upsertDesktopClient(created, "create").catch(console.error);
@@ -231,7 +236,37 @@ export const useClientsStore = create<ClientsState>((set, get) => ({
             }
           }
           if (!created.noogymIdentityId) {
-            await inviteMemberToNoogymApp(source.token, synced.remoteId ?? synced.id).catch(() => undefined);
+            await inviteMemberToNoogymApp(
+              source.token,
+              synced.remoteId ?? synced.id,
+            )
+              .then((result) => {
+                const data = result as {
+                  emailQueued?: boolean;
+                  emailSent?: boolean;
+                };
+                if (data.emailSent) {
+                  toastSuccess("Boas-vindas enviadas", synced.name);
+                } else if (data.emailQueued) {
+                  toastSuccess(
+                    "Boas-vindas em fila",
+                    `O e-mail sera enviado para ${synced.name}.`,
+                  );
+                } else {
+                  toastInfo(
+                    "Convite registado",
+                    "O e-mail de boas-vindas nao foi entregue.",
+                  );
+                }
+              })
+              .catch((error) =>
+                toastInfo(
+                  "Boas-vindas nao enviadas",
+                  error instanceof Error
+                    ? error.message
+                    : "Nao foi possivel enviar o convite.",
+                ),
+              );
           }
           const nextClients = get().clients.map((item) =>
             item.id === created.id
@@ -381,7 +416,9 @@ export const useClientsStore = create<ClientsState>((set, get) => ({
       item.id === id ? { ...item, ...updated } : item,
     );
     persist(clients);
-    void upsertDesktopClient({ ...client, ...updated }, "update").catch(console.error);
+    void upsertDesktopClient({ ...client, ...updated }, "update").catch(
+      console.error,
+    );
     set({ clients });
     return clients.find((item) => item.id === id) ?? null;
   },

@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import * as nodemailer from 'nodemailer';
+import { EmailQueueService } from '../common/email/email-queue.service';
+import { EmailTemplateService } from '../common/email/email-template.service';
 
 type PasswordResetEmail = {
   name: string;
@@ -12,23 +13,14 @@ type PasswordResetEmail = {
 export class PasswordResetEmailService {
   private readonly logger = new Logger(PasswordResetEmailService.name);
 
-  constructor(private readonly config: ConfigService) {}
+  constructor(
+    private readonly config: ConfigService,
+    private readonly emailQueue: EmailQueueService,
+    private readonly emailTemplate: EmailTemplateService,
+  ) {}
 
   async sendPasswordResetEmail(email: PasswordResetEmail) {
-    if (!this.isSmtpConfigured()) {
-      this.logFallback(email.resetUrl);
-      return false;
-    }
-
-    const transport = nodemailer.createTransport({
-      host: this.config.get<string>('SMTP_HOST'),
-      port: Number(this.config.get<string>('SMTP_PORT', '587')),
-      secure: this.isSmtpSecure(),
-      auth: this.smtpAuth(),
-    });
-
-    await transport.sendMail({
-      from: this.config.get<string>('SMTP_FROM'),
+    const result = await this.emailQueue.queueEmail({
       to: email.to,
       subject: 'Recuperacao de senha Noogym',
       text: [
@@ -39,55 +31,41 @@ export class PasswordResetEmailService {
         '',
         'Se nao foi voce, ignore esta mensagem.',
       ].join('\n'),
-      html: `
-        <p>Ola ${this.escapeHtml(email.name)},</p>
-        <p>Recebemos um pedido para redefinir a senha da sua conta Noogym.</p>
-        <p><a href="${this.escapeHtml(email.resetUrl)}">Criar nova senha</a></p>
-        <p>Se nao foi voce, ignore esta mensagem.</p>
-      `,
+      html: this.emailTemplate.render({
+        button: { label: 'Criar nova senha', url: email.resetUrl },
+        details: [{ label: 'Validade', value: 'Este link expira em breve.' }],
+        eyebrow: 'Seguranca da conta',
+        footerNote:
+          'Se voce nao solicitou esta recuperacao, pode ignorar esta mensagem com seguranca.',
+        greeting: `Ola, ${email.name}`,
+        intro: [
+          'Recebemos um pedido para redefinir a senha da sua conta Noogym.',
+          'Use o botao abaixo para criar uma nova senha e continuar a aceder ao seu painel.',
+        ],
+        preheader: 'Use o link seguro para redefinir a sua senha Noogym.',
+        secondary:
+          'Por seguranca, nunca partilhe este link com outras pessoas.',
+        title: 'Redefina a sua senha',
+      }),
     });
 
-    return true;
-  }
+    if (!result.sent && !result.queued) {
+      this.logFallback(email.resetUrl);
+    }
 
-  private isSmtpConfigured() {
-    return Boolean(
-      this.config.get<string>('SMTP_HOST') &&
-        this.config.get<string>('SMTP_FROM'),
-    );
-  }
-
-  private isSmtpSecure() {
-    const secure = this.config.get<string>('SMTP_SECURE');
-    if (secure !== undefined) return secure.toLowerCase() === 'true';
-
-    return Number(this.config.get<string>('SMTP_PORT', '587')) === 465;
-  }
-
-  private smtpAuth() {
-    const user = this.config.get<string>('SMTP_USER');
-    const pass = this.config.get<string>('SMTP_PASS');
-
-    return user && pass ? { user, pass } : undefined;
+    return result.sent || result.queued;
   }
 
   private logFallback(resetUrl: string) {
     if (this.config.get<string>('NODE_ENV') === 'production') {
       this.logger.error(
-        'SMTP is not configured. Password reset email was not sent.',
+        'Email delivery is not configured or failed. Password reset email was not sent.',
       );
       return;
     }
 
-    this.logger.warn(`SMTP is not configured. Password reset URL: ${resetUrl}`);
-  }
-
-  private escapeHtml(value: string) {
-    return value
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
+    this.logger.warn(
+      `Email delivery is not configured or failed. Password reset URL: ${resetUrl}`,
+    );
   }
 }

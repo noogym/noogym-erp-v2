@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import {
   MessageChannel,
   NoogymIdentityAliasType,
@@ -10,6 +11,9 @@ import {
   UserRole,
   UserStatus,
 } from '@prisma/client';
+import { createHash, randomBytes } from 'crypto';
+import { EmailQueueService } from '../common/email/email-queue.service';
+import { EmailTemplateService } from '../common/email/email-template.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { LinkMemberIdentityDto } from './dto/link-member-identity.dto';
 import { ResolveIdentityDto } from './dto/resolve-identity.dto';
@@ -37,7 +41,12 @@ const defaultChannels = [
 
 @Injectable()
 export class IdentityLinksService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly emailQueue: EmailQueueService,
+    private readonly config: ConfigService,
+    private readonly emailTemplate: EmailTemplateService,
+  ) {}
 
   async resolve(organizationId: string, dto: ResolveIdentityDto) {
     const identity = await this.resolveIdentity({
@@ -80,7 +89,10 @@ export class IdentityLinksService {
           avatarUrl: existingMember.avatarUrl ?? identity.avatarUrl,
           accessCode:
             existingMember.accessCode ??
-            this.preferredAliasValue(identity, NoogymIdentityAliasType.BARCODE) ??
+            this.preferredAliasValue(
+              identity,
+              NoogymIdentityAliasType.BARCODE,
+            ) ??
             identity.noogymId,
         },
         include: this.memberInclude(),
@@ -132,6 +144,19 @@ export class IdentityLinksService {
       'Baixe o app para acompanhar planos, pagamentos, treinos e check-ins.',
       inviteUrl,
     ].join(' ');
+    const emailResult = channels.includes(MessageChannel.EMAIL)
+      ? await this.sendMemberInviteEmail({
+          organizationId,
+          content,
+          inviteUrl,
+          memberEmail: member.email,
+          memberName: member.name,
+          organizationName: member.organization.name,
+        })
+      : undefined;
+    const emailAccepted = Boolean(emailResult?.queued || emailResult?.sent);
+    const emailQueued = Boolean(emailResult?.queued);
+    const emailSent = Boolean(emailResult?.sent);
 
     const messages = await Promise.all(
       channels.map((channel) =>
@@ -141,9 +166,26 @@ export class IdentityLinksService {
             title: 'Convite para o app Noogym',
             content,
             channel,
-            status: 'SENT',
-            sentAt: new Date(),
-            recipients: { create: [{ memberId: member.id }] },
+            status:
+              channel !== MessageChannel.EMAIL
+                ? 'SENT'
+                : !emailAccepted
+                  ? 'FAILED'
+                  : emailSent
+                    ? 'SENT'
+                    : 'SCHEDULED',
+            sentAt:
+              channel === MessageChannel.EMAIL && !emailSent
+                ? undefined
+                : new Date(),
+            recipients: {
+              create: [
+                {
+                  memberId: member.id,
+                  delivered: channel === MessageChannel.EMAIL && emailSent,
+                },
+              ],
+            },
           },
         }),
       ),
@@ -153,6 +195,9 @@ export class IdentityLinksService {
       memberId: member.id,
       inviteUrl,
       channels,
+      emailAccepted,
+      emailQueued,
+      emailSent,
       messages,
     };
   }
@@ -171,11 +216,9 @@ export class IdentityLinksService {
     const email = employee.user?.email ?? employee.email;
     if (!email) throw new BadRequestException('Employee needs email');
 
-    const user = employee.user ?? (await this.createOrInviteEmployeeUser(
-      organizationId,
-      employee,
-      email,
-    ));
+    const user =
+      employee.user ??
+      (await this.createOrInviteEmployeeUser(organizationId, employee, email));
 
     if (!employee.userId) {
       await this.prisma.employee.update({
@@ -185,12 +228,45 @@ export class IdentityLinksService {
     }
 
     const channels = this.resolveChannels(dto.channels);
+    const inviteToken = this.generateInviteToken();
+    const inviteUrl = this.employeeInviteUrl(user.email, inviteToken);
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordResetTokenHash: this.hashInviteToken(inviteToken),
+        passwordResetTokenExpiresAt: this.inviteExpiresAt(),
+      },
+    });
+    const emailResult = channels.includes(MessageChannel.EMAIL)
+      ? await this.emailQueue.queueEmail({
+          organizationId,
+          to: user.email,
+          subject: 'Convite de acesso Noogym',
+          text: this.employeeInviteText({
+            employeeName: employee.name,
+            organizationName: employee.organization.name,
+            inviteUrl,
+          }),
+          html: this.employeeInviteHtml({
+            employeeName: employee.name,
+            organizationName: employee.organization.name,
+            inviteUrl,
+          }),
+        })
+      : undefined;
+    const emailAccepted = Boolean(emailResult?.queued || emailResult?.sent);
+    const emailQueued = Boolean(emailResult?.queued);
+    const emailSent = Boolean(emailResult?.sent);
+
     return {
       employeeId: employee.id,
       userId: user.id,
       accountEmail: user.email,
-      inviteUrl: this.employeeInviteUrl(user.id),
+      inviteUrl,
       channels,
+      emailAccepted,
+      emailQueued,
+      emailSent,
       status: UserStatus.INVITED,
     };
   }
@@ -207,7 +283,9 @@ export class IdentityLinksService {
     }
 
     const aliasTypes: NoogymIdentityAliasType[] =
-      parsed.kind === 'alias' ? parsed.aliasTypes : this.defaultAliasTypes(value);
+      parsed.kind === 'alias'
+        ? parsed.aliasTypes
+        : this.defaultAliasTypes(value);
     const or: Prisma.NoogymIdentityWhereInput[] = [];
     if (identityId) or.push({ id: identityId });
     if (parsed.kind === 'qrToken') or.push({ qrToken: value });
@@ -406,14 +484,15 @@ export class IdentityLinksService {
       gender: identity.gender,
       documentNumber: identity.documentNumber,
       avatarUrl: identity.avatarUrl,
-      aliases: identity.aliases
-        ?.filter((alias) => alias.isActive)
-        .map((alias) => ({
-          type: alias.type,
-          value: alias.value,
-          label: alias.label,
-          expiresAt: alias.expiresAt,
-        })) ?? [],
+      aliases:
+        identity.aliases
+          ?.filter((alias) => alias.isActive)
+          .map((alias) => ({
+            type: alias.type,
+            value: alias.value,
+            label: alias.label,
+            expiresAt: alias.expiresAt,
+          })) ?? [],
     };
   }
 
@@ -424,7 +503,9 @@ export class IdentityLinksService {
       NoogymIdentityAliasType.BARCODE,
       NoogymIdentityAliasType.CARD,
     ].filter((type) =>
-      value.startsWith('NG-') ? true : type !== NoogymIdentityAliasType.NOOGYM_ID,
+      value.startsWith('NG-')
+        ? true
+        : type !== NoogymIdentityAliasType.NOOGYM_ID,
     );
   }
 
@@ -445,9 +526,9 @@ export class IdentityLinksService {
     if (alias?.expiresAt && alias.expiresAt < now) return true;
     return Boolean(
       parsedKind === 'qrToken' &&
-        identity.qrToken &&
-        identity.qrTokenExpiresAt &&
-        identity.qrTokenExpiresAt < now,
+      identity.qrToken &&
+      identity.qrTokenExpiresAt &&
+      identity.qrTokenExpiresAt < now,
     );
   }
 
@@ -533,8 +614,118 @@ export class IdentityLinksService {
     return `https://app.noogym.com/convite/aluno/${memberId}`;
   }
 
-  private employeeInviteUrl(userId: string) {
-    return `https://admin.noogym.com/convite/funcionario/${userId}`;
+  private employeeInviteUrl(email: string, token: string) {
+    const baseUrl = this.config.get<string>(
+      'PASSWORD_RESET_BASE_URL',
+      'http://localhost:3000',
+    );
+    const url = new URL('/reset-password', baseUrl);
+    url.searchParams.set('email', email);
+    url.searchParams.set('token', token);
+
+    return url.toString();
+  }
+
+  private employeeInviteText(input: {
+    employeeName: string;
+    inviteUrl: string;
+    organizationName: string;
+  }) {
+    return [
+      `Ola ${input.employeeName},`,
+      '',
+      `${input.organizationName} convidou voce para aceder ao Noogym.`,
+      `Use este link para concluir o acesso: ${input.inviteUrl}`,
+      '',
+      'Se nao esperava este convite, ignore esta mensagem.',
+    ].join('\n');
+  }
+
+  private employeeInviteHtml(input: {
+    employeeName: string;
+    inviteUrl: string;
+    organizationName: string;
+  }) {
+    return this.emailTemplate.render({
+      button: { label: 'Concluir acesso', url: input.inviteUrl },
+      details: [
+        { label: 'Organizacao', value: input.organizationName },
+        { label: 'Conta', value: input.employeeName },
+      ],
+      eyebrow: 'Convite de acesso',
+      footerNote:
+        'Se voce nao esperava este convite, ignore esta mensagem ou contacte a academia.',
+      greeting: `Ola, ${input.employeeName}`,
+      intro: [
+        `${input.organizationName} convidou voce para aceder ao Noogym.`,
+        'Defina a sua senha para entrar no painel e acompanhar as operacoes da academia.',
+      ],
+      preheader: `${input.organizationName} convidou voce para aceder ao Noogym.`,
+      secondary: 'Este link e pessoal. Nao encaminhe para outras pessoas.',
+      title: 'A sua conta Noogym esta pronta',
+    });
+  }
+
+  private async sendMemberInviteEmail(input: {
+    content: string;
+    inviteUrl: string;
+    memberEmail?: string | null;
+    memberName: string;
+    organizationId: string;
+    organizationName: string;
+  }) {
+    if (!input.memberEmail?.trim()) return undefined;
+
+    return this.emailQueue.queueEmail({
+      organizationId: input.organizationId,
+      to: input.memberEmail,
+      subject: 'Convite para o app Noogym',
+      text: input.content,
+      html: this.memberInviteHtml(input),
+    });
+  }
+
+  private memberInviteHtml(input: {
+    inviteUrl: string;
+    memberName: string;
+    organizationName: string;
+  }) {
+    return this.emailTemplate.render({
+      button: { label: 'Abrir convite', url: input.inviteUrl },
+      details: [
+        { label: 'Academia', value: input.organizationName },
+        {
+          label: 'Beneficios',
+          value: 'Planos, pagamentos, treinos e check-ins no app.',
+        },
+      ],
+      eyebrow: 'Bem-vindo ao Noogym',
+      greeting: `Ola, ${input.memberName}`,
+      intro: [
+        `${input.organizationName} cadastrou voce no Noogym.`,
+        'Use o convite para acompanhar o seu plano, pagamentos, treinos e check-ins em um unico lugar.',
+      ],
+      preheader: `${input.organizationName} cadastrou voce no Noogym.`,
+      secondary:
+        'Caso nao reconheca este cadastro, contacte diretamente a academia.',
+      title: 'A sua jornada comeca agora',
+    });
+  }
+
+  private generateInviteToken() {
+    return randomBytes(32).toString('base64url');
+  }
+
+  private hashInviteToken(token: string) {
+    return createHash('sha256').update(token).digest('hex');
+  }
+
+  private inviteExpiresAt() {
+    const ttlMinutes = Number(
+      this.config.get<string>('PASSWORD_RESET_TTL_MINUTES', '30'),
+    );
+
+    return new Date(Date.now() + ttlMinutes * 60 * 1000);
   }
 
   private randomInviteToken() {

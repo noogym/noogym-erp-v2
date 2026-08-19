@@ -55,6 +55,60 @@ export function validateEnv(config: Record<string, unknown>) {
     config.PASSWORD_RESET_TTL_MINUTES = '30';
   }
 
+  const emailProvider = String(config.EMAIL_PROVIDER ?? 'auto').toLowerCase();
+  if (!['auto', 'resend', 'smtp'].includes(emailProvider)) {
+    throw new Error('EMAIL_PROVIDER must be auto, resend, or smtp');
+  }
+  config.EMAIL_PROVIDER = emailProvider;
+
+  const emailQueueEnabled = String(
+    config.EMAIL_QUEUE_ENABLED ?? 'false',
+  ).toLowerCase();
+  if (!['true', 'false'].includes(emailQueueEnabled)) {
+    throw new Error('EMAIL_QUEUE_ENABLED must be true or false');
+  }
+  config.EMAIL_QUEUE_ENABLED = emailQueueEnabled;
+
+  const emailQueueRequired = String(
+    config.EMAIL_QUEUE_REQUIRED ?? 'false',
+  ).toLowerCase();
+  if (!['true', 'false'].includes(emailQueueRequired)) {
+    throw new Error('EMAIL_QUEUE_REQUIRED must be true or false');
+  }
+  config.EMAIL_QUEUE_REQUIRED = emailQueueRequired;
+
+  const emailWorkerEnabled = String(
+    config.EMAIL_WORKER_ENABLED ?? 'true',
+  ).toLowerCase();
+  if (!['true', 'false'].includes(emailWorkerEnabled)) {
+    throw new Error('EMAIL_WORKER_ENABLED must be true or false');
+  }
+  config.EMAIL_WORKER_ENABLED = emailWorkerEnabled;
+
+  if (emailQueueEnabled === 'true' && !config.REDIS_URL) {
+    config.REDIS_URL = 'redis://localhost:6379';
+  }
+
+  if (!config.EMAIL_MAX_ATTEMPTS) {
+    config.EMAIL_MAX_ATTEMPTS = '5';
+  }
+
+  if (!config.EMAIL_RETRY_DELAY_MS) {
+    config.EMAIL_RETRY_DELAY_MS = '60000';
+  }
+
+  if (!config.EMAIL_WORKER_CONCURRENCY) {
+    config.EMAIL_WORKER_CONCURRENCY = '5';
+  }
+
+  if (!config.EMAIL_RECOVERY_INTERVAL_MS) {
+    config.EMAIL_RECOVERY_INTERVAL_MS = '60000';
+  }
+
+  if (!config.EMAIL_RECOVERY_BATCH_SIZE) {
+    config.EMAIL_RECOVERY_BATCH_SIZE = '100';
+  }
+
   const authProvider = String(config.AUTH_PROVIDER ?? 'local').toLowerCase();
   if (!['local', 'wso2'].includes(authProvider)) {
     throw new Error('AUTH_PROVIDER must be either local or wso2');
