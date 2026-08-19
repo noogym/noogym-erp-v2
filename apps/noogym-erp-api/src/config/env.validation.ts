@@ -10,7 +10,15 @@ export function validateEnv(config: Record<string, unknown>) {
 
   const nodeEnv = String(config.NODE_ENV ?? 'development');
   const jwtSecret = String(config.JWT_SECRET ?? '');
-  const weakJwtSecrets = new Set(['change-me', 'noogym-dev-secret']);
+  const weakJwtSecrets = new Set([
+    'change-me',
+    'noogym-dev-secret',
+    'change-me-too',
+    'change-this-secret-before-production-please',
+    'change-this-refresh-secret-before-production-please',
+    'change-this-to-a-long-random-secret-with-at-least-32-chars',
+    'change-this-to-a-different-long-random-secret',
+  ]);
 
   if (!jwtSecret) {
     if (nodeEnv === 'production') {
