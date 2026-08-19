@@ -164,8 +164,17 @@ export class RolesGuard implements CanActivate {
   }) {
     const routeId = this.stringValue(input.params.id);
     const routeMemberId = this.stringValue(input.params.memberId);
+    const routeEmployeeId = this.stringValue(input.params.employeeId);
 
     if (routeMemberId) input.memberIds.add(routeMemberId);
+    if (routeEmployeeId) {
+      await this.addGymIdsForRecords(
+        this.prisma.employee,
+        input.organizationId,
+        new Set([routeEmployeeId]),
+        input.requestedGymIds,
+      );
+    }
     if (!routeId) return;
 
     switch (input.controllerName) {

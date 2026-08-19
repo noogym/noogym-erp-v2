@@ -24,6 +24,11 @@ ADRs atuais:
 - [0011 - Autenticacao preservada no shell principal](0011-auth-shell-separation.md)
 - [0012 - Sem APIs externas obrigatorias no MVP desktop](0012-no-required-external-apis.md)
 - [0013 - Backend ERP API com NestJS para web-admin e desktop](0013-nestjs-erp-api-for-clients.md)
+- [0014 - Setup local previsivel para desenvolvimento](0014-local-dev-setup.md)
+- [0015 - Web-admin API-first nas stores operacionais](0015-web-admin-api-first-stores.md)
+- [0016 - Integracoes operacionais e mensageria sem sucesso simulado](0016-operational-integrations-and-messaging.md)
+- [0017 - Identidade Noogym global e vinculos com ginasios](0017-noogym-identity-linking.md)
+- [0018 - Impressao termica na versao web](0018-web-printing-and-print-agent.md)
 
 ADRs especificos do backend:
 

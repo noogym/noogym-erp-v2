@@ -108,6 +108,7 @@ export default function CheckIn() {
   const loadOnline = useCheckinsStore((state) => state.loadOnline);
   const clients = useClientsStore((state) => state.clients);
   const activeGymId = useAppStore((state) => state.activeGymId);
+  const onlineOnly = useAppStore((state) => state.onlineOnly);
 
   const filtered = useMemo(() => checkins.filter((checkin) => {
     const matchesQuery = `${checkin.clientName} ${checkin.clientId}`.toLowerCase().includes(query.toLowerCase());
@@ -151,29 +152,30 @@ export default function CheckIn() {
     setEntryStatus("A validar entrada...");
     const scanType = classifyScanValue(value);
 
-    if (scanType === "qr" || value.startsWith("noogym://") || value.startsWith("{")) {
+    if (scanType === "qr" || value.startsWith("noogym://") || value.startsWith("{") || (onlineOnly && scanType === "barcode")) {
       try {
         const checkin = await addQrCheckin(value, { gymId: activeGymId ?? undefined });
         if (!checkin) {
-          setEntryStatus("QR Code nao encontrado ou revogado.");
-          toastInfo("QR Code invalido", "Nao encontrei este QR em clientes ativos desta unidade.");
+          setEntryStatus("Codigo nao encontrado ou revogado.");
+          toastInfo("Codigo invalido", "Nao encontrei este QR, codigo de barras ou cartao em clientes ativos desta unidade.");
           return;
         }
         setEntryCode("");
         setEntryStatus(`${checkin.clientName} liberado por QR/Scanner.`);
         toastSuccess("Entrada liberada", `${checkin.clientName} registado com sucesso.`);
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Nao foi possivel validar este QR Code.";
+        const message = error instanceof Error ? error.message : "Nao foi possivel validar este codigo.";
         setEntryStatus(message);
         toastInfo("Entrada bloqueada", message);
+        if (onlineOnly) return;
       }
-      return;
+      if (scanType !== "barcode") return;
     }
 
     const normalized = value.toLowerCase();
     const client = clients.find((item) => {
       const remoteId = (item as { remoteId?: string }).remoteId;
-      return [item.id, remoteId, item.qrToken, item.phone, item.email, item.document]
+      return [item.id, remoteId, item.noogymId, item.qrToken, item.accessCode, item.barcodePayload, item.phone, item.email, item.document]
         .filter(Boolean)
         .some((entry) => String(entry).toLowerCase() === normalized);
     });

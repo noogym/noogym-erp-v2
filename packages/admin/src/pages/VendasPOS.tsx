@@ -1,4 +1,4 @@
-import { Barcode, Copy, Download, Eye, Pencil, Plus, ReceiptText, RefreshCcw, ShoppingCart, Trash2, WalletCards, X, XCircle } from "lucide-react";
+import { Barcode, Copy, Eye, Pencil, Plus, Printer, ReceiptText, RefreshCcw, ShoppingCart, Trash2, WalletCards, X, XCircle } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ConfirmModal } from "../components/modals/ConfirmModal";
 import { BarcodeModal, FinalizeSaleModal } from "../components/modals/OperationalModals";
@@ -19,7 +19,10 @@ import { usePlansStore } from "../store/plansStore";
 import { useProductsStore } from "../store/productsStore";
 import { selectPosCartItemsCount, usePosCartStore, type PosCartItem } from "../store/posCartStore";
 import { useSalesStore } from "../store/salesStore";
+import { useOperationalSettingsStore } from "../store/operationalSettingsStore";
 import { toastInfo, toastSuccess } from "../store/toastStore";
+import { buildPrinterConfig, validatePrintingConfig } from "../lib/printerConfig";
+import { openCashDrawerViaAgent, printReceiptInBrowser, printReceiptViaAgent } from "../lib/webPrint";
 import type { ProductRecord, SaleItemRecord, SaleRecord } from "@noogym/types";
 
 type CatalogKind = "product" | "plan" | "service" | "class";
@@ -164,6 +167,40 @@ function downloadReceipt(sale: SaleRecord) {
   URL.revokeObjectURL(url);
 }
 
+function saleToThermalReceiptData(sale: SaleRecord, footer: string) {
+  return {
+    gymName: "Noogym Fitness Center",
+    customerName: sale.customer ?? "Consumidor final",
+    cashierName: sale.seller,
+    items: sale.items?.length
+      ? sale.items.map((item) => ({
+          name: item.name,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          total: item.unitPrice * item.quantity,
+          sku: item.sku
+        }))
+      : [{ name: sale.type, quantity: 1, unitPrice: sale.total, total: sale.total }],
+    subtotal: sale.subtotal ?? sale.total,
+    discount: sale.discountAmount ?? 0,
+    tax: sale.taxAmount ?? 0,
+    total: sale.total,
+    paymentMethod: sale.paymentMethod,
+    paidAmount: sale.amountReceived ?? sale.total,
+    changeAmount: sale.changeAmount ?? 0,
+    date: sale.soldAtIso ?? new Date(),
+    message: footer.trim() || "Obrigado pela preferencia.",
+    invoiceNumber: sale.receiptNumber ?? sale.id,
+    qrCode: {
+      label: "Recibo Noogym",
+      value: `noogym://receipt/${sale.receiptNumber ?? sale.id}`
+    }
+  };
+}
+
+const hasCashPayment = (sale: SaleRecord) =>
+  sale.paymentMethod === "Dinheiro" || Boolean(sale.payments?.some((payment) => payment.method === "Dinheiro" && payment.amount > 0));
+
 export default function VendasPOS() {
   const [mainTab, setMainTab] = useState<MainTab>("Nova venda");
   const [catalogTab, setCatalogTab] = useState("Produtos");
@@ -197,6 +234,8 @@ export default function VendasPOS() {
   const setCart = usePosCartStore((state) => state.setItems);
   const setCartItemQtyAt = usePosCartStore((state) => state.setItemQtyAt);
   const cartItemsCount = usePosCartStore(selectPosCartItemsCount);
+  const printing = useOperationalSettingsStore((state) => state.settings.printing);
+  const receiptFooter = useOperationalSettingsStore((state) => state.settings.finance.receiptFooter);
 
   const catalogItems = useMemo(() => {
     const normalizedQuery = query.toLowerCase();
@@ -296,6 +335,73 @@ export default function VendasPOS() {
       toastInfo("Atalho POS ignorado", "Nao foi possivel carregar o item rapido.");
     }
   }, [addToCart]);
+  const printSaleReceipt = useCallback(async (sale: SaleRecord, options?: { silentDisabled?: boolean }) => {
+    if (!printing.enabled) {
+      if (!options?.silentDisabled) toastInfo("Impressao desativada", "Ative a impressao nas configuracoes operacionais.");
+      return;
+    }
+
+    const data = saleToThermalReceiptData(sale, receiptFooter);
+    const config = buildPrinterConfig(printing);
+    const printerBridge = typeof window === "undefined" ? undefined : window.noogym?.printer;
+    try {
+      if (printerBridge) {
+        const validation = validatePrintingConfig(printing);
+        if (validation) {
+          toastInfo("Configuracao incompleta", validation);
+          return;
+        }
+
+        const result = await printerBridge.printReceipt(data, config);
+        if (!result.success) {
+          toastInfo("Impressao falhou", result.error || result.message);
+          return;
+        }
+
+        toastSuccess("Recibo enviado", result.message);
+        if (printing.cashDrawerEnabled && printing.openDrawerOnCashPayment && hasCashPayment(sale)) {
+          const drawerResult = await printerBridge.openCashDrawer(config);
+          if (!drawerResult.success) {
+            toastInfo("Gaveta nao abriu", drawerResult.error || drawerResult.message);
+          }
+        }
+        return;
+      }
+
+      const browserValidation = validatePrintingConfig(printing, { requireDevice: false });
+      if (browserValidation) {
+        toastInfo("Configuracao incompleta", browserValidation);
+        return;
+      }
+
+      if (printing.webPrintMode === "agent") {
+        const result = await printReceiptViaAgent(data, config, printing.printAgentUrl);
+        if (result.success) {
+          toastSuccess("Recibo enviado", result.message);
+          if (printing.cashDrawerEnabled && printing.openDrawerOnCashPayment && hasCashPayment(sale)) {
+            const drawerResult = await openCashDrawerViaAgent(config, printing.printAgentUrl);
+            if (!drawerResult.success) toastInfo("Gaveta nao abriu", drawerResult.error || drawerResult.message);
+          }
+          return;
+        }
+        toastInfo("Print Agent indisponivel", result.error || result.message);
+      }
+
+      const result = printReceiptInBrowser(data, {
+        paperWidth: printing.paperWidth,
+        title: `Recibo ${sale.receiptNumber ?? sale.id}`
+      });
+      if (!result.success) {
+        toastInfo("Impressao falhou", result.error || result.message);
+        downloadReceipt(sale);
+        return;
+      }
+      toastSuccess("Impressao do navegador", result.message);
+    } catch (error) {
+      toastInfo("Impressao falhou", errorMessage(error, "Nao foi possivel enviar o recibo para a impressora."));
+      downloadReceipt(sale);
+    }
+  }, [printing, receiptFooter]);
   const fillCartFromSale = (sale: SaleRecord) => {
     setCart(saleToCartItems(sale));
     setEditingQuote(null);
@@ -308,9 +414,10 @@ export default function VendasPOS() {
     setMainTab("Nova venda");
     toastSuccess("Orcamento em edicao", sale.customer ?? sale.id);
   };
-  const finishCart = (saleType: string) => {
+  const finishCart = (saleType: string, savedSale?: SaleRecord) => {
     if (saleType !== "Orcamento") {
       reduceStock(cart.filter((item) => item.kind === "product").map((item) => ({ id: item.id, qty: item.qty })), { sync: false });
+      if (savedSale && printing.autoPrintReceipt) void printSaleReceipt(savedSale, { silentDisabled: true });
     }
     clearCart();
     setEditingQuote(null);
@@ -449,7 +556,7 @@ export default function VendasPOS() {
               <Select value={paymentFilter} onChange={(event) => setPaymentFilter(event.target.value)}>{paymentMethods.map((method) => <option key={method}>{method}</option>)}</Select>
               </ListToolbar>
             </div>
-            <SalesTable sales={salesPageData.pageRows} onView={setSelectedSale} onReceipt={downloadReceipt} onDuplicate={fillCartFromSale} onCancel={(sale) => { setSelectedSale(sale); setModal("cancelSale"); }} />
+            <SalesTable sales={salesPageData.pageRows} onView={setSelectedSale} onReceipt={printSaleReceipt} onDuplicate={fillCartFromSale} onCancel={(sale) => { setSelectedSale(sale); setModal("cancelSale"); }} />
             <ListPagination page={salesPageData.page} totalPages={salesPageData.totalPages} totalItems={filteredSales.length} start={salesPageData.start} end={salesPageData.end} label="vendas" onPageChange={setSalesPage} />
             {selectedSale ? <SaleDetails sale={selectedSale} onClose={() => setSelectedSale(null)} /> : null}
           </>
@@ -467,7 +574,7 @@ export default function VendasPOS() {
             <div className="mt-4">
               <ListToolbar query={quoteQuery} onQueryChange={setQuoteQuery} queryPlaceholder="Buscar por cliente, item, vendedor ou codigo..." pageSize={quotesPageSize} onPageSizeChange={setQuotesPageSize} onClear={() => setQuoteQuery("")} />
             </div>
-            <SalesTable sales={quotesPageData.pageRows} onView={setSelectedSale} onReceipt={downloadReceipt} onDuplicate={fillCartFromSale} onEdit={editQuote} onConvert={fillCartFromSale} />
+            <SalesTable sales={quotesPageData.pageRows} onView={setSelectedSale} onReceipt={printSaleReceipt} onDuplicate={fillCartFromSale} onEdit={editQuote} onConvert={fillCartFromSale} />
             <ListPagination page={quotesPageData.page} totalPages={quotesPageData.totalPages} totalItems={filteredQuotes.length} start={quotesPageData.start} end={quotesPageData.end} label="orcamentos" onPageChange={setQuotesPage} />
             {selectedSale ? <SaleDetails sale={selectedSale} onClose={() => setSelectedSale(null)} /> : null}
           </>
@@ -526,7 +633,7 @@ export default function VendasPOS() {
               </div>
             </Card>
             <div className="xl:col-span-2">
-              <SalesTable sales={todaySales} compact onView={setSelectedSale} onReceipt={downloadReceipt} onDuplicate={fillCartFromSale} />
+              <SalesTable sales={todaySales} compact onView={setSelectedSale} onReceipt={printSaleReceipt} onDuplicate={fillCartFromSale} />
             </div>
           </div>
         ) : null}
@@ -593,7 +700,7 @@ function SalesTable({ sales, compact, onView, onReceipt, onDuplicate, onEdit, on
             <td className="px-4 py-3">
               <div className="flex items-center gap-3">
                 <button title="Ver detalhes" onClick={() => onView(sale)}><Eye className="h-4 w-4" /></button>
-                <button title="Baixar recibo" onClick={() => onReceipt(sale)}><Download className="h-4 w-4" /></button>
+                <button title="Imprimir recibo" onClick={() => onReceipt(sale)}><Printer className="h-4 w-4" /></button>
                 {onEdit ? <button className="text-zinc-200" title="Editar orcamento" onClick={() => onEdit(sale)}><Pencil className="h-4 w-4" /></button> : null}
                 <button title="Duplicar para carrinho" onClick={() => onDuplicate(sale)}><Copy className="h-4 w-4" /></button>
                 {onConvert ? <button className="text-noogym-lime" title="Converter em venda" onClick={() => onConvert(sale)}><RefreshCcw className="h-4 w-4" /></button> : null}

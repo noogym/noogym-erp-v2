@@ -3,7 +3,9 @@
 .turbo
 apps/desktop
 **/.turbo
+**/.turbo*
 **/.next
+**/.next*
 **/dist
 **/release
 **/node_modules

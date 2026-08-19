@@ -28,3 +28,5 @@ export const useToastStore = create<ToastState>((set) => ({
 
 export const toastSuccess = (title: string, message?: string) => useToastStore.getState().showToast({ title, message, tone: "success" });
 export const toastInfo = (title: string, message?: string) => useToastStore.getState().showToast({ title, message, tone: "info" });
+export const toastWarning = (title: string, message?: string) => useToastStore.getState().showToast({ title, message, tone: "warning" });
+export const toastError = (title: string, message?: string) => useToastStore.getState().showToast({ title, message, tone: "error" });

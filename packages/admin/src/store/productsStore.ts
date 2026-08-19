@@ -1,11 +1,12 @@
 import { create } from "zustand";
 import { products as mockProducts } from "../data/mock";
-import { createResource, listResource, productFromApi, productToDto, updateResource } from "../lib/domainApi";
+import { createResource, listResource, productFromApi, productToDto, remoteIdOf, updateResource } from "../lib/domainApi";
 import { scopeByGym } from "../lib/gymScope";
 import { readLocal, readLocalDb, uid, writeLocal } from "../lib/storage";
 import { useAppStore } from "./appStore";
 import { useAuthStore } from "./authStore";
 import { useNotificationsStore } from "./notificationsStore";
+import { toastInfo } from "./toastStore";
 import type { ProductCategoryRecord, ProductRecord, ProductStockMovementRecord } from "@noogym/types";
 
 const categoryColors = ["#B6FF00", "#38BDF8", "#A855F7", "#F59E0B", "#2DD4BF", "#FB7185", "#94A3B8"];
@@ -110,9 +111,10 @@ export const useProductsStore = create<{
     const token = useAuthStore.getState().accessToken;
     if (!token) return;
     const activeGymId = useAppStore.getState().activeGymId ?? undefined;
+    set({ products: [], categories: [], movements: [] });
     const apiProducts = await listResource<Record<string, unknown>>("products", token, { gymId: activeGymId });
     const products = apiProducts.map(productFromApi);
-    const categories = uniqueCategories([...get().categories, ...products.map((product, index) => categoryFromName(product.category, index))]);
+    const categories = uniqueCategories(products.map((product, index) => categoryFromName(product.category, index)));
     persist(products);
     persistCategories(categories);
     set({ products, categories });
@@ -135,7 +137,7 @@ export const useProductsStore = create<{
           persist(nextProducts);
           set({ products: nextProducts });
         })
-        .catch(console.error);
+        .catch(() => toastInfo("Produto salvo localmente", "Nao foi possivel sincronizar com a API agora."));
     }
 
     return { products, categories };
@@ -150,14 +152,18 @@ export const useProductsStore = create<{
 
     const token = useAuthStore.getState().accessToken;
     if (useAppStore.getState().onlineOnly && token) {
-      updateResource<Record<string, unknown>>("products", id, token, productToDto(nextProduct))
+      const remoteId = remoteIdOf(nextProduct, ["PRD"]);
+      const request = remoteId
+        ? updateResource<Record<string, unknown>>("products", remoteId, token, productToDto(nextProduct))
+        : createResource<Record<string, unknown>>("products", token, productToDto(nextProduct));
+      request
         .then((apiProduct) => {
           const synced = productFromApi(apiProduct);
           const nextProducts = get().products.map((item) => item.id === id ? synced : item);
           persist(nextProducts);
           set({ products: nextProducts });
         })
-        .catch(console.error);
+        .catch(() => toastInfo("Produto salvo localmente", "Nao foi possivel sincronizar com a API agora."));
     }
 
     return { products };
@@ -237,7 +243,9 @@ export const useProductsStore = create<{
       items.forEach((item) => {
         const product = state.products.find((entry) => entry.id === item.id);
         if (!product) return;
-        updateResource<Record<string, unknown>>("products", item.id, token, productToDto({ ...product, stock: Math.max(0, product.stock - item.qty) })).catch(console.error);
+        const remoteId = remoteIdOf(product, ["PRD"]);
+        if (!remoteId) return;
+        updateResource<Record<string, unknown>>("products", remoteId, token, productToDto({ ...product, stock: Math.max(0, product.stock - item.qty) })).catch(() => toastInfo("Estoque ajustado localmente", "Nao foi possivel sincronizar o estoque com a API agora."));
       });
     }
 

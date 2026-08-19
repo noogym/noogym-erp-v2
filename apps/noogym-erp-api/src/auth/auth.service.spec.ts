@@ -224,6 +224,7 @@ describe('AuthService refresh tokens', () => {
       where: { id: 'user-1' },
       data: {
         passwordHash: expect.any(String),
+        status: UserStatus.ACTIVE,
         refreshTokenHash: null,
         passwordResetTokenHash: null,
         passwordResetTokenExpiresAt: null,
@@ -231,9 +232,9 @@ describe('AuthService refresh tokens', () => {
     });
     const storedPasswordHash =
       prisma.user.update.mock.calls[1][0].data.passwordHash;
-    await expect(bcrypt.compare('NovaSenha123', storedPasswordHash)).resolves.toBe(
-      true,
-    );
+    await expect(
+      bcrypt.compare('NovaSenha123', storedPasswordHash),
+    ).resolves.toBe(true);
   });
 
   it('rejects invalid or expired reset tokens', async () => {

@@ -21,7 +21,7 @@ import { useFinanceStore } from "../store/financeStore";
 import { usePlansStore } from "../store/plansStore";
 import { useProductsStore } from "../store/productsStore";
 import { useSalesStore } from "../store/salesStore";
-import { toastSuccess } from "../store/toastStore";
+import { toastInfo } from "../store/toastStore";
 import type { CheckinRecord } from "@noogym/types";
 
 const badgeTone = (tone?: string) => (["lime", "yellow", "purple", "blue", "orange", "red", "gray", "green"].includes(tone ?? "") ? tone as "lime" | "yellow" | "purple" | "blue" | "orange" | "red" | "gray" | "green" : "lime");
@@ -142,11 +142,11 @@ export default function Dashboard() {
     }
 
     if (checkinTab === "Biometria") {
-      toastSuccess("Biometria iniciada", "Leitura biométrica simulada.");
+      toastInfo("Biometria nao configurada", "Ative uma integracao biometrica nas configuracoes operacionais para usar este fluxo.");
       return;
     }
 
-    toastSuccess("Código validado", "Check-in por código simulado.");
+    setManualOpen(true);
   };
   const handleQuickSaleItem = (item: (typeof quickSaleItems)[number]) => {
     if (typeof window !== "undefined") {

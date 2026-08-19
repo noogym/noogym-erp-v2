@@ -290,7 +290,7 @@ export default function Treinos() {
       <WorkoutBuilderModal open={modal === "new"} onClose={() => setModal(null)} />
       <WorkoutBuilderModal open={modal === "edit"} workout={active} onClose={() => setModal(null)} />
       <ExerciseLibraryModal open={modal === "exercises"} onClose={() => setModal(null)} />
-      <ConfirmModal open={modal === "delete"} title="Excluir treino" message="Esta acao remove o treino do estado local simulado." confirmLabel="Excluir treino" danger onClose={() => setModal(null)} onConfirm={() => { if (active) deleteWorkout(active.id); toastSuccess("Treino excluido com sucesso"); setModal(null); }} />
+      <ConfirmModal open={modal === "delete"} title="Excluir treino" message="Esta acao remove o treino selecionado e sincroniza a remocao quando houver vinculo com a API." confirmLabel="Excluir treino" danger onClose={() => setModal(null)} onConfirm={() => { if (active) deleteWorkout(active.id); toastSuccess("Treino excluido com sucesso"); setModal(null); }} />
     </div>
   );
 }

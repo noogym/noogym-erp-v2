@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { classes as mockClasses } from "../data/mock";
-import { classFromApi, classToDto, createResource, listResource, updateResource } from "../lib/domainApi";
+import { classFromApi, classToDto, createResource, listResource, remoteIdOf, updateResource } from "../lib/domainApi";
 import { scopeByGym } from "../lib/gymScope";
 import { readLocal, readLocalDb, uid, writeLocal } from "../lib/storage";
 import { useAppStore } from "./appStore";
@@ -36,6 +36,7 @@ export const useClassesStore = create<{
     const token = useAuthStore.getState().accessToken;
     if (!token) return;
     const activeGymId = useAppStore.getState().activeGymId ?? undefined;
+    set({ classes: [] });
     const apiClasses = await listResource<Record<string, unknown>>("classes", token, { gymId: activeGymId });
     const classes = apiClasses.map(classFromApi);
     persist(classes);
@@ -69,7 +70,11 @@ export const useClassesStore = create<{
 
     const token = useAuthStore.getState().accessToken;
     if (useAppStore.getState().onlineOnly && token) {
-      updateResource<Record<string, unknown>>("classes", id, token, classToDto(nextLesson))
+      const remoteId = remoteIdOf(nextLesson, ["CLS"]);
+      const request = remoteId
+        ? updateResource<Record<string, unknown>>("classes", remoteId, token, classToDto(nextLesson))
+        : createResource<Record<string, unknown>>("classes", token, classToDto(nextLesson));
+      request
         .then((apiClass) => {
           const synced = classFromApi(apiClass);
           const nextClasses = get().classes.map((item) => item.id === id ? synced : item);

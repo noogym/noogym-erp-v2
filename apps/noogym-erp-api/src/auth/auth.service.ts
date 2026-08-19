@@ -232,7 +232,8 @@ export class AuthService {
 
     if (
       !user ||
-      user.status !== UserStatus.ACTIVE ||
+      (user.status !== UserStatus.ACTIVE &&
+        user.status !== UserStatus.INVITED) ||
       !user.passwordResetTokenHash ||
       !user.passwordResetTokenExpiresAt ||
       user.passwordResetTokenExpiresAt <= new Date() ||
@@ -247,6 +248,7 @@ export class AuthService {
       where: { id: user.id },
       data: {
         passwordHash,
+        status: UserStatus.ACTIVE,
         refreshTokenHash: null,
         passwordResetTokenHash: null,
         passwordResetTokenExpiresAt: null,
@@ -284,7 +286,10 @@ export class AuthService {
       supportActorEmail: input.actor.email,
     };
     const accessToken = this.jwtService.sign(payload, {
-      expiresIn: this.config.get<string>('SUPPORT_SESSION_EXPIRES_IN', '30m') as JwtSignOptions['expiresIn'],
+      expiresIn: this.config.get<string>(
+        'SUPPORT_SESSION_EXPIRES_IN',
+        '30m',
+      ) as JwtSignOptions['expiresIn'],
     });
 
     return {

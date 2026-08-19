@@ -22,6 +22,7 @@ import { readLocal, readLocalDb, uid, writeLocal } from "../lib/storage";
 import { useAppStore } from "./appStore";
 import { useAuthStore } from "./authStore";
 import { useNotificationsStore } from "./notificationsStore";
+import { toastInfo } from "./toastStore";
 import type { FinanceAccountRecord, FinanceRecord } from "@noogym/types";
 
 export type FinanceCategoryKind = "Receita" | "Despesa";
@@ -80,11 +81,11 @@ const syncWithAuthRetry = async (operation: (token: string) => Promise<unknown>)
 
   try {
     await operation(token);
-  } catch (error) {
-    if (!(error instanceof ApiError) || error.status !== 401) {
-      console.error(error);
-      return;
-    }
+    } catch (error) {
+      if (!(error instanceof ApiError) || error.status !== 401) {
+        toastInfo("Financeiro salvo localmente", error instanceof Error ? error.message : "Nao foi possivel sincronizar com a API agora.");
+        return;
+      }
 
     try {
       await auth.refreshSession();
@@ -142,6 +143,7 @@ export const useFinanceStore = create<{
       set({ activeFilters: scopedFilters, remoteDashboard: null, currentCashSession: null, cashSessions: [] });
       return;
     }
+    set({ records: [], accounts: [], categories: [], remoteDashboard: null, currentCashSession: null, cashSessions: [], activeFilters: scopedFilters });
     const [records, accounts, categories, remoteDashboard, currentCashSession, cashSessions] = await Promise.all([
       listFinanceRecords(token, scopedFilters),
       getFinanceAccounts(token),
@@ -247,7 +249,7 @@ export const useFinanceStore = create<{
       useAppStore.getState().addPendingSync();
       created = true;
       const token = useAuthStore.getState().accessToken;
-      if (useAppStore.getState().onlineOnly && token) createFinanceCategory(token, { ...category, name }).catch(console.error);
+      if (useAppStore.getState().onlineOnly && token) createFinanceCategory(token, { ...category, name }).catch((error) => toastInfo("Categoria salva localmente", error instanceof Error ? error.message : "Nao foi possivel sincronizar com a API agora."));
       return { categories };
     });
     return created;
@@ -264,7 +266,7 @@ export const useFinanceStore = create<{
       persistCategories(categories, true);
       updated = true;
       const token = useAuthStore.getState().accessToken;
-      if (useAppStore.getState().onlineOnly && token) updateFinanceCategory(token, id, { ...category, name }).catch(console.error);
+      if (useAppStore.getState().onlineOnly && token && !id.startsWith("FINCAT")) updateFinanceCategory(token, id, { ...category, name }).catch((error) => toastInfo("Categoria salva localmente", error instanceof Error ? error.message : "Nao foi possivel sincronizar com a API agora."));
       return { categories };
     });
     return updated;
@@ -280,7 +282,7 @@ export const useFinanceStore = create<{
       persistCategories(categories, true);
       removed = true;
       const token = useAuthStore.getState().accessToken;
-      if (useAppStore.getState().onlineOnly && token) deleteFinanceCategory(token, id).catch(console.error);
+      if (useAppStore.getState().onlineOnly && token && !id.startsWith("FINCAT")) deleteFinanceCategory(token, id).catch((error) => toastInfo("Categoria removida localmente", error instanceof Error ? error.message : "Nao foi possivel sincronizar com a API agora."));
       return { categories };
     });
     return removed;
@@ -301,7 +303,7 @@ export const useFinanceStore = create<{
     persistAccounts(accounts, true);
     useAppStore.getState().addPendingSync();
     const token = useAuthStore.getState().accessToken;
-    if (useAppStore.getState().onlineOnly && token) createFinanceAccount(token, created).catch(console.error);
+    if (useAppStore.getState().onlineOnly && token) createFinanceAccount(token, created).catch((error) => toastInfo("Conta salva localmente", error instanceof Error ? error.message : "Nao foi possivel sincronizar com a API agora."));
     return { accounts };
   }),
   updateAccount: (id, account) => set((state) => {
@@ -309,7 +311,7 @@ export const useFinanceStore = create<{
     persistAccounts(accounts, true);
     useAppStore.getState().addPendingSync();
     const token = useAuthStore.getState().accessToken;
-    if (useAppStore.getState().onlineOnly && token) updateFinanceAccount(token, id, account).catch(console.error);
+    if (useAppStore.getState().onlineOnly && token && !id.startsWith("FACC")) updateFinanceAccount(token, id, account).catch((error) => toastInfo("Conta salva localmente", error instanceof Error ? error.message : "Nao foi possivel sincronizar com a API agora."));
     return { accounts };
   }),
   addTransfer: ({ fromAccountId, toAccountId, value, date = "Hoje", note = "Transferencia entre contas" }) => set((state) => {
