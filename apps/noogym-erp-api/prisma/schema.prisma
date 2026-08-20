@@ -87,6 +87,7 @@ enum AppointmentStatus {
 
 enum CheckInMethod {
   QR_CODE
+  BARCODE
   MANUAL
   BIOMETRIC
   APP
@@ -103,6 +104,14 @@ enum MessageChannel {
 enum MessageStatus {
   DRAFT
   SCHEDULED
+  SENT
+  FAILED
+}
+
+enum EmailDeliveryStatus {
+  QUEUED
+  PROCESSING
+  RETRYING
   SENT
   FAILED
 }
@@ -125,6 +134,13 @@ enum Gender {
   FEMALE
   OTHER
   NOT_INFORMED
+}
+
+enum NoogymIdentityAliasType {
+  NOOGYM_ID
+  QR_TOKEN
+  BARCODE
+  CARD
 }
 
 enum ProductStatus {
@@ -296,10 +312,45 @@ model UserGym {
   @@unique([userId, gymId])
 }
 
+model NoogymIdentity {
+  id              String   @id @default(uuid())
+  noogymId        String   @unique
+  name            String
+  email           String?  @unique
+  phone           String?  @unique
+  birthDate       DateTime?
+  gender          Gender   @default(NOT_INFORMED)
+  documentNumber  String?  @unique
+  avatarUrl       String?
+  qrToken         String?  @unique
+  qrTokenExpiresAt DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  aliases         NoogymIdentityAlias[]
+  members         Member[]
+}
+
+model NoogymIdentityAlias {
+  id          String                  @id @default(uuid())
+  identityId  String
+  type        NoogymIdentityAliasType
+  value       String
+  label       String?
+  isActive    Boolean                 @default(true)
+  expiresAt   DateTime?
+  createdAt   DateTime                @default(now())
+  updatedAt   DateTime                @updatedAt
+  identity    NoogymIdentity          @relation(fields: [identityId], references: [id], onDelete: Cascade)
+
+  @@unique([type, value])
+  @@index([identityId, type, isActive])
+}
+
 model Member {
   id                 String               @id @default(uuid())
   organizationId     String
   gymId              String?
+  noogymIdentityId   String?
   name               String
   email              String?
   phone              String?
@@ -310,6 +361,7 @@ model Member {
   city               String?
   status             MemberStatus         @default(ACTIVE)
   avatarUrl          String?
+  accessCode         String?
   qrToken            String?              @unique
   qrTokenUpdatedAt   DateTime?
   emergencyName      String?
@@ -319,6 +371,7 @@ model Member {
   updatedAt          DateTime             @updatedAt
   organization       Organization         @relation(fields: [organizationId], references: [id])
   gym                Gym?                 @relation(fields: [gymId], references: [id])
+  noogymIdentity     NoogymIdentity?      @relation(fields: [noogymIdentityId], references: [id])
   subscriptions      Subscription[]
   payments           Payment[]
   checkIns           CheckIn[]
@@ -332,6 +385,8 @@ model Member {
   @@unique([organizationId, email])
   @@unique([organizationId, phone])
   @@unique([organizationId, documentNumber])
+  @@unique([organizationId, noogymIdentityId])
+  @@unique([organizationId, accessCode])
 }
 
 model Plan {
@@ -848,6 +903,7 @@ model Message {
   updatedAt      DateTime           @updatedAt
   organization   Organization       @relation(fields: [organizationId], references: [id])
   recipients     MessageRecipient[]
+  emailDeliveries EmailDelivery[]
 }
 
 model MessageRecipient {
@@ -859,8 +915,67 @@ model MessageRecipient {
   clicked   Boolean @default(false)
   message   Message @relation(fields: [messageId], references: [id])
   member    Member  @relation(fields: [memberId], references: [id])
+  emailDeliveries EmailDelivery[]
 
   @@unique([messageId, memberId])
+}
+
+model EmailDelivery {
+  id                 String              @id @default(uuid())
+  organizationId     String?
+  to                 String
+  subject            String
+  text               String?
+  html               String?
+  status             EmailDeliveryStatus @default(QUEUED)
+  provider           String?
+  providerMessageId  String?
+  jobId              String?
+  attempts           Int                 @default(0)
+  maxAttempts        Int                 @default(5)
+  lastError          String?
+  metadata           Json?
+  messageId          String?
+  messageRecipientId String?
+  queuedAt           DateTime            @default(now())
+  processingAt       DateTime?
+  sentAt             DateTime?
+  failedAt           DateTime?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  message            Message?            @relation(fields: [messageId], references: [id])
+  messageRecipient   MessageRecipient?   @relation(fields: [messageRecipientId], references: [id])
+
+  @@index([status, queuedAt])
+  @@index([organizationId, status])
+  @@index([messageId])
+  @@index([messageRecipientId])
+}
+
+model BackgroundJob {
+  id             String    @id @default(uuid())
+  organizationId String?
+  queue          String
+  name           String
+  status         String    @default("QUEUED")
+  payload        Json?
+  result         Json?
+  dedupeKey      String?   @unique
+  referenceId    String?
+  jobId          String?
+  attempts       Int       @default(0)
+  maxAttempts    Int       @default(5)
+  lastError      String?
+  scheduledAt    DateTime?
+  processingAt   DateTime?
+  completedAt    DateTime?
+  failedAt       DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([queue, status, scheduledAt])
+  @@index([organizationId, name])
+  @@index([referenceId])
 }
 
 model Integration {

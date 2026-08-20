@@ -42,6 +42,41 @@ packages/
 pnpm install
 ```
 
+## Preparar Ambiente Local
+
+Para deixar o ambiente de desenvolvimento previsivel, rode:
+
+```bash
+pnpm setup:local
+```
+
+Esse comando cria ficheiros `.env` locais quando faltarem, sobe apenas o PostgreSQL do ERP em Docker, aguarda o banco ficar pronto, gera o Prisma Client, aplica migrations e cria o seed demo quando ele ainda nao existir.
+
+Rode com os servidores de desenvolvimento parados. No Windows, processos Nest/Next/Vite abertos podem bloquear o Prisma Client. Para permitir que o setup encerre esses processos automaticamente:
+
+```bash
+NOOGYM_SETUP_STOP_DEV=true pnpm setup:local
+```
+
+No PowerShell:
+
+```powershell
+$env:NOOGYM_SETUP_STOP_DEV="true"; pnpm setup:local
+```
+
+Credenciais demo:
+
+```text
+Email: admin@noogym.com
+Password: Noogym@123
+```
+
+Depois rode:
+
+```bash
+pnpm run dev
+```
+
 ## Rodar Desktop
 
 ```bash
@@ -75,8 +110,23 @@ JWT_SECRET="change-me"
 JWT_EXPIRES_IN="1d"
 JWT_REFRESH_SECRET="change-me-too"
 JWT_REFRESH_EXPIRES_IN="7d"
+EMAIL_PROVIDER=auto
+RESEND_API_KEY=
+RESEND_FROM="Noogym <noreply@noogym.com>"
+EMAIL_LOGO_URL=
+REDIS_URL="redis://localhost:6379"
+EMAIL_QUEUE_ENABLED=true
+EMAIL_WORKER_ENABLED=true
+BACKGROUND_JOBS_ENABLED=true
+BACKGROUND_WORKER_ENABLED=true
 PORT=3333
 ```
+
+Para envio de e-mails, `EMAIL_PROVIDER=auto` usa Resend quando `RESEND_API_KEY` estiver configurado e mantém SMTP como fallback pelos campos `SMTP_*`. O template usa `EMAIL_LOGO_URL`; se ficar vazio, tenta carregar `/noogym-email-logo.png` no dominio do admin.
+
+Com `EMAIL_QUEUE_ENABLED=true`, a API grava cada email em `EmailDelivery`, coloca o envio na fila Redis/BullMQ e o worker tenta reenviar com backoff (`EMAIL_MAX_ATTEMPTS`, `EMAIL_RETRY_DELAY_MS`).
+
+Com `BACKGROUND_JOBS_ENABLED=true`, a API usa `BackgroundJob` + Redis/BullMQ para trabalhos demorados: auditoria, pos-pagamento, recibos, lembretes, expiracao/renovacao de assinaturas, campanhas, exportacoes, sincronizacoes, check-ins, ficheiros e metricas.
 
 Comandos a partir da raiz do monorepo:
 

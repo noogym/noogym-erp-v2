@@ -40,11 +40,19 @@ describe('CheckinsService', () => {
         },
       }),
     };
+    const backgroundJobs = {
+      enqueueCheckinProcessed: jest.fn(),
+    };
 
     return {
+      backgroundJobs,
       prisma,
       settingsService,
-      service: new CheckinsService(prisma as any, settingsService as any),
+      service: new CheckinsService(
+        prisma as any,
+        settingsService as any,
+        backgroundJobs as any,
+      ),
     };
   }
 
@@ -94,8 +102,8 @@ describe('CheckinsService', () => {
     expect(prisma.member.findFirst).toHaveBeenNthCalledWith(1, {
       where: {
         organizationId,
-        qrToken: 'token-1',
         id: 'member-1',
+        OR: [{ qrToken: 'token-1' }],
       },
       select: { id: true },
     });

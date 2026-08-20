@@ -13,6 +13,7 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { AuditLogInterceptor } from './common/interceptors/audit-log.interceptor';
 import { DatabaseReadinessInterceptor } from './common/interceptors/database-readiness.interceptor';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
+import { BackgroundJobsModule } from './common/jobs/background-jobs.module';
 import { validateEnv } from './config/env.validation';
 import { EmployeesModule } from './employees/employees.module';
 import { EntrypointsModule } from './entrypoints/entrypoints.module';
@@ -20,6 +21,7 @@ import { ExercisesModule } from './exercises/exercises.module';
 import { ExpensesModule } from './expenses/expenses.module';
 import { FinanceModule } from './finance/finance.module';
 import { GymsModule } from './gyms/gyms.module';
+import { IdentityLinksModule } from './identity-links/identity-links.module';
 import { IntegrationsModule } from './integrations/integrations.module';
 import { MembersModule } from './members/members.module';
 import { MessagesModule } from './messages/messages.module';
@@ -48,11 +50,13 @@ import { WorkoutsModule } from './workouts/workouts.module';
         limit: Number(process.env.THROTTLE_LIMIT ?? 120),
       },
     ]),
+    BackgroundJobsModule,
     PrismaModule,
     EntrypointsModule,
     AuthModule,
     OrganizationsModule,
     GymsModule,
+    IdentityLinksModule,
     UsersModule,
     MembersModule,
     PlansModule,

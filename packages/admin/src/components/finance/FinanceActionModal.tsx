@@ -36,7 +36,7 @@ export function FinanceActionModal({ action, onClose }: { action: FinanceActionC
     <Modal
       open={Boolean(action)}
       title={action.title}
-      description={action.description ?? "Fluxo simulado local-first."}
+      description={action.description ?? "Acao operacional registada para sincronizacao."}
       size="md"
       onClose={onClose}
       footer={

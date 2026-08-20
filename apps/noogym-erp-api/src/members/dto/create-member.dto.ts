@@ -8,6 +8,10 @@ export class CreateMemberDto {
   @IsString()
   gymId?: string;
 
+  @IsOptional()
+  @IsString()
+  noogymIdentityId?: string;
+
   @IsString()
   name: string;
 
@@ -49,6 +53,10 @@ export class CreateMemberDto {
   @IsOptional()
   @IsString()
   avatarUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  accessCode?: string;
 
   @IsOptional()
   @IsString()

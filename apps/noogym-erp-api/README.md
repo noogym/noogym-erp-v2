@@ -74,8 +74,23 @@ JWT_SECRET="change-me"
 JWT_EXPIRES_IN="1d"
 JWT_REFRESH_SECRET="change-me-too"
 JWT_REFRESH_EXPIRES_IN="7d"
+EMAIL_PROVIDER=auto
+RESEND_API_KEY=
+RESEND_FROM="Noogym <noreply@noogym.com>"
+EMAIL_LOGO_URL=
+REDIS_URL="redis://localhost:6379"
+EMAIL_QUEUE_ENABLED=true
+EMAIL_WORKER_ENABLED=true
+BACKGROUND_JOBS_ENABLED=true
+BACKGROUND_WORKER_ENABLED=true
 PORT=3333
 ```
+
+Com `EMAIL_PROVIDER=auto`, a API tenta Resend primeiro quando `RESEND_API_KEY` existe e cai para SMTP quando os campos `SMTP_*` estiverem configurados. O HTML dos e-mails segue o template Noogym escuro/neon e usa `EMAIL_LOGO_URL` ou `/noogym-email-logo.png` no dominio do admin.
+
+Com `EMAIL_QUEUE_ENABLED=true`, a API persiste cada email em `EmailDelivery`, envia para a fila Redis/BullMQ e o worker reprocessa falhas com backoff. Use `EMAIL_QUEUE_REQUIRED=true` se quiser impedir fallback direto quando Redis estiver indisponivel.
+
+Com `BACKGROUND_JOBS_ENABLED=true`, a API persiste trabalhos em `BackgroundJob` e processa no worker Redis/BullMQ. Estao cobertos jobs de auditoria, notificacoes nao-email, campanhas, exportacoes, pos-pagamento, recibos, reconciliacao, assinaturas, sync, check-ins, ficheiros e analytics. Conectores externos ainda nao configurados ficam como `SKIPPED` com motivo no `result`.
 
 ## Instalacao
 
@@ -413,7 +428,7 @@ GET /payments?page=1&limit=10&status=PAID&method=CASH&startDate=2026-04-01&endDa
 - EntryPoints por cliente compoem payloads especificos para web-admin, mobile e desktop sem criar BFFs separados.
 - Reports calculam KPIs de membros, receita, despesas, lucro, check-ins e treinos.
 - Treinos suportam multiplos exercicios ordenados.
-- Mensagens suportam WhatsApp, SMS, E-mail e Push como canais, salvando inicialmente no banco.
+- Mensagens suportam WhatsApp, SMS, E-mail e Push como canais; o canal E-mail entrega via Resend ou SMTP e marca destinatarios entregues.
 
 ## Testes
 

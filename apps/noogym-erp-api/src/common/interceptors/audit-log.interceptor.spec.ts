@@ -3,10 +3,8 @@ import { of } from 'rxjs';
 import { AuditLogInterceptor } from './audit-log.interceptor';
 
 describe('AuditLogInterceptor', () => {
-  const prisma = {
-    auditLog: {
-      create: jest.fn().mockResolvedValue({ id: 'audit-1' }),
-    },
+  const backgroundJobs = {
+    enqueueAuditLog: jest.fn().mockResolvedValue({ id: 'job-1' }),
   };
 
   const next = {
@@ -26,7 +24,7 @@ describe('AuditLogInterceptor', () => {
   });
 
   it('creates audit log for authenticated write requests without storing body', (done) => {
-    const interceptor = new AuditLogInterceptor(prisma as any);
+    const interceptor = new AuditLogInterceptor(backgroundJobs as any);
 
     interceptor
       .intercept(
@@ -45,8 +43,8 @@ describe('AuditLogInterceptor', () => {
         next,
       )
       .subscribe(() => {
-        expect(prisma.auditLog.create).toHaveBeenCalledWith({
-          data: expect.objectContaining({
+        expect(backgroundJobs.enqueueAuditLog).toHaveBeenCalledWith(
+          expect.objectContaining({
             organizationId: 'org-1',
             userId: 'user-1',
             action: 'PATCH /members/member-1',
@@ -58,16 +56,16 @@ describe('AuditLogInterceptor', () => {
               supportMode: false,
             }),
           }),
-        });
+        );
         expect(
-          prisma.auditLog.create.mock.calls[0][0].data.metadata,
+          backgroundJobs.enqueueAuditLog.mock.calls[0][0].metadata,
         ).not.toHaveProperty('body');
         done();
       });
   });
 
   it('does not audit read requests', (done) => {
-    const interceptor = new AuditLogInterceptor(prisma as any);
+    const interceptor = new AuditLogInterceptor(backgroundJobs as any);
 
     interceptor
       .intercept(
@@ -82,13 +80,13 @@ describe('AuditLogInterceptor', () => {
         next,
       )
       .subscribe(() => {
-        expect(prisma.auditLog.create).not.toHaveBeenCalled();
+        expect(backgroundJobs.enqueueAuditLog).not.toHaveBeenCalled();
         done();
       });
   });
 
   it('does not audit unauthenticated write requests', (done) => {
-    const interceptor = new AuditLogInterceptor(prisma as any);
+    const interceptor = new AuditLogInterceptor(backgroundJobs as any);
 
     interceptor
       .intercept(
@@ -101,7 +99,7 @@ describe('AuditLogInterceptor', () => {
         next,
       )
       .subscribe(() => {
-        expect(prisma.auditLog.create).not.toHaveBeenCalled();
+        expect(backgroundJobs.enqueueAuditLog).not.toHaveBeenCalled();
         done();
       });
   });

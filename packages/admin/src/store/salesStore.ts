@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { apiRequest } from "../lib/api";
-import { createResource, listResource, saleFromApi, saleToDto, updateResource } from "../lib/domainApi";
+import { createResource, listResource, remoteIdOf, saleFromApi, saleToDto, updateResource } from "../lib/domainApi";
 import { scopeByGym } from "../lib/gymScope";
 import { readLocal, readLocalDb, uid, writeLocal } from "../lib/storage";
 import { useAppStore } from "./appStore";
@@ -17,8 +17,8 @@ export const useSalesStore = create<{
   revenue: number;
   loadLocal: () => Promise<void>;
   loadOnline: () => Promise<void>;
-  addSale: (sale: Partial<SaleRecord>, items?: SaleItemRecord[]) => void;
-  updateSale: (id: string, sale: Partial<SaleRecord>, items?: SaleItemRecord[]) => void;
+  addSale: (sale: Partial<SaleRecord>, items?: SaleItemRecord[]) => SaleRecord;
+  updateSale: (id: string, sale: Partial<SaleRecord>, items?: SaleItemRecord[]) => SaleRecord | undefined;
   cancelSale: (id: string) => void;
   convertQuote: (id: string) => void;
 }>((set, get) => ({
@@ -35,12 +35,15 @@ export const useSalesStore = create<{
     const token = useAuthStore.getState().accessToken;
     if (!token) return;
     const activeGymId = useAppStore.getState().activeGymId ?? undefined;
+    set({ sales: [], revenue: 0 });
     const apiSales = await listResource<Record<string, unknown>>("sales", token, { gymId: activeGymId });
     const sales = apiSales.map(saleFromApi);
     persist(sales);
     set({ sales, revenue: sales.reduce((sum, sale) => sum + sale.total, 0) });
   },
-  addSale: (sale, items = []) => set((state) => {
+  addSale: (sale, items = []) => {
+    let createdRecord: SaleRecord | undefined;
+    set((state) => {
     const record: SaleRecord = {
       id: uid("SALE"),
       gymId: sale.gymId ?? useAppStore.getState().activeGymId ?? undefined,
@@ -66,6 +69,7 @@ export const useSalesStore = create<{
       items,
       payments: sale.payments
     };
+    createdRecord = record;
     const sales = [record, ...state.sales];
     persist(sales, true);
     useAppStore.getState().addPendingSync();
@@ -92,8 +96,12 @@ export const useSalesStore = create<{
     }
 
     return { sales, revenue: state.revenue + record.total };
-  }),
-  updateSale: (id, sale, items = []) => set((state) => {
+    });
+    return createdRecord as SaleRecord;
+  },
+  updateSale: (id, sale, items = []) => {
+    let updatedRecord: SaleRecord | undefined;
+    set((state) => {
     const existing = state.sales.find((item) => item.id === id);
     if (!existing) return state;
     const record: SaleRecord = {
@@ -114,6 +122,7 @@ export const useSalesStore = create<{
       items: items.length ? items : existing.items,
       payments: sale.payments ?? existing.payments
     };
+    updatedRecord = record;
     const sales = state.sales.map((item) => item.id === id ? record : item);
     persist(sales, true);
     useAppStore.getState().addPendingSync();
@@ -128,8 +137,12 @@ export const useSalesStore = create<{
     });
 
     const token = useAuthStore.getState().accessToken;
-    if (useAppStore.getState().onlineOnly && token && !id.startsWith("SALE")) {
-      updateResource<Record<string, unknown>>("sales", id, token, saleToDto(record, record.items ?? []))
+    if (useAppStore.getState().onlineOnly && token) {
+      const remoteId = remoteIdOf(existing, ["SALE"]);
+      const request = remoteId
+        ? updateResource<Record<string, unknown>>("sales", remoteId, token, saleToDto(record, record.items ?? []))
+        : createResource<Record<string, unknown>>("sales", token, saleToDto(record, record.items ?? []));
+      request
         .then((apiSale) => {
           const synced = saleFromApi(apiSale);
           const nextSales = get().sales.map((item) => item.id === id ? synced : item);
@@ -140,7 +153,9 @@ export const useSalesStore = create<{
     }
 
     return { sales, revenue: sales.reduce((sum, item) => item.status === "Cancelada" ? sum : sum + item.total, 0) };
-  }),
+    });
+    return updatedRecord;
+  },
   cancelSale: (id) => set((state) => {
     const sales = state.sales.map((sale) => sale.id === id ? { ...sale, status: "Cancelada" } : sale);
     persist(sales, true);
@@ -159,8 +174,9 @@ export const useSalesStore = create<{
     }
 
     const token = useAuthStore.getState().accessToken;
-    if (useAppStore.getState().onlineOnly && token && !id.startsWith("SALE")) {
-      apiRequest<Record<string, unknown>>(`/sales/${id}/cancel`, { method: "PATCH", token })
+    const remoteId = remoteIdOf(cancelled, ["SALE"]);
+    if (useAppStore.getState().onlineOnly && token && remoteId) {
+      apiRequest<Record<string, unknown>>(`/sales/${remoteId}/cancel`, { method: "PATCH", token })
         .then((apiSale) => {
           const synced = saleFromApi(apiSale);
           const nextSales = get().sales.map((sale) => sale.id === id ? synced : sale);

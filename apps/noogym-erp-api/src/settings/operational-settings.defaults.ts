@@ -103,6 +103,8 @@ export const defaultOperationalSettings = {
     networkPort: 9100,
     usbDeviceName: '',
     serialPath: 'COM1',
+    webPrintMode: 'browser',
+    printAgentUrl: 'http://127.0.0.1:47891',
     cashDrawerEnabled: false,
     cashDrawerPin: 0,
     cashDrawerOnTimeMs: 50,

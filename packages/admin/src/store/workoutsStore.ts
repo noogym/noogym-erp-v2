@@ -1,9 +1,10 @@
 import { create } from "zustand";
 import { workouts as mockWorkouts } from "../data/mock";
-import { createResource, deleteResource, listResource, updateResource, workoutFromApi, workoutToDto } from "../lib/domainApi";
+import { createResource, deleteResource, listResource, remoteIdOf, updateResource, workoutFromApi, workoutToDto } from "../lib/domainApi";
 import { readLocal, readLocalDb, uid, writeLocal } from "../lib/storage";
 import { useAppStore } from "./appStore";
 import { useAuthStore } from "./authStore";
+import { toastInfo } from "./toastStore";
 import type { WorkoutRecord } from "@noogym/types";
 
 const defaultBlocks = (goal?: string) => [
@@ -61,6 +62,7 @@ export const useWorkoutsStore = create<{
   loadOnline: async () => {
     const token = useAuthStore.getState().accessToken;
     if (!token) return;
+    set({ workouts: [] });
     const apiWorkouts = await listResource<Record<string, unknown>>("workouts", token);
     const workouts = apiWorkouts.map(workoutFromApi).map(normalizeWorkout);
     persist(workouts);
@@ -81,7 +83,7 @@ export const useWorkoutsStore = create<{
           persist(nextWorkouts);
           set({ workouts: nextWorkouts });
         })
-        .catch(console.error);
+        .catch(() => toastInfo("Treino salvo localmente", "Nao foi possivel sincronizar com a API agora."));
     }
 
     return { workouts };
@@ -94,14 +96,18 @@ export const useWorkoutsStore = create<{
 
     const token = useAuthStore.getState().accessToken;
     if (useAppStore.getState().onlineOnly && token) {
-      updateResource<Record<string, unknown>>("workouts", id, token, workoutToDto(nextWorkout))
+      const remoteId = remoteIdOf(nextWorkout, ["TRN"]);
+      const request = remoteId
+        ? updateResource<Record<string, unknown>>("workouts", remoteId, token, workoutToDto(nextWorkout))
+        : createResource<Record<string, unknown>>("workouts", token, workoutToDto(nextWorkout));
+      request
         .then((apiWorkout) => {
           const synced = normalizeWorkout(workoutFromApi(apiWorkout));
           const nextWorkouts = get().workouts.map((item) => item.id === id ? synced : item);
           persist(nextWorkouts);
           set({ workouts: nextWorkouts });
         })
-        .catch(console.error);
+        .catch(() => toastInfo("Treino salvo localmente", "Nao foi possivel sincronizar com a API agora."));
     }
 
     return { workouts };
@@ -116,7 +122,10 @@ export const useWorkoutsStore = create<{
     persist(workouts, true);
     useAppStore.getState().addPendingSync();
     const token = useAuthStore.getState().accessToken;
-    if (useAppStore.getState().onlineOnly && token) deleteResource("workouts", id, token).catch(console.error);
+    const remoteId = remoteIdOf(state.workouts.find((item) => item.id === id), ["TRN"]);
+    if (useAppStore.getState().onlineOnly && token && remoteId) {
+      deleteResource("workouts", remoteId, token).catch(() => toastInfo("Treino removido localmente", "Nao foi possivel sincronizar a remocao com a API agora."));
+    }
     return { workouts };
   })
 }));

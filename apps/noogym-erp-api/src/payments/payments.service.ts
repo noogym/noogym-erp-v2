@@ -11,6 +11,7 @@ import {
   SubscriptionStatus,
 } from '@prisma/client';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
+import { BackgroundJobsService } from '../common/jobs/background-jobs.service';
 import { hasScope, paymentGymScope } from '../common/utils/gym-scope';
 import { getPagination, paginated } from '../common/utils/pagination';
 import { PrismaService } from '../prisma/prisma.service';
@@ -18,7 +19,10 @@ import { CreatePaymentDto } from './dto/create-payment.dto';
 
 @Injectable()
 export class PaymentsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly backgroundJobs: BackgroundJobsService,
+  ) {}
 
   async findAll(organizationId: string, query: PaginationQueryDto) {
     const { page, limit, skip, take } = getPagination(query.page, query.limit);
@@ -92,7 +96,7 @@ export class PaymentsService {
     const { subscriptionPlanDurationDays, ...paymentRelationData } =
       relationData;
 
-    return this.prisma.$transaction(async (tx) => {
+    const created = await this.prisma.$transaction(async (tx) => {
       const payment = await tx.payment.create({
         data: {
           ...dto,
@@ -133,6 +137,12 @@ export class PaymentsService {
         },
       });
     });
+
+    if (created?.status === PaymentStatus.PAID) {
+      void this.backgroundJobs.enqueuePaymentPaid(organizationId, created.id);
+    }
+
+    return created;
   }
 
   async markPaid(organizationId: string, id: string) {
@@ -145,10 +155,13 @@ export class PaymentsService {
       throw new NotFoundException('Payment not found');
     }
 
-    return this.prisma.payment.update({
+    const paid = await this.prisma.payment.update({
       where: { id },
       data: { status: 'PAID', paidAt: new Date() },
     });
+    void this.backgroundJobs.enqueuePaymentPaid(organizationId, paid.id);
+
+    return paid;
   }
 
   private async resolveRelationData(
