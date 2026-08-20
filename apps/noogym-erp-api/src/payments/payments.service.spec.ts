@@ -26,10 +26,14 @@ describe('PaymentsService', () => {
       },
       $transaction: jest.fn((callback) => callback(prisma)),
     };
+    const backgroundJobs = {
+      enqueuePaymentPaid: jest.fn(),
+    };
 
     return {
+      backgroundJobs,
       prisma,
-      service: new PaymentsService(prisma as any),
+      service: new PaymentsService(prisma as any, backgroundJobs as any),
     };
   }
 

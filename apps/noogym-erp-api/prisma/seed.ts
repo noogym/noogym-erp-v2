@@ -303,12 +303,80 @@ async function main() {
     ],
   });
 
+  const demoIdentity = await prisma.noogymIdentity.upsert({
+    where: { noogymId: 'NG-DEMO-001' },
+    update: {
+      name: 'Ana Costa',
+      email: 'ana.costa@example.com',
+      phone: '+244 923 111 111',
+      qrToken: 'qr-demo-ana-costa',
+      qrTokenExpiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    },
+    create: {
+      noogymId: 'NG-DEMO-001',
+      name: 'Ana Costa',
+      email: 'ana.costa@example.com',
+      phone: '+244 923 111 111',
+      qrToken: 'qr-demo-ana-costa',
+      qrTokenExpiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    },
+  });
+
+  await Promise.all(
+    [
+      {
+        type: 'NOOGYM_ID' as const,
+        value: 'NG-DEMO-001',
+        label: 'Noogym ID principal',
+      },
+      {
+        type: 'QR_TOKEN' as const,
+        value: 'qr-demo-ana-costa',
+        label: 'QR do app',
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      },
+      {
+        type: 'BARCODE' as const,
+        value: '930000000001',
+        label: 'Codigo de barras do cartao',
+      },
+      {
+        type: 'CARD' as const,
+        value: 'CARD-ANA-001',
+        label: 'Cartao fisico recepcao',
+      },
+    ].map((alias) =>
+      prisma.noogymIdentityAlias.upsert({
+        where: {
+          type_value: {
+            type: alias.type,
+            value: alias.value,
+          },
+        },
+        update: {
+          identityId: demoIdentity.id,
+          label: alias.label,
+          isActive: true,
+          expiresAt: alias.expiresAt,
+        },
+        create: {
+          identityId: demoIdentity.id,
+          type: alias.type,
+          value: alias.value,
+          label: alias.label,
+          expiresAt: alias.expiresAt,
+        },
+      }),
+    ),
+  );
+
   const members = await Promise.all(
     [
       {
         name: 'Ana Costa',
         email: 'ana.costa@example.com',
         phone: '+244 923 111 111',
+        noogymIdentityId: demoIdentity.id,
       },
       {
         name: 'Bruno Manuel',
@@ -331,11 +399,19 @@ async function main() {
         update: {
           ...member,
           gymId: gym.id,
+          accessCode:
+            member.email === 'ana.costa@example.com'
+              ? '930000000001'
+              : undefined,
         },
         create: {
           ...member,
           organizationId: organization.id,
           gymId: gym.id,
+          accessCode:
+            member.email === 'ana.costa@example.com'
+              ? '930000000001'
+              : undefined,
         },
       }),
     ),

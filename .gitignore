@@ -12,6 +12,8 @@ build/
 .vite/
 .turbo/
 .next/
+.turbo.bak-*/
+.next.bak-*/
 .cache/
 .parcel-cache/
 *.tsbuildinfo

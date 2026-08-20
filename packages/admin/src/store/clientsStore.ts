@@ -5,9 +5,13 @@ import {
   clientToDto,
   createResource,
   createSubscription,
+  inviteMemberToNoogymApp,
+  linkNoogymIdentityMember,
   listResource,
+  clientBarcodePayload,
   clientQrPayload,
   regenerateMemberQr,
+  remoteIdOf,
   updateResource,
 } from "../lib/domainApi";
 import {
@@ -26,6 +30,7 @@ import { uid } from "../lib/storage";
 import { useAppStore } from "./appStore";
 import { useAuthStore } from "./authStore";
 import { useNotificationsStore } from "./notificationsStore";
+import { toastInfo, toastSuccess } from "./toastStore";
 import type { ClientRecord } from "@noogym/types";
 
 const seedClients = () =>
@@ -71,6 +76,10 @@ const normalizeEmail = (value?: string) => value?.trim().toLowerCase() ?? "";
 const normalizeDigits = (value?: string) => value?.replace(/\D/g, "") ?? "";
 const normalizeDocument = (value?: string) =>
   value?.replace(/[^a-z0-9]/gi, "").toUpperCase() ?? "";
+const normalizeAccessCode = (value?: string) =>
+  value?.replace(/\s/g, "").toUpperCase() ?? "";
+const generateAccessCode = () =>
+  `930${Array.from(crypto.getRandomValues(new Uint8Array(9)), (byte) => String(byte % 10)).join("")}`;
 const hasDuplicateClientIdentity = (
   clients: ClientRecord[],
   data: Partial<ClientRecord>,
@@ -79,6 +88,7 @@ const hasDuplicateClientIdentity = (
   const email = normalizeEmail(data.email);
   const phone = normalizeDigits(data.phone);
   const document = normalizeDocument(data.document);
+  const accessCode = normalizeAccessCode(data.accessCode);
 
   return clients.some((client) => {
     if (client.id === currentId) return false;
@@ -86,7 +96,8 @@ const hasDuplicateClientIdentity = (
     return (
       (email && normalizeEmail(client.email) === email) ||
       (phone && normalizeDigits(client.phone) === phone) ||
-      (document && normalizeDocument(client.document) === document)
+      (document && normalizeDocument(client.document) === document) ||
+      (accessCode && normalizeAccessCode(client.accessCode) === accessCode)
     );
   });
 };
@@ -121,6 +132,7 @@ export const useClientsStore = create<ClientsState>((set, get) => ({
       return;
     }
 
+    set({ clients: [] });
     const members = await listResource<Record<string, unknown>>(
       "members",
       source.token,
@@ -156,6 +168,10 @@ export const useClientsStore = create<ClientsState>((set, get) => ({
           .join("")
           .slice(0, 2),
       qrToken: client.qrToken ?? uid("QR"),
+      accessCode: client.accessCode ?? generateAccessCode(),
+      noogymIdentityId: client.noogymIdentityId,
+      noogymId: client.noogymId,
+      appLinked: Boolean(client.noogymIdentityId ?? client.noogymId),
       document: client.document,
       createdAt: client.createdAt ?? new Date().toISOString(),
       gender: client.gender,
@@ -170,7 +186,11 @@ export const useClientsStore = create<ClientsState>((set, get) => ({
       goal: client.goal,
       observations: client.observations,
     };
-    created.qrPayload = client.qrPayload ?? clientQrPayload(created.id, created.qrToken);
+    created.qrPayload =
+      client.qrPayload ?? clientQrPayload(created.id, created.qrToken);
+    created.barcodePayload =
+      client.barcodePayload ??
+      clientBarcodePayload(created.accessCode ?? created.id);
     const clients = [created, ...get().clients];
     persist(clients);
     void upsertDesktopClient(created, "create").catch(console.error);
@@ -187,17 +207,24 @@ export const useClientsStore = create<ClientsState>((set, get) => ({
     set({ clients });
     const source = currentClientsDataSource();
     if (isApiDataSource(source)) {
-      createResource<Record<string, unknown>>(
-        "members",
-        source.token,
-        clientToDto(created),
-      )
+      const createMember = created.noogymIdentityId
+        ? linkNoogymIdentityMember(source.token, {
+            identityId: created.noogymIdentityId,
+            gymId: created.gymId,
+          })
+        : createResource<Record<string, unknown>>(
+            "members",
+            source.token,
+            clientToDto(created),
+          );
+
+      createMember
         .then(async (member) => {
           let synced = clientFromApi(member);
           if (created.planId) {
             try {
               const subscription = await createSubscription(source.token, {
-                memberId: String(member.id),
+                memberId: synced.remoteId ?? synced.id,
                 planId: created.planId,
               });
               synced = clientFromApi({
@@ -207,6 +234,39 @@ export const useClientsStore = create<ClientsState>((set, get) => ({
             } catch (error) {
               console.error(error);
             }
+          }
+          if (!created.noogymIdentityId) {
+            await inviteMemberToNoogymApp(
+              source.token,
+              synced.remoteId ?? synced.id,
+            )
+              .then((result) => {
+                const data = result as {
+                  emailQueued?: boolean;
+                  emailSent?: boolean;
+                };
+                if (data.emailSent) {
+                  toastSuccess("Boas-vindas enviadas", synced.name);
+                } else if (data.emailQueued) {
+                  toastSuccess(
+                    "Boas-vindas em fila",
+                    `O e-mail sera enviado para ${synced.name}.`,
+                  );
+                } else {
+                  toastInfo(
+                    "Convite registado",
+                    "O e-mail de boas-vindas nao foi entregue.",
+                  );
+                }
+              })
+              .catch((error) =>
+                toastInfo(
+                  "Boas-vindas nao enviadas",
+                  error instanceof Error
+                    ? error.message
+                    : "Nao foi possivel enviar o convite.",
+                ),
+              );
           }
           const nextClients = get().clients.map((item) =>
             item.id === created.id
@@ -249,12 +309,20 @@ export const useClientsStore = create<ClientsState>((set, get) => ({
       }
       const source = currentClientsDataSource();
       if (isApiDataSource(source)) {
-        updateResource<Record<string, unknown>>(
-          "members",
-          id,
-          source.token,
-          clientToDto(fallback),
-        )
+        const remoteId = remoteIdOf(updatedClient, ["CLI"]);
+        const request = remoteId
+          ? updateResource<Record<string, unknown>>(
+              "members",
+              remoteId,
+              source.token,
+              clientToDto(fallback),
+            )
+          : createResource<Record<string, unknown>>(
+              "members",
+              source.token,
+              clientToDto(fallback),
+            );
+        request
           .then(async (member) => {
             let synced = clientFromApi(member);
             if (
@@ -263,7 +331,7 @@ export const useClientsStore = create<ClientsState>((set, get) => ({
             ) {
               try {
                 const subscription = await createSubscription(source.token, {
-                  memberId: id,
+                  memberId: synced.remoteId ?? synced.id,
                   planId: fallback.planId,
                 });
                 synced = clientFromApi({
@@ -322,10 +390,19 @@ export const useClientsStore = create<ClientsState>((set, get) => ({
     let updated: ClientRecord;
 
     if (isApiDataSource(source)) {
-      const remoteId = client.remoteId ?? id;
-      const member = await regenerateMemberQr(source.token, remoteId);
-      const synced = clientFromApi(member);
-      updated = client.remoteId ? { ...synced, id: client.id, remoteId } : synced;
+      const remoteId = remoteIdOf(client, ["CLI"]);
+      if (!remoteId) {
+        const qrToken = uid("QR");
+        updated = {
+          ...client,
+          qrToken,
+          qrPayload: clientQrPayload(client.id, qrToken),
+        };
+      } else {
+        const member = await regenerateMemberQr(source.token, remoteId);
+        const synced = clientFromApi(member);
+        updated = { ...synced, id: client.id, remoteId };
+      }
     } else {
       const qrToken = uid("QR");
       updated = {
@@ -339,7 +416,9 @@ export const useClientsStore = create<ClientsState>((set, get) => ({
       item.id === id ? { ...item, ...updated } : item,
     );
     persist(clients);
-    void upsertDesktopClient({ ...client, ...updated }, "update").catch(console.error);
+    void upsertDesktopClient({ ...client, ...updated }, "update").catch(
+      console.error,
+    );
     set({ clients });
     return clients.find((item) => item.id === id) ?? null;
   },

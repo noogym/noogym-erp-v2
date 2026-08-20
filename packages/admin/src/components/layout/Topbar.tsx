@@ -361,11 +361,11 @@ export function Topbar() {
           <RefreshCw className="h-4 w-4 shrink-0" />
           <span className="min-w-0 truncate">{syncLabel}</span>
         </div>
-        <div ref={notificationsRef} className="relative shrink-0">
+        <div ref={notificationsRef} className="relative flex shrink-0 items-center gap-2">
           {canOpenSales ? (
             <button
               type="button"
-              className="relative mr-2 inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/[0.035] text-zinc-200 transition hover:bg-white/[0.07]"
+              className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.035] text-zinc-200 transition hover:bg-white/[0.07]"
               onClick={() => setRoute("vendas")}
               aria-label="Abrir carrinho"
               title="Carrinho"
@@ -380,7 +380,7 @@ export function Topbar() {
           ) : null}
           <button
             type="button"
-            className="relative flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/[0.035] text-zinc-200 transition hover:bg-white/[0.07]"
+            className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.035] text-zinc-200 transition hover:bg-white/[0.07]"
             onClick={() => setNotificationsOpen((value) => !value)}
             aria-label="Abrir notificacoes"
             title="Notificacoes"

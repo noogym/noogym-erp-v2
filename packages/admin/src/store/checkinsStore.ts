@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { apiRequest } from "../lib/api";
-import { checkinFromApi, checkinToDto, createResource, createSubscription, listResource } from "../lib/domainApi";
+import { checkinFromApi, checkinToDto, createResource, createSubscription, listResource, remoteIdOf } from "../lib/domainApi";
 import { scopeByGym } from "../lib/gymScope";
 import { readLocal, readLocalDb, uid, writeLocal } from "../lib/storage";
 import { useAppStore } from "./appStore";
@@ -8,6 +8,7 @@ import { useAuthStore } from "./authStore";
 import { useClientsStore } from "./clientsStore";
 import { useNotificationsStore } from "./notificationsStore";
 import { useOperationalSettingsStore } from "./operationalSettingsStore";
+import { toastInfo } from "./toastStore";
 import type { CheckinRecord } from "@noogym/types";
 
 export type CheckinBlockCode = "CLIENT_INACTIVE" | "GUEST_DISABLED" | "PLAN_OVERDUE" | "METHOD_DISABLED" | "OUTSIDE_ACCESS_WINDOW" | "DAILY_LIMIT";
@@ -29,7 +30,7 @@ const isActiveSubscriptionError = (error: unknown) =>
 const methodEnabled = (type: string) => {
   const checkin = useOperationalSettingsStore.getState().settings.checkin;
   const normalized = type.toLowerCase();
-  if (normalized.includes("qr") || normalized.includes("app")) return checkin.qrCode;
+  if (normalized.includes("qr") || normalized.includes("app") || normalized.includes("codigo") || normalized.includes("barra")) return checkin.qrCode;
   if (normalized.includes("biometr")) return checkin.biometric;
   return checkin.manual;
 };
@@ -83,10 +84,20 @@ const mergeSyncedCheckin = (synced: CheckinRecord, fallback: CheckinRecord): Che
 const parseQrPayload = (payload: string) => {
   const raw = payload.trim();
   try {
-    const parsed = JSON.parse(raw) as { memberId?: unknown; qrToken?: unknown; token?: unknown };
+    const parsed = JSON.parse(raw) as { memberId?: unknown; qrToken?: unknown; token?: unknown; barcode?: unknown; accessCode?: unknown; cardCode?: unknown; card?: unknown };
+    const accessCode = typeof parsed.barcode === "string"
+      ? parsed.barcode
+      : typeof parsed.accessCode === "string"
+        ? parsed.accessCode
+        : typeof parsed.cardCode === "string"
+          ? parsed.cardCode
+          : typeof parsed.card === "string"
+            ? parsed.card
+            : undefined;
     return {
       memberId: typeof parsed.memberId === "string" ? parsed.memberId : undefined,
-      qrToken: typeof parsed.qrToken === "string" ? parsed.qrToken : typeof parsed.token === "string" ? parsed.token : undefined
+      qrToken: typeof parsed.qrToken === "string" ? parsed.qrToken : typeof parsed.token === "string" ? parsed.token : undefined,
+      accessCode
     };
   } catch {
     // Continue with URL/raw token parsing.
@@ -95,12 +106,15 @@ const parseQrPayload = (payload: string) => {
     const url = new URL(raw);
     const parts = url.pathname.split("/").filter(Boolean);
     if (url.protocol === "noogym:" && url.hostname === "checkin") return { memberId: parts[0], qrToken: parts[1] };
+    if (url.protocol === "noogym:" && ["barcode", "card"].includes(url.hostname)) return { accessCode: parts[0] };
     const index = parts.findIndex((part) => part === "checkin");
     if (index >= 0) return { memberId: parts[index + 1], qrToken: parts[index + 2] };
+    const barcodeIndex = parts.findIndex((part) => ["barcode", "card"].includes(part));
+    if (barcodeIndex >= 0) return { accessCode: parts[barcodeIndex + 1] };
   } catch {
     // Raw token fallback below.
   }
-  return { qrToken: raw };
+  return /^\d{6,}$/.test(raw) ? { accessCode: raw } : { qrToken: raw };
 };
 const notifyCheckin = (record: CheckinRecord) => {
   useNotificationsStore.getState().addNotification({
@@ -148,6 +162,7 @@ export const useCheckinsStore = create<{
     const token = useAuthStore.getState().accessToken;
     if (!token) return;
     const activeGymId = useAppStore.getState().activeGymId ?? undefined;
+    set({ checkins: [], todayCount: 0 });
     const apiCheckins = await listResource<Record<string, unknown>>("checkins", token, { gymId: activeGymId });
     const checkins = apiCheckins.map(checkinFromApi);
     persist(checkins);
@@ -258,7 +273,10 @@ export const useCheckinsStore = create<{
     });
 
     if (shouldSyncOnline && token) {
-      createResource<Record<string, unknown>>("checkins", token, checkinToDto(record))
+      const client = useClientsStore.getState().clients.find((item) => item.id === record.clientId);
+      const remoteMemberId = remoteIdOf(client, ["CLI"]);
+      const onlineRecord = remoteMemberId ? { ...record, clientId: remoteMemberId } : record;
+      createResource<Record<string, unknown>>("checkins", token, checkinToDto(onlineRecord))
         .then((apiCheckin) => {
           const synced = mergeSyncedCheckin(checkinFromApi(apiCheckin), record);
           const nextCheckins = get().checkins.map((item) => item.id === record.id ? synced : item);
@@ -269,13 +287,15 @@ export const useCheckinsStore = create<{
         .catch(async (error) => {
           const client = useClientsStore.getState().clients.find((item) => item.id === record.clientId);
           if (!isMissingSubscriptionError(error) || !client?.planId) {
-            console.error(error);
+            toastInfo("Check-in salvo localmente", error instanceof Error ? error.message : "Nao foi possivel sincronizar com a API agora.");
             return;
           }
 
           try {
-            await createSubscription(token, { memberId: record.clientId, planId: client.planId, startDate: record.checkedAtIso });
-            const apiCheckin = await createResource<Record<string, unknown>>("checkins", token, checkinToDto(record));
+            const memberId = remoteIdOf(client, ["CLI"]);
+            if (!memberId) throw new Error("Cliente ainda nao sincronizado com a API.");
+            await createSubscription(token, { memberId, planId: client.planId, startDate: record.checkedAtIso });
+            const apiCheckin = await createResource<Record<string, unknown>>("checkins", token, checkinToDto({ ...record, clientId: memberId }));
             const synced = mergeSyncedCheckin(checkinFromApi(apiCheckin), record);
             const nextCheckins = get().checkins.map((item) => item.id === record.id ? synced : item);
             persist(nextCheckins);
@@ -283,19 +303,21 @@ export const useCheckinsStore = create<{
             set({ checkins: nextCheckins, todayCount: nextCheckins.filter((item) => item.dateTime.startsWith("Hoje")).length });
           } catch (retryError) {
             if (!isActiveSubscriptionError(retryError)) {
-              console.error(retryError);
+              toastInfo("Check-in salvo localmente", retryError instanceof Error ? retryError.message : "Nao foi possivel sincronizar com a API agora.");
               return;
             }
 
             try {
-              const apiCheckin = await createResource<Record<string, unknown>>("checkins", token, checkinToDto(record));
+              const memberId = remoteIdOf(client, ["CLI"]);
+              if (!memberId) throw new Error("Cliente ainda nao sincronizado com a API.");
+              const apiCheckin = await createResource<Record<string, unknown>>("checkins", token, checkinToDto({ ...record, clientId: memberId }));
               const synced = mergeSyncedCheckin(checkinFromApi(apiCheckin), record);
               const nextCheckins = get().checkins.map((item) => item.id === record.id ? synced : item);
               persist(nextCheckins);
               useClientsStore.getState().updateLastCheckin(synced.clientId, synced.dateTime);
               set({ checkins: nextCheckins, todayCount: nextCheckins.filter((item) => item.dateTime.startsWith("Hoje")).length });
             } catch (finalError) {
-              console.error(finalError);
+              toastInfo("Check-in salvo localmente", finalError instanceof Error ? finalError.message : "Nao foi possivel sincronizar com a API agora.");
             }
           }
         });
@@ -330,8 +352,10 @@ export const useCheckinsStore = create<{
       const remoteId = (item as { remoteId?: string }).remoteId;
       const tokenMatches = Boolean(parsed.qrToken && item.qrToken === parsed.qrToken);
       const payloadMatches = Boolean(item.qrPayload && item.qrPayload === payload.trim());
+      const accessCodeMatches = Boolean(parsed.accessCode && item.accessCode === parsed.accessCode);
+      const barcodePayloadMatches = Boolean(item.barcodePayload && item.barcodePayload === payload.trim());
       const idMatches = Boolean(parsed.memberId && (item.id === parsed.memberId || remoteId === parsed.memberId));
-      return (tokenMatches && (!parsed.memberId || idMatches)) || payloadMatches || item.id === payload.trim();
+      return (tokenMatches && (!parsed.memberId || idMatches)) || payloadMatches || accessCodeMatches || barcodePayloadMatches || item.id === payload.trim();
     });
 
     if (!client) return null;
@@ -340,7 +364,7 @@ export const useCheckinsStore = create<{
       gymId,
       clientName: client.name,
       clientId: client.id,
-      type: "QR Code",
+      type: parsed.accessCode ? "Codigo de barras" : "QR Code",
       accessType: "Entrada",
       dateTime: dateTimeLabel(checkedAt),
       checkedAtIso

@@ -42,6 +42,7 @@ describe('MembersService', () => {
         email: 'ana.costa@example.com',
         phone: '+244 923 111 111',
         documentNumber: '000000000LA001',
+        accessCode: expect.any(String),
         qrToken: expect.any(String),
         qrTokenUpdatedAt: expect.any(Date),
       },
@@ -52,6 +53,7 @@ describe('MembersService', () => {
           take: 1,
           include: { plan: true },
         },
+        noogymIdentity: { include: { aliases: true } },
       },
     });
   });

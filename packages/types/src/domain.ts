@@ -2,6 +2,9 @@ export interface ClientRecord {
   id: string;
   remoteId?: string;
   gymId?: string;
+  noogymIdentityId?: string;
+  noogymId?: string;
+  appLinked?: boolean;
   name: string;
   phone: string;
   email: string;
@@ -16,6 +19,8 @@ export interface ClientRecord {
   avatar?: string;
   qrToken?: string;
   qrPayload?: string;
+  accessCode?: string;
+  barcodePayload?: string;
   document?: string;
   createdAt?: string;
   gender?: string;
@@ -33,6 +38,7 @@ export interface ClientRecord {
 
 export interface PlanRecord {
   id: string;
+  remoteId?: string;
   name: string;
   description: string;
   category: string;
@@ -59,6 +65,7 @@ export interface PlanCategoryRecord {
 
 export interface ProductRecord {
   id: string;
+  remoteId?: string;
   gymId?: string;
   name: string;
   category: string;
@@ -99,6 +106,7 @@ export interface ProductStockMovementRecord {
 
 export interface CheckinRecord {
   id: string;
+  remoteId?: string;
   gymId?: string;
   clientName: string;
   clientId: string;
@@ -111,6 +119,7 @@ export interface CheckinRecord {
 
 export interface SaleRecord {
   id: string;
+  remoteId?: string;
   gymId?: string;
   cashSessionId?: string;
   receiptNumber?: string;
@@ -156,6 +165,7 @@ export interface SalePaymentRecord {
 
 export interface ClassRecord {
   id: string;
+  remoteId?: string;
   gymId?: string;
   name: string;
   room: string;
@@ -180,6 +190,7 @@ export interface ClassRecord {
 
 export interface WorkoutRecord {
   id: string;
+  remoteId?: string;
   name: string;
   client: string;
   clientId?: string;
@@ -217,6 +228,7 @@ export interface WorkoutExerciseRecord {
 
 export interface EmployeeRecord {
   id: string;
+  remoteId?: string;
   name: string;
   role: string;
   email: string;
